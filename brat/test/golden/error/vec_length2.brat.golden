@@ -1,0 +1,10 @@
+Error in test/golden/error/vec_length2.brat on line 2:
+f(_, x, _, xs) = x ,- xs
+                 ^^^^^^^
+
+  Expected vector of length n
+from the type:  Vec(X, n)
+but got vector: cons(「x」, 「xs」)
+of length (> 0)
+
+

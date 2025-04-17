@@ -1,0 +1,9 @@
+Error in test/golden/error/bad_swap.brat on line 2:
+swap(_, _, x, y) = x, y
+                   ^
+
+  Type mismatch when checking x
+Expected: (a1 :: Y), (b1 :: X)
+But got:  (x :: X)
+
+

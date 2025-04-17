@@ -86,7 +86,7 @@ instance Show (Term d k) where
   show (VHole (name, _)) = '?' : name
   show Empty = "()"
   show (a :|: b) = bracket PJuxtPull a ++ ", " ++ bracket PJuxtPull b
-  show Pass = "pass"
+  show Pass = ".."
   show (Th comp) = '{' : show comp ++ "}"
   show (TypedTh comp) = "{:" ++ show comp ++ ":}"
   show (Force th) = show th ++ "()"
@@ -137,7 +137,12 @@ instance Show (Term d k) where
     prettyPat _ = Nothing
 
   show (C f) = "{" ++ show f ++ "}"
-  show (K (ss :-> ts)) = "{" ++ showSig ss ++ " -o " ++ showSig ts ++ "}"
+  show (K (ss :-> ts)) = unwords ["{"
+                                 ,showSig show ss
+                                 ,"-o"
+                                 ,showSig show ts
+                                 ,"}"
+                                 ]
   show FanOut = "[/\\]"
   show FanIn = "[\\/]"
 

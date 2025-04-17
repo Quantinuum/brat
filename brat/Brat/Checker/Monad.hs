@@ -90,11 +90,12 @@ data CheckingSig ty where
   Wire    :: Wire -> CheckingSig ()
   KDone   :: CheckingSig ()
   AskVEnv :: CheckingSig CtxEnv
-  Declare :: End -> Modey m -> BinderType m -> CheckingSig ()
+  Declare :: End -> Modey m -> BinderType m -> Maybe String -> CheckingSig ()
   Define  :: End -> Val Z -> CheckingSig ()
   ANewHope :: InPort -> FC -> CheckingSig ()
   AskHopes :: CheckingSig Hopes
   RemoveHope :: InPort -> CheckingSig ()
+  AskNames :: CheckingSig (M.Map End String)
 
 localAlias :: (QualName, Alias) -> Checking v -> Checking v
 localAlias _ (Ret v) = Ret v
@@ -233,15 +234,19 @@ handler (Req s k) ctx g
       TypeOf end -> case M.lookup end . typeMap . store $ ctx of
         Just et -> handler (k et) ctx g
         Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
-      Declare end my bty ->
-        let st@Store{typeMap=m} = store ctx
-        in case M.lookup end m of
+      Declare end my bty mname ->
+        let st@Store{typeMap=typeMap,userNames=userNames} = store ctx
+        in case M.lookup end typeMap of
           Just _ -> Left $ dumbErr (InternalError $ "Redeclaring " ++ show end)
           Nothing -> let bty_str = case my of { Braty -> show bty; Kerny -> show bty } in
                        track ("Declared " ++ show end ++ " :: " ++ bty_str) $
                        handler (k ())
                        (ctx { store =
-                              st { typeMap = M.insert end (EndType my bty) m }
+                              st { typeMap = M.insert end (EndType my bty) typeMap
+                                 , userNames = case mname of
+                                    Just name -> M.insert end name userNames
+                                    Nothing -> userNames
+                                 }
                             }) g
       Define end v ->
         let st@Store{typeMap=tm, valueMap=vm} = store ctx
@@ -281,6 +286,7 @@ handler (Req s k) ctx g
                         if M.member e hset
                         then handler (k ()) (ctx { hopes = M.delete e hset }) g
                         else Left (dumbErr (InternalError ("Trying to remove unknown Hope: " ++ show e)))
+      AskNames -> handler (k (userNames (store ctx))) ctx g
 
 type Checking = Free CheckingSig
 
@@ -333,3 +339,9 @@ localNS ns (Req c k) = Req c (localNS ns . k)
 
 defineEnd :: End -> Val Z -> Checking ()
 defineEnd e v = req (Define e v)
+
+showRowM :: ShowWithMetas ty => [(NamedPort e, ty)] -> Checking String
+showRowM row = flip showRow row <$> req AskNames
+
+showWithMetasM :: ShowWithMetas t => t -> Checking String
+showWithMetasM x = flip showWithMetas x <$> req AskNames

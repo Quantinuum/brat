@@ -110,7 +110,8 @@ applySem f B0 = pure f
 applySem f (vz :< v) = applySem f vz >>= \case
   SApp f vz -> pure $ SApp f (vz :< v)
   SLam ga body -> sem (ga :<< v) body
-  v -> err $ InternalError $ "applySem called on " ++ show v
+  v -> do
+    err =<< InternalError . ("applySem called on " ++) <$> showWithMetasM v
 
 semLvl :: Ny n -> Sem
 semLvl lvy = SApp (SLvl $ ny2int lvy) B0
@@ -226,9 +227,10 @@ eqWorker tm (lvy :* kz) (TypeFor m ((_, k):ks)) exp act = do
   act <- applySem act xz
   eqWorker tm (Sy lvy :* (kz :<< k)) (TypeFor m ks) exp act
 -- Nothing else is higher kinded
-eqWorker tm _ Nat exp act = pure $
-  if getNum exp == getNum act then Right () else Left $
-    TypeMismatch tm (show exp) (show act)
+eqWorker tm _ Nat exp act = do
+  if getNum exp == getNum act
+  then pure (Right ())
+  else Left <$> modily Braty (TypeMismatch tm <$> showWithMetasM exp <*> showWithMetasM act)
 eqWorker tm (lvy :* kz) (TypeFor m []) (SApp f args) (SApp f' args') | f == f' =
   svKind (quoteVar lvy f) >>= \case
     TypeFor m' ks | m == m' -> eqTests tm (lvy :* kz) (snd <$> ks) (args <>> []) (args' <>> [])
@@ -252,7 +254,8 @@ eqWorker tm lvkz (TypeFor _ []) (SSum m0 stk0 rs0) (SSum m1 stk1 rs1)
       Just rs -> traverse eqVariant rs <&> sequence_
  where
   eqVariant (Some r0, Some r1) = eqRowTest m0 tm lvkz (stk0,r0) (stk1,r1) <&> dropRight
-eqWorker tm _ _ v0 v1 = pure . Left $ TypeMismatch tm (show v0) (show v1)
+eqWorker tm _ _ v0 v1 =
+  Left <$> (TypeMismatch tm <$> showWithMetasM v0 <*> showWithMetasM v1)
 
 -- Type rows have bot0,bot1 dangling de Bruijn indices, which we instantiate with
 -- de Bruijn levels. As we go under binders in these rows, we add to the scope's
@@ -280,7 +283,7 @@ eqRowTest m tm (lvy :* kz) (stk0, REx (_, k0) r0) (stk1, REx (_, k1) r1) =
       Right () -> do
         let l = semLvl lvy
         eqRowTest m tm (Sy lvy :* (kz :<< k0)) (stk0 :<< l, r0) (stk1 :<< l, r1)
-eqRowTest m tm _ exp act = modily m $ pure . Left $ TypeMismatch tm (show exp) (show act)
+eqRowTest m tm _ exp act = Left <$> modily m (TypeMismatch tm <$> showWithMetasM exp <*> showWithMetasM act)
 
 eqTests :: String -> (Ny :* Stack Z TypeKind) n -> [TypeKind] -> [Sem] -> [Sem] -> Checking (Either ErrorMsg ())
   -- note alternative - traverse zip3/zipSameLen*2 + currying
@@ -291,8 +294,11 @@ eqTests tm lvkz = go
   go (k:ks) (u:us) (v:vs) = eqWorker tm lvkz k u v >>= \case
     Right () -> go ks us vs
     Left e -> pure $ Left e
-  go _ us vs = pure . Left . TypeErr $ "Arity mismatch in type constructor arguments:\n  "
-                   ++ show us ++ "\n  " ++ show vs
+  go _ us vs = do
+    us <- showWithMetasM us
+    vs <- showWithMetasM vs
+    pure . Left . TypeErr $ "Arity mismatch in type constructor arguments:\n  "
+                            ++ us ++ "\n  " ++ vs
 
 getNumVar :: NumVal (VVar n) -> Maybe End
 getNumVar (NumValue _ (StrictMonoFun (StrictMono _ mono))) = case mono of

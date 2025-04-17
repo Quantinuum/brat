@@ -2,10 +2,12 @@ module Brat.LSP.Holes where
 
 import Brat.Checker.Types (TypedHole(..), HoleData(..))
 import Brat.FC (FC)
+import Brat.Syntax.Common (UserNameMap)
+import Brat.Syntax.Value (ShowWithMetas(..))
 
-holeInfo :: TypedHole -> (FC, String)
-holeInfo h@(TypedHole _ HoleData { .. }) = (fc,
-                                            unlines (show h : maybe [] (delim:) suggestions)
-                                           )
+holeInfo :: UserNameMap -> TypedHole -> (FC, String)
+holeInfo m h@(TypedHole _ HoleData { .. }) = (fc,
+                                              unlines (showWithMetas m h : maybe [] (delim:) suggestions)
+                                             )
  where
-  delim = replicate (length (show h)) '-'
+  delim = replicate (length (showWithMetas m h)) '-'

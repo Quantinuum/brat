@@ -3,5 +3,5 @@ f(_, _, n, f, xs) = (n of f)(xs)
                     ^^^^^^^^^^^^
 
   Type error: Expected function 「n」 of f() to consume all of its arguments (「xs」)
- but found leftovers: (b1 :: Vec(VApp VPar Ex checking_check_defs_1_f_f.box_2_lambda_fake_source 0 B0, VPar Ex checking_check_defs_1_f_f.box_2_lambda_fake_source 2))
+ but found leftovers: (b1 :: Vec(X, n))
 

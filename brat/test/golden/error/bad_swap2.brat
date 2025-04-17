@@ -1,0 +1,5 @@
+swap(X :: $, Y :: $) -> { X, Y -o Y, X }
+swap(_, _) = { x, y => y, x }
+
+call_swap(X :: $) -> { X, Qubit -o X, Qubit }
+call_swap(X) = { x, q => swap(X, Qubit)(x, q) }

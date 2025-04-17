@@ -30,20 +30,51 @@ import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
 
+import Data.Bifunctor (first)
 import Data.List (intercalate, minimumBy)
 import Data.Ord (comparing)
 import Data.Kind (Type)
-import Data.Maybe (isJust)
+import qualified Data.Map as M
+import Data.Maybe (isJust, fromMaybe)
 import Data.Type.Equality ((:~:)(..), testEquality)
+
+-- Show data structures which contains metas. In the checking monad we have a
+-- map from metas to human readable names, which should be fed into "show"
+-- calls for types that are instances of this class.
+class ShowWithMetas t where
+  showWithMetas :: M.Map End String -> t -> String
+
+instance ShowWithMetas () where
+  showWithMetas _ () = "()"
+
+instance ShowWithMetas a => ShowWithMetas [a] where
+  showWithMetas m xs = '[' : intercalate ", " (showWithMetas m <$> xs) ++ "]"
+
+instance (ShowWithMetas a, ShowWithMetas b) => ShowWithMetas (a, b) where
+  showWithMetas m (a, b) = "(" ++ showWithMetas m a ++ ", " ++ showWithMetas m b ++ ")"
+
+instance ShowWithMetas a => ShowWithMetas (Bwd a) where
+  showWithMetas _ B0 = "B0"
+  showWithMetas m (zx :< x) = showWithMetas m zx ++ " :< " ++ showWithMetas m x
+
+instance ShowWithMetas a => ShowWithMetas (Stack i a j) where
+  showWithMetas _ S0 = "S0"
+  showWithMetas m (zx :<< x) = showWithMetas m zx ++ " :<< " ++ showWithMetas m x
+
+instance forall t. (forall a. ShowWithMetas (t a)) => ShowWithMetas (Some t) where
+  showWithMetas m (Some x) = "Some " ++ showWithMetas m x
 
 newtype VDecl = VDecl (FuncDecl (Some (Ro Brat Z)) (FunBody Term Noun))
 
-instance MODEY Brat => Show VDecl where
-  show (VDecl decl) = show $ aux decl
+instance MODEY Brat => ShowWithMetas VDecl where
+  showWithMetas m (VDecl decl) = show $ aux decl
    where
     aux :: FuncDecl (Some (Ro Brat Z)) body -> FuncDecl String body
     aux (FuncDecl { .. }) = case fnSig of
-      Some sig -> FuncDecl { fnName = fnName, fnSig = show sig, fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
+      Some sig -> FuncDecl { fnName = fnName, fnSig = (showWithMetas m sig), fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
+
+instance MODEY Brat => Show VDecl where
+  show = showWithMetas M.empty
 
 ------------------------------------ Variable Indices ------------------------------------
 -- Well scoped de Bruijn indices
@@ -102,6 +133,7 @@ data Stack :: N -> Type -> N -> Type where
   S0 :: Stack n x n
   (:<<) :: Stack n x m -> x -> Stack n x (S m)
 infixl 7 :<<
+
 deriving instance Show t => Show (Stack n t m)
 
 traverseStack :: Monad m => (s -> m t) -> Stack i s j -> m (Stack i t j)
@@ -143,7 +175,12 @@ data VVar :: N -> Type where
   VPar :: End -> VVar n  -- Has to be declared in the Store (for equality testing)
   VInx :: Inx n -> VVar n
 
-deriving instance Show (VVar n)
+instance ShowWithMetas (VVar n) where
+  showWithMetas m (VPar e) = fromMaybe ("VPar " ++ show e) (M.lookup e m)
+  showWithMetas _ (VInx i) = "VInx " ++ show i
+
+instance Show (VVar n) where
+  show = showWithMetas M.empty
 
 instance Eq (VVar n) where
   (VPar e0) == (VPar e1) = e0 == e1
@@ -184,27 +221,31 @@ instance MODEY m => Eq (CTy m i) where
       Nothing -> Nothing
     roEq _ _ _ = Nothing
 
-data SVar = SPar End | SLvl Int
- deriving (Show, Eq)
+instance ShowWithMetas (Val n) where
+  showWithMetas m v@(VCon _ _) | Just vs <- asList v = '[':(intercalate "," vs ++ "]")
+   where
+    asList (VCon (PrefixName [] "nil") []) = Just []
+    asList (VCon (PrefixName [] "cons") [hd, tl]) = (showWithMetas m hd:) <$> asList tl
+    asList _ = Nothing
+  showWithMetas _ (VCon c []) = show c
+  showWithMetas m (VCon c vs) = show c ++ "(" ++ intercalate ", " (showWithMetas m <$> vs) ++ ")"
+  showWithMetas m (VNum v) = showWithMetas m v
+  showWithMetas m (VFun my cty) = "{ " ++ modily my (showWithMetas m cty) ++ " }"
+  showWithMetas m (VApp v B0) = showWithMetas m v
+  showWithMetas m (VApp v ctx) = "VApp " ++ showWithMetas m v ++ " " ++ show (showWithMetas m <$> ctx)
+  showWithMetas m (VLam body) = "VLam " ++ showWithMetas m body
 
--- Semantic value, used internally by normalization; contains Lvl's but no Inx's
-data Sem where
-  SNum :: NumVal SVar -> Sem
-  SCon :: QualName -> [Sem] -> Sem
-  -- Second is just body, we do NOT substitute under the binder,
-  -- instead we stash Sem's for each free DeBruijn index into the first member:
-  SLam :: Stack Z Sem n -> Val (S n) -> Sem
-  SFun :: MODEY m => Modey m -> Stack Z Sem n -> CTy m n -> Sem
-  SApp :: SVar -> Bwd Sem -> Sem
-  -- Sum types, stash like SLam (shared between all variants)
-  SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
-deriving instance Show Sem
+instance Show (Val n) where
+  show = showWithMetas M.empty
 
 data CTy :: Mode -> N -> Type where
   (:->>) :: Ro m i j -> Ro m j k -> CTy m i
 
-instance MODEY m => Show (CTy m n) where
-  show (ri :->> ro) = unwords [show ri, arrow, show ro]
+instance MODEY m => ShowWithMetas (CTy m n) where
+  showWithMetas m (ri :->> ro) = unwords [showWithMetas m ri
+                                         ,arrow
+                                         ,showWithMetas m ro
+                                         ]
    where
     arrow = case modey :: Modey m of
       Braty -> "->"
@@ -225,29 +266,45 @@ data Ro :: Mode
       -> Ro m bot {--------------------------} top
 
 
-instance forall m top bot. MODEY m => Show (Ro m bot top) where
-  show ro = intercalate ", " $ roToList ro
+instance forall m top bot. MODEY m => ShowWithMetas (Ro m bot top) where
+  showWithMetas m ro = intercalate ", " $ roToList ro
    where
     roToList :: forall bot. Ro m bot top -> [String]
     roToList R0 = []
     roToList (RPr (p, ty) ro) = let tyStr = case modey :: Modey m of
-                                      Braty -> show ty
-                                      Kerny -> show ty
+                                      Braty -> showWithMetas m ty
+                                      Kerny -> showWithMetas m ty
                                 in  ('(':p ++ " :: " ++ tyStr ++ ")"):roToList ro
     roToList  (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
 
-instance Show (Val n) where
-  show v@(VCon _ _) | Just vs <- asList v = show vs
-   where
-    asList (VCon (PrefixName [] "nil") []) = Just []
-    asList (VCon (PrefixName [] "cons") [hd, tl]) = (hd:) <$> asList tl
-    asList _ = Nothing
-  show (VCon c []) = show c
-  show (VCon c vs) = show c ++ "(" ++ intercalate ", " (show <$> vs) ++ ")"
-  show (VNum v) = show v
-  show (VFun m cty) = "{ " ++ modily m (show cty) ++ " }"
-  show (VApp v ctx) = "VApp " ++ show v ++ " " ++ show ctx
-  show (VLam body) = "VLam " ++ show body
+----------------------------------- Sem ---------------------------------------
+
+data SVar = SPar End | SLvl Int
+ deriving (Show, Eq)
+
+-- So we can derive a show instance for NumVal
+instance ShowWithMetas SVar where
+  showWithMetas _ = show
+
+-- Semantic value, used internally by normalization; contains Lvl's but no Inx's
+data Sem where
+  SNum :: NumVal SVar -> Sem
+  SCon :: QualName -> [Sem] -> Sem
+  -- Second is just body, we do NOT substitute under the binder,
+  -- instead we stash Sem's for each free DeBruijn index into the first member:
+  SLam :: Stack Z Sem n -> Val (S n) -> Sem
+  SFun :: MODEY m => Modey m -> Stack Z Sem n -> CTy m n -> Sem
+  SApp :: SVar -> Bwd Sem -> Sem
+  -- Sum types, stash like SLam (shared between all variants)
+  SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+
+instance ShowWithMetas Sem where
+  showWithMetas m (SNum nv) = "SNum " ++ showWithMetas m nv
+  showWithMetas m (SCon c ss) = "SCon " ++ show c ++ " " ++ showWithMetas m ss
+  showWithMetas m (SLam stk vs) = "SLam " ++ showWithMetas m stk ++ " " ++ showWithMetas m vs
+  showWithMetas m (SFun my stk cty) = unwords ["SFun", show my, showWithMetas m stk, showWithMetas m cty]
+  showWithMetas m (SApp v zs) = unwords ["SApp" ++ showWithMetas m v, showWithMetas m zs]
+  showWithMetas m (SSum my stk rows) = unwords ["SSum", show my, showWithMetas m stk, showWithMetas m rows]
 
 ---------------------------------- Patterns -----------------------------------
 pattern TNat, TInt, TFloat, TBool, TText, TUnit, TNil :: Val n
@@ -287,10 +344,13 @@ data NumVal x = NumValue
   , grower  :: Fun00 x
   } deriving (Eq, Foldable, Functor, Traversable)
 
-instance Show x => Show (NumVal x) where
-  show (NumValue 0 g) = show g
-  show (NumValue n Constant0) = show n
-  show (NumValue n g) = show n ++ " + " ++ show g
+instance ShowWithMetas x => ShowWithMetas (NumVal x) where
+  showWithMetas m (NumValue 0 g) = showWithMetas m g
+  showWithMetas _ (NumValue n Constant0) = show n
+  showWithMetas m (NumValue n g) = show n ++ " + " ++ showWithMetas m g
+
+instance ShowWithMetas x => Show (NumVal x) where
+  show = showWithMetas M.empty
 
 -- Functions which map 0 to 0
 data Fun00 x
@@ -298,9 +358,12 @@ data Fun00 x
  | StrictMonoFun (StrictMono x)
  deriving (Eq, Foldable, Functor, Traversable)
 
-instance Show x => Show (Fun00 x) where
-  show Constant0 = "0"
-  show (StrictMonoFun sm) = show sm
+instance ShowWithMetas x => ShowWithMetas (Fun00 x) where
+  showWithMetas _ Constant0 = "0"
+  showWithMetas m (StrictMonoFun sm) = showWithMetas m sm
+
+instance ShowWithMetas x => Show (Fun00 x) where
+  show = showWithMetas M.empty
 
 -- Strictly increasing function
 data StrictMono x = StrictMono
@@ -308,20 +371,27 @@ data StrictMono x = StrictMono
  , monotone :: Monotone x
  } deriving (Eq, Foldable, Functor, Traversable)
 
-instance Show x => Show (StrictMono x) where
-  show (StrictMono 0 m) = show m
-  show (StrictMono n m) = let a = "2^" ++ show n
-                              b = show (2 ^ n :: Int)
-                          in minimumBy (comparing length) [b,a] ++ " * " ++ show m
+instance ShowWithMetas x => ShowWithMetas (StrictMono x) where
+  showWithMetas m (StrictMono 0 mono) = showWithMetas m mono
+  showWithMetas m (StrictMono n mono) =
+   let a = "2^" ++ show n
+       b = show (2 ^ n :: Int)
+   in (minimumBy (comparing length) [b,a]) ++ " * " ++ showWithMetas m mono
+
+instance ShowWithMetas x => Show (StrictMono x) where
+  show = showWithMetas M.empty
 
 data Monotone x
  = Linear x
  | Full (StrictMono x)
  deriving (Eq, Foldable, Functor, Traversable)
 
-instance Show x => Show (Monotone x) where
-  show (Linear v) = show v
-  show (Full sm) = "(2^(" ++ show sm ++ ") - 1)"
+instance ShowWithMetas x => ShowWithMetas (Monotone x) where
+  showWithMetas m (Linear v) = showWithMetas m v
+  showWithMetas m (Full sm) = "(2^(" ++ showWithMetas m sm ++ ") - 1)"
+
+instance ShowWithMetas x => Show (Monotone x) where
+  show = showWithMetas M.empty
 
 -- Reference semantics for NumValue types
 class NumFun (t :: Type -> Type) where
@@ -618,3 +688,13 @@ stkLen (zx :<< _) = Sy (stkLen zx)
 numValIsConstant :: NumVal (VVar Z) -> Maybe Integer
 numValIsConstant (NumValue up Constant0) = pure up
 numValIsConstant _ = Nothing
+
+showRow :: ShowWithMetas ty => M.Map End String -> [(NamedPort e, ty)] -> String
+showRow m row = showSig (showWithMetas m) $ fmap (first portName) row
+
+instance ShowWithMetas TypeKind where
+  showWithMetas _ = show
+
+instance ShowWithMetas t => ShowWithMetas (KindOr t) where
+  showWithMetas _ (Left s) = show s
+  showWithMetas m (Right t) = showWithMetas m t

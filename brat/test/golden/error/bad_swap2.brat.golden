@@ -1,0 +1,9 @@
+Error in test/golden/error/bad_swap2.brat on line 5:
+call_swap(X) = { x, q => swap(X, Qubit)(x, q) }
+                         ^^^^^^^^^^^^^^^^^^^^
+
+  Type mismatch when checking swap()(「X」, Qubit(()))()(「x」, 「q」)
+Expected: (a1 :: X), (b1 :: Qubit)
+But got:  (a1 :: Qubit), (b1 :: X)
+
+

@@ -145,7 +145,7 @@ typeEqRigid tm (_ :* _ :* semz) Nat exp act = do
   act <- sem semz act
   if getNum exp == getNum act
   then pure ()
-  else err $ TypeMismatch tm (show exp) (show act)
+  else err =<< TypeMismatch tm <$> showWithMetasM exp <*> showWithMetasM act
 typeEqRigid tm stuff@(_ :* kz :* _) (TypeFor m []) (VApp f args) (VApp f' args') | f == f' =
   svKind f >>= \case
     TypeFor m' ks | m == m' -> typeEqs tm stuff (snd <$> ks) (args <>> []) (args' <>> [])

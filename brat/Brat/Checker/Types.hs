@@ -78,13 +78,13 @@ data HoleData a = HoleData
   , connectors :: a
   }
 
-instance Show TypedHole where
-  show (TypedHole tag dat) = ((('?' : mnemonic dat) ++ " :: ") ++) $
+instance ShowWithMetas TypedHole where
+  showWithMetas m (TypedHole tag dat) = ((('?' : mnemonic dat) ++ " :: ") ++) $
     case (tag, connectors dat) of
-      (NBHole, ((), unders)) -> showRow unders
-      (NKHole, ((), unders)) -> showRow unders
-      (VBHole, (overs, unders)) -> "{ " ++ showRow overs ++ " -> " ++ showRow unders ++ " }"
-      (VKHole, (overs, unders)) -> "{ " ++ showRow overs ++ " -o " ++ showRow unders ++ " }"
+      (NBHole, ((), unders)) -> showRow m unders
+      (NKHole, ((), unders)) -> showRow m unders
+      (VBHole, (overs, unders)) -> "{ " ++ showRow m overs ++ " -> " ++ showRow m unders ++ " }"
+      (VKHole, (overs, unders)) -> "{ " ++ showRow m overs ++ " -o " ++ showRow m unders ++ " }"
 
 data EndType where
   EndType :: Modey m -> BinderType m -> EndType
@@ -95,23 +95,25 @@ instance Show EndType where
   show (EndType Braty (Right ty)) = show ty
 
 data Store = Store
-  { typeMap  :: M.Map End EndType
-  , valueMap :: M.Map End (Val Z)
+  { typeMap    :: M.Map End EndType
+  , valueMap   :: M.Map End (Val Z)
+  , userNames  :: M.Map End String
   }
 
 instance Show Store where
-  show (Store km vm) = unlines $
+  show (Store km vm nm) = unlines $
                        ("Kinds:":(showKind <$> M.toList km))
-                       ++ ("\nValues:":(showVal <$> M.toList vm))
+                       ++ ("\nValues:":(showVal <$> M.toList vm)
+                       ++ ("\nNames:":(show <$> M.toList nm)))
    where
     showKind (key, kind) = show key ++ " :: " ++ show kind
     showVal (key, val) = show key ++ " = " ++ show val
 
 initStore :: Store
-initStore = Store M.empty M.empty
+initStore = Store M.empty M.empty M.empty
 
 instance Semigroup Store where
-  (Store ks vs) <> (Store ks' vs') = Store (ks <> ks') (vs <> vs')
+  (Store ks vs nm) <> (Store ks' vs' nm') = Store (ks <> ks') (vs <> vs') (nm <> nm')
 
 kindForMode :: Modey m -> TypeKind
 kindForMode Braty = Star []

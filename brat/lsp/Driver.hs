@@ -17,7 +17,7 @@ import Language.LSP.VFS
 import System.FilePath (dropFileName)
 import System.Log.Logger
 
-import Brat.Checker.Types (TypedHole)
+import Brat.Checker.Types (Store(..), TypedHole)
 import Brat.Error
 import Brat.FC as FC
 import Brat.Load
@@ -25,6 +25,7 @@ import Brat.LSP.Find
 import Brat.LSP.Holes
 import Brat.LSP.State
 import qualified Brat.Naming as Name
+import Brat.Syntax.Common (UserNameMap)
 
 main :: IO Int
 main = do
@@ -80,11 +81,11 @@ convPos (Pos l c) = Position (fromIntegral (max 0 (l - 1))) (fromIntegral (max 0
 allGood :: NormalizedUri -> LspM () ()
 allGood fileUri = publishDiagnostics 0 fileUri Nothing (partitionBySource [])
 
-logHoles :: [TypedHole] -> NormalizedUri -> LspM () ()
-logHoles hs fileUri = publishDiagnostics (length hs) fileUri Nothing (partitionBySource (logHole <$> hs))
+logHoles :: UserNameMap -> [TypedHole] -> NormalizedUri -> LspM () ()
+logHoles nm hs fileUri = publishDiagnostics (length hs) fileUri Nothing (partitionBySource (logHole <$> hs))
  where
   logHole :: TypedHole -> Diagnostic
-  logHole h = let (FC start end, info) = holeInfo h
+  logHole h = let (FC start end, info) = holeInfo nm h
                   msg = pack info
                   range = Range (convPos start) (convPos end)
               in  Diagnostic
@@ -115,11 +116,11 @@ loadVFile state _ msg = do
       --                                                vv
       env <- liftIO . runExceptT $ loadFiles Name.root (cwd :| []) (show fileName) file
       case env of
-        Right (_,newDecls,holes,_,_) -> do
+        Right (_,newDecls,holes,store,_) -> do
           old <- liftIO $ takeMVar state
           liftIO $ putMVar state (updateState (snd <$> newDecls, holes) old)
           allGood fileName
-          logHoles holes fileName
+          logHoles (userNames store) holes fileName
         Left (SrcErr _ err) -> allGood fileName *> sendError fileName err
     Nothing -> do
       liftIO $ debugM "loadVFile" $ "Couldn't find " ++ show fileName ++ " in VFS"

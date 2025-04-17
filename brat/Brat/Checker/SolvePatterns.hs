@@ -193,6 +193,9 @@ unify l k r = do
 
 -- Solve a metavariable statically - don't do anything dynamic
 -- Once a metavariable is solved, we expect to not see it again in a normal form.
+--
+-- N.B. We should try harder to preserve order here for more comprehensible
+-- error messages. See the Helium/Top projects.
 instantiateMeta :: End -> Val Z -> Checking ()
 instantiateMeta e val = do
   throwLeft (doesntOccur e val)
@@ -252,7 +255,7 @@ unifyNum (NumValue lup lgro) (NumValue rup rgro)
   demandSucc (StrictMono k (Full nPlus1)) = do
     n <- demandSucc nPlus1
     pure $ nPlus ((2 ^ k) - 1) $ n2PowTimes (k + 1) $ nFull n
-  demandSucc n = err . UnificationError $ "Couldn't force " ++ show n ++ " to be a successor"
+  demandSucc n = showWithMetasM n >>= \n -> err (UnificationError $ "Couldn't force " ++ n ++ " to be a successor")
 
   -- Complain if a number isn't even, otherwise return half
   demandEven :: NumVal (VVar Z) -> Checking (NumVal (VVar Z))

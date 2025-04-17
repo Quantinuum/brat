@@ -27,6 +27,7 @@ import Hasochism
 import Control.Exception (assert)
 import Control.Monad (filterM, foldM, forM, forM_, unless)
 import Control.Monad.Except
+import Control.Monad.Freer (req)
 import Control.Monad.Trans.Class (lift)
 import Data.Functor ( (<&>), ($>) )
 import Data.List (sort)
@@ -63,6 +64,7 @@ checkDecl :: Prefix -> VDecl -> [(Tgt, BinderType Brat)] -> Checking ()
 checkDecl pre (VDecl FuncDecl{..}) to_define = (fnName -!) $ localFC fnLoc $ do
   trackM "\nCheckDecl:"
   unless (fnLocality == Local) $ err $ InternalError "checkDecl called on ext function"
+  nm <- req AskNames
   getFunTy fnSig >>= \case
     -- We must have a row of nouns as the definition
     Nothing -> case fnBody of
@@ -73,11 +75,11 @@ checkDecl pre (VDecl FuncDecl{..}) to_define = (fnName -!) $ localFC fnLoc $ do
           _ -> localFC (fcOf body) $
                err $
                TypeMismatch fnName
-               (showRow to_define)
-               (showRow $ filter ((`notElem` (fst <$> rightUnders)) . fst) to_define)
+               (showRow nm to_define)
+               (showRow nm $ filter ((`notElem` (fst <$> rightUnders)) . fst) to_define)
       Undefined -> error "No body in `checkDecl`"
       ThunkOf _ -> case fnSig of
-        Some ro -> err $ ExpectedThunk (showMode Braty) (show ro)
+        Some ro -> err =<< ExpectedThunk (showMode Braty) <$> (showWithMetasM ro)
     Just (Some (my :* Flip cty)) -> getClauses fnBody (my, cty) >>= \case
       Right stuff -> do
         box_out :: Src <- case stuff of
@@ -91,7 +93,7 @@ checkDecl pre (VDecl FuncDecl{..}) to_define = (fnName -!) $ localFC fnLoc $ do
             Braty -> wire (box_out, VFun my cty, thunk_in)
             Kerny -> wire (box_out, VFun my cty, thunk_in)
           [] -> err $ ExpectedThunk (showMode my) "No body"
-          row -> err $ ExpectedThunk (showMode my) (showRow row)
+          row -> err $ ExpectedThunk (showMode my) (showRow nm row)
       Left body -> let ?my = Braty in check body ((), to_define) $> ()
  where
   getClauses :: FunBody Term Noun

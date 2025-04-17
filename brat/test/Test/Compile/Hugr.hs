@@ -57,7 +57,7 @@ compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
       let outFile = outputDir </> replaceExtension (takeFileName file) outputExt
       BS.writeFile outFile bs
       pure $ "Written to " ++ outFile ++ " pending validation"
-    Left (CompilingHoles _) -> pure "Skipped as contains holes"
+    Left (CompilingHoles _ _) -> pure "Skipped as contains holes"
 
 setupCompilationTests :: IO TestTree
 setupCompilationTests = do

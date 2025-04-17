@@ -20,13 +20,18 @@ module Brat.Checker.Helpers {-(pullPortsRow, pullPortsSig
                             ,evalSrcRow, evalTgtRow
                             )-} where
 
-import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd)
+import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals
+                          ,err, typeErr
+                          ,kindArgRows, defineEnd
+                          ,showWithMetasM, showRowM
+                          )
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
 import Brat.Eval (eval, EvMode(..), kindType)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
 import Brat.Naming (Name, FreshMonad(..))
+import Brat.QualName (QualName)
 import Brat.Syntax.Common
 import Brat.Syntax.Core (Term(..))
 import Brat.Syntax.Simple
@@ -40,9 +45,10 @@ import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Control.Monad.Freer (req)
 import Data.Bifunctor
 import Data.Foldable (foldrM)
-import Data.List (partition)
+import Data.List (intercalate, partition)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Prelude hiding (last)
 
 simpleCheck :: Modey m -> Val Z -> SimpleTerm -> Either ErrorMsg ()
@@ -67,8 +73,9 @@ pull1PortRo :: MODEY m
 -- TODO: Make an `Error` constructor for this
 pull1PortRo _ p _ R0 = fail $ "Port not found: " ++ p
 pull1PortRo m p stuff (RPr (p', ty) ro)
- | p == p' = if portNameExists m p ro
-   then err (AmbiguousPortPull p (show (RPr (p', ty) ro)))
+ | p == p' = do
+   if portNameExists m p ro
+   then err =<< AmbiguousPortPull p <$> showWithMetasM (RPr (p', ty) ro)
    else pure ((p', ty), rebuildRo m ro (stuff <>> []))
  | otherwise = pull1PortRo m p (stuff :< (p', ty)) ro
  where
@@ -97,17 +104,17 @@ pullPortsRo m (p:ps) ro = do
   (x, ro) <- pull1PortRo m p B0 ro
   RPr x <$> pullPortsRo m ps ro
 
-pullPortsRow :: Show ty
+pullPortsRow :: ShowWithMetas ty
              => [PortName]
              -> [(NamedPort e, ty)]
              -> Checking [(NamedPort e, ty)]
-pullPortsRow = pullPorts (portName . fst) showRow
+pullPortsRow ps row = req AskNames >>= \nm -> pullPorts (portName . fst) (showRow nm) ps row
 
-pullPortsSig :: Show ty
+pullPortsSig :: ShowWithMetas ty
              => [PortName]
              -> [(PortName, ty)]
              -> Checking [(PortName, ty)]
-pullPortsSig = pullPorts fst showSig
+pullPortsSig ps row = req AskNames >>= \nm -> pullPorts fst (showSig (showWithMetas nm)) ps row
 
 pullPorts :: forall a ty
            . (a -> PortName) -- A way to get a port name for each element
@@ -125,17 +132,22 @@ pullPorts toPort showFn to_pull types =
       ([found], remaining) -> pure (found, remaining)
       (_, _) -> err $ AmbiguousPortPull p (showFn available)
 
-ensureEmpty :: Show ty => String -> [(NamedPort e, ty)] -> Checking ()
+combineDisjointEnvs :: M.Map QualName v -> M.Map QualName v -> Checking (M.Map QualName v)
+combineDisjointEnvs l r =
+  let commonKeys = S.intersection (M.keysSet l) (M.keysSet r)
+  in if S.null commonKeys
+    then pure $ M.union l r
+    else typeErr ("Variable(s) defined twice: " ++
+      intercalate "," (map show $ S.toList commonKeys))
+
+ensureEmpty :: ShowWithMetas ty => String -> [(NamedPort e, ty)] -> Checking ()
 ensureEmpty _ [] = pure ()
-ensureEmpty str xs = err $ InternalError $ "Expected empty " ++ str ++ ", got:\n  " ++ showSig (rowToSig xs)
+ensureEmpty str xs = showRowM xs >>= \row -> err $ InternalError $ "Expected empty " ++ str ++ ", got:\n  " ++ row
 
 noUnders m = do
   ((outs, ()), (overs, unders)) <- m
   ensureEmpty "unders" unders
   pure (outs, overs)
-
-rowToSig :: Traversable t => t (NamedPort e, ty) -> t (PortName, ty)
-rowToSig = fmap $ first portName
 
 showMode :: Modey m -> String
 showMode Braty = ""
@@ -265,7 +277,7 @@ getThunks Braty ((src, Left (Star args)):rest) = do
       pure (node, unders, overs)
   (nodes, unders', overs') <- getThunks Braty rest
   pure (node:nodes, unders <> unders', overs <> overs')
-getThunks m ro = err $ ExpectedThunk (showMode m) (showRow ro)
+getThunks m ro = err =<< ExpectedThunk (showMode m) <$> showRowM ro
 
 -- The type given here should be normalised
 vecLayers :: Modey m -> Val Z -> Checking ([(Src, NumVal (VVar Z))] -- The sizes of the vector layers
@@ -382,10 +394,10 @@ defineTgt :: Tgt -> Val Z -> Checking ()
 defineTgt tgt = defineEnd (InEnd (end tgt))
 
 declareSrc :: Src -> Modey m -> BinderType m -> Checking ()
-declareSrc src my ty = req (Declare (ExEnd (end src)) my ty)
+declareSrc (NamedPort end name) my ty = req (Declare (ExEnd end) my ty (Just name))
 
 declareTgt :: Tgt -> Modey m -> BinderType m -> Checking ()
-declareTgt tgt my ty = req (Declare (InEnd (end tgt)) my ty)
+declareTgt (NamedPort end name) my ty = req (Declare (InEnd end) my ty (Just name))
 
 -- listToRow :: [(PortName, BinderType m)] -> Ro m Z i
 -- listToRow [] = R0
