@@ -55,12 +55,12 @@ typeEq' :: String -- String representation of the term for error reporting
         -> Val n -- Expected
         -> Val n -- Actual
         -> Checking ()
-typeEq' str stuff@(_ny :* _ks :* sems) k exp act = do
+typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
   mine <- mineToSolve
   exp <- sem sems exp
   act <- sem sems act
-  qexp <- (quote Zy exp)
-  qact <- (quote Zy act)
+  qexp <- (quote ny exp)
+  qact <- (quote ny act)
   trackM ("typeEq' exp: " ++ show qexp)
   trackM ("typeEq' act: " ++ show qact)
   typeEqEta str stuff mine k exp act
