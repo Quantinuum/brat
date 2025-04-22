@@ -63,12 +63,19 @@ solve :: forall m. Modey m
                    )
 solve _ [] = pure ([], [])
 solve my ((src, DontCare):p) = do
-  () <- case my of
+  case my of
     Kerny -> do
       ty <- typeOfSrc Kerny src
       unless (fromJust (copyable ty)) $ typeErr $ "Ignoring linear variable of type " ++ show ty
-    Braty -> pure ()
-  solve my p
+      solve my p
+    Braty -> do
+      ty <- typeOfSrc Braty src
+      (tests, sol) <- solve my p
+      case ty of
+        Right _ -> pure (tests, sol)
+        -- Kinded things might be used to solve hopes. We pass them through so
+        -- that we can do the proper wiring in this case
+        Left k -> pure (tests, ('_':portName src, (src, ty)):sol)
 solve my ((src, Bind x):p) = do
   ty <- typeOfSrc my src
   (tests, sol) <- solve my p
