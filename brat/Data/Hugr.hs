@@ -356,6 +356,7 @@ data Const = Const
 data DFG node = DFG
  { parent :: node
  , signature_ :: FunctionType
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq node => Ord (DFG node) where
@@ -365,6 +366,7 @@ instance ToJSON node => ToJSON (DFG node) where
   toJSON (DFG { .. }) = object ["op" .= ("DFG" :: Text)
                                ,"parent" .= parent
                                ,"signature" .= signature_
+                               ,"metadata" .= metadata
                                ]
 
 data TagOp node = TagOp
@@ -590,6 +592,10 @@ data HugrOp node
   | OpLoadFunction (LoadFunctionOp node)
   | OpNoop (NoopOp node)
  deriving (Eq, Functor, Ord, Show)
+
+addMetadata :: [(String, String)] -> HugrOp node -> HugrOp node
+addMetadata md (OpDFG (DFG { .. })) = OpDFG (DFG { metadata = metadata ++ md, .. })
+addMetadata _ op = op
 
 instance ToJSON node => ToJSON (HugrOp node) where
   toJSON (OpMod op) = toJSON op

@@ -109,7 +109,7 @@ addEdge e = do
 addNode :: String -> HugrOp NodeId -> Compile NodeId
 addNode name op = do
   id <- freshNode name
-  addOp op id
+  addOp (addMetadata [("id", show id)] op) id
   pure id
 
 type Compile = State CompilationState
@@ -300,7 +300,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
     BratNode (Box src tgt) _ _ -> do
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts)))
+      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
       compileBox (src, tgt) dfgId
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
@@ -474,7 +474,7 @@ compileWithInputs parent name = gets compiled >>= (\case
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType ins outs bratExts)))
+      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType ins outs bratExts) []))
       inputNode <- addNode "PatternMatch.Input" (OpIn (InputNode dfgId ins))
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
       addNodeWithInputs "PatternMatch.Output" (OpOut (OutputNode dfgId (snd <$> ccOuts))) ccOuts []
@@ -532,7 +532,7 @@ compileConstDfg parent desc (inTys, outTys) contents = do
       dfg_id <- freshNode ("Box_" ++ show desc)
       a <- contents dfg_id
       let funTy = FunctionType inTys outTys bratExts
-      addOp (OpDFG $ DFG dfg_id funTy) dfg_id
+      addOp (OpDFG $ DFG dfg_id funTy []) dfg_id
       pure (funTy, a)
   let nestedHugr = renameAndSortHugr (nodes cs) (edges cs)
   let ht = HTFunc $ PolyFuncType [] funTy
