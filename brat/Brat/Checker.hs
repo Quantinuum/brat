@@ -741,7 +741,7 @@ checkClause my fnName cty clause = modily my $ do
 
   -- First, we check the patterns on the LHS. This requires some overs,
   -- so we make a box, however this box will be skipped during compilation.
-  (vars, match, rhsCty) <- suppressHoles . fmap snd $
+  (sol, match, rhsCty) <- suppressHoles . fmap snd $
        let ?my = my in ("$lhs" -!) $ makeBox (clauseName ++ "_setup") cty $
                      \(overs, unders) -> do
     -- Make a problem to solve based on the lhs and the overs
@@ -754,17 +754,60 @@ checkClause my fnName cty clause = modily my $ do
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
           let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
-          let vars = fst <$> sol
-          pure (vars, match, patRo :->> outRo)
+          pure (sol, match, patRo :->> outRo)
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
+    let numSrcMap = case ?my of
+         Braty -> makeNumSrcMap sol rhsOvers
+         Kerny -> []
+    -- Here we're relying too much on the implementation of typeEq, counting on
+    -- the fact that it'll define the first argument in the flex-flex case that
+    -- would arise if we've not yet defined the outer src
+
+    let vars = fst <$> sol
+    let abstractor = foldr ((:||:) . APat . Bind) AEmpty vars
     let ?my = my in do
       env <- mkEnv vars rhsOvers
-      localEnv env $ "$rhs" -! check @m (rhs clause) ((), rhsUnders)
+      ("$rhs" -!) $ do
+        traverse (\(outer,inner) -> typeEq "hack" Nat (VApp (VPar (ExEnd outer)) B0) (VApp (VPar (ExEnd inner)) B0)) numSrcMap
+        localEnv env $ interceptWiring numSrcMap (check @m (rhs clause) ((), rhsUnders))
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
+
+
+  -- Silly wee hack. We don't want to be wiring up srcs from the outer box when
+  -- we're building the inner box, so we need to keep track of which srcs in the
+  -- inner box the outer ones correspond to for when we call interceptWiring
+  makeNumSrcMap :: [(String, (Src, BinderType Brat))] -- The solution in terms of outer box srcs
+                -> [(Src, BinderType Brat)] -- The inner box's srcs
+                -> [(OutPort, OutPort)]
+  -- We'll traverse all of both structures so we can error out if they don't
+  -- match exactly
+  --makeNumSrcMap xs ys | trace ("makeNumSrcMap\n  " ++ show xs ++ "\n  " ++ show ys) False = undefined
+  makeNumSrcMap [] [] = []
+  -- Happy case
+  makeNumSrcMap ((varName, (outerSrc, Left Nat)):sol) ((innerSrc, Left Nat):inner)
+   | ('_':_) <- varName = (end outerSrc, end innerSrc) : makeNumSrcMap sol inner
+   | otherwise = makeNumSrcMap sol inner
+  -- Cases we're we found one Nat, need to churn through the other argument to find the matching one
+  makeNumSrcMap sol@((_, (_, Left Nat)):_) inner = case inner of
+    [] -> error "i fucked up"
+    (_:inner) -> makeNumSrcMap sol inner
+  makeNumSrcMap sol inner@((_, Left Nat):_) = case sol of
+    [] -> error "i fucked up"
+    (_:sol) -> makeNumSrcMap sol inner
+  -- No Nat on either side
+  makeNumSrcMap (_:sol) (_:inner) = makeNumSrcMap sol inner
+
+  -- Is threading gonna mess this up? :o
+  interceptWiring :: [(OutPort, OutPort)] -> Checking a -> Checking a
+  interceptWiring srcMap _ | trace ("intercept : " ++ show srcMap) False = undefined
+  interceptWiring srcMap (Req (Wire w@(outerSrc, TNat, tgt)) k) | Just innerSrc <- trace ("intercepted "++ show w) (lookup outerSrc srcMap) = Req (Wire (innerSrc, TNat, tgt)) (interceptWiring srcMap . k)
+  interceptWiring srcMap (Define lbl e val@(VApp (VPar (ExEnd outerSrc)) B0) k) | Just innerSrc <- trace ("intercepted2 " ++ show e ++ " := " ++ show val) (lookup outerSrc srcMap) = Define lbl e (VApp (VPar (ExEnd innerSrc) ) B0) (interceptWiring srcMap . k)
+  interceptWiring _ r = r
+
   mkEnv :: (?my :: Modey m) => [String] -> [(Src, BinderType m)] -> Checking (Env (EnvData m))
   mkEnv (x:xs) (src:srcs) = do
     e1 <- singletonEnv x src
