@@ -706,6 +706,7 @@ check' Hope ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
     (_, [(hungry, _)], [(dangling, _)], _) <- anext "$!" Id (S0, Some (Zy :* S0))
                                               (REx ("hope", k) R0) (REx ("hope", k) R0)
     fc <- req AskFC
+    req (ANewDynamic (toEnd bang) fc)
     wire (dangling, kindType k, NamedPort bang "")
     defineTgt' "check hope (tgt)" tgt (endVal k (toEnd hungry))
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
