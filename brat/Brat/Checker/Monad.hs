@@ -273,7 +273,7 @@ handler (Req s k) ctx g
       VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx g
       ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx g
       AddNode name node -> handler (k ()) ctx ((M.singleton name node, []) <> g)
-      Wire w -> handler (k ()) ctx ((M.empty,[w]) <> g)
+      Wire w -> handler ((trace ("Wired: " ++ show w) k) ()) ctx ((M.empty,[w]) <> g)
       -- We only get a KLup here if the variable has not been found in the kernel context
       KLup _ -> handler (k Nothing) ctx g
       -- Receiving KDone may become possible when merging the two check functions
@@ -333,7 +333,7 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
         -- (c) since there are no infinite end-creating loops, it's correct (merely inefficient)
         -- to just "have another go".
         Just _ -> let news = News (M.singleton end Unstuck)
-                      newDynamics = case v of
+                      newDynamics = (\x -> trace ("New dynamics: " ++ show x) x) $ case v of
                         VNum nv -> numVars nv
                         _ -> []
                   in handler (k news)
