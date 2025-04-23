@@ -741,7 +741,7 @@ checkClause my fnName cty clause = modily my $ do
 
   -- First, we check the patterns on the LHS. This requires some overs,
   -- so we make a box, however this box will be skipped during compilation.
-  (vars, match, rhsCty) <- suppressHoles . fmap snd $
+  (sol, match, rhsCty) <- suppressHoles . fmap snd $
        let ?my = my in ("$lhs" -!) $ makeBox (clauseName ++ "_setup") cty $
                      \(overs, unders) -> do
     -- Make a problem to solve based on the lhs and the overs
@@ -754,14 +754,18 @@ checkClause my fnName cty clause = modily my $ do
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
           let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
-          let vars = fst <$> sol
-          pure (vars, match, patRo :->> outRo)
+          pure (sol, match, patRo :->> outRo)
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
+    -- Here we're relying too much on the implementation of typeEq, counting on
+    -- the fact that it'll define the first argument in the flex-flex case that
+    -- would arise if we've not yet defined the outer src
+
+    let vars = fst <$> sol
     let ?my = my in do
       env <- mkEnv vars rhsOvers
-      localEnv env $ "$rhs" -! check @m (rhs clause) ((), rhsUnders)
+      localEnv env $ "$rhs" -! (check @m (rhs clause) ((), rhsUnders))
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
