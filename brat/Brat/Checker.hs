@@ -696,7 +696,9 @@ check' Hope ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
                                               (REx ("hope", k) R0) (REx ("hope", k) R0)
     fc <- req AskFC
     wire (dangling, kindType k, NamedPort bang "")
-    defineTgt tgt (endVal k (toEnd hungry))
+    defineTgt' "check hope (tgt)" tgt (endVal k (toEnd hungry))
+    defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
+    req (ANewDynamic (toEnd hungry) fc)
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
