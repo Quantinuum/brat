@@ -118,10 +118,17 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
     lhsFun00 (StrictMonoFun (StrictMono (n - 1) mono)) num
 
   lhsMono :: Monotone (VVar Z) -> NumVal (VVar Z) -> Checking ()
+  lhsMono (Linear (VPar e)) num | x <- mine e, trace ("lhsMono\n  " ++ show e ++ "\n  " ++ show num ++ "\n  " ++ show x) False = undefined
+  -- x = f(x) has 3 solutions, otherwise we should complain!
+  lhsMono lhs@(Linear (VPar e)) num | [e'] <- numVars num, e == e' = case num of
+    (NumValue 0 (StrictMonoFun sm)) -> case anyDoubsAnyFulls sm of
+      (True, _) -> lhsMono lhs (nConstant 0)
+      (False, True) -> mkYield "lhsMono2Sols" (S.singleton e) >>
+                       unifyNum mine (nVar (VPar e)) num
+      (False, False) -> pure ()
+    _ -> err . UnificationError $ "Can't make " ++ show e ++ " = " ++ show num
   lhsMono (Linear (VPar e)) num = case mine e of
-    Just loc -> do
-      throwLeft (doesntOccur e (VNum num))  -- too much?
-      loc -! solveNumMeta mine e num -- really?
+    Just loc -> loc -! solveNumMeta mine e num
     _ -> mkYield "lhsMono" (S.singleton e) >>
          unifyNum mine (nVar (VPar e)) num
   lhsMono (Full sm) (NumValue 0 (StrictMonoFun (StrictMono 0 (Full sm'))))
@@ -132,6 +139,10 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
     sm <- numEval S0 sm
     -- traceM $ "succ now " ++ show (quoteNum Zy sm)
     unifyNum mine (n2PowTimes 1 (nFull smPred)) (NumValue (up - 1) gro)
+
+  anyDoubsAnyFulls :: StrictMono (VVar Z) -> (Bool, Bool)
+  anyDoubsAnyFulls (StrictMono k (Full rest)) = let (ds,_) = anyDoubsAnyFulls rest in (k > 0 || ds, True)
+  anyDoubsAnyFulls (StrictMono k (Linear _)) = (k > 0, False)
 
   demand0 :: NumVal (VVar Z) -> Checking ()
   demand0 (NumValue 0 Constant0) = pure ()
