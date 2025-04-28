@@ -51,8 +51,6 @@ import Bwd
 import Hasochism
 import Util (zipSameLength)
 
-import Debug.Trace
-
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
 standardise :: TypeKind -> Val Z -> Checking (Val Z)
