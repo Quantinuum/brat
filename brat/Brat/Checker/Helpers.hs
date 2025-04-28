@@ -729,6 +729,9 @@ mineToSolve :: Checking (End -> Maybe String)
 mineToSolve = allowedToSolve <$> whoAmI
 
 -- Don't call this on kinds
+-- Note: We can't really tell whether there's any prospect of the variable becoming
+-- defined - if we could we could give a better error when something that wont be
+-- defined is passed in.
 awaitTypeDefinition :: Val Z -> Checking (Val Z)
 awaitTypeDefinition ty = eval S0 ty >>= \case
   VApp (VPar e) _ -> mkYield "awaitTypeDefinition" (S.singleton e) >> awaitTypeDefinition ty

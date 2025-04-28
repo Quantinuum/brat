@@ -112,6 +112,8 @@ type CheckConstraints m k =
   ,CombineInputs (Inputs m KVerb)
   )
 
+-- We're assuming that checkWire is being called in its own fork
+-- (it's only called from checkIO)
 checkWire :: Modey m
           -> WC (Term d k) -- The term (for error reporting)
           -> Bool -- Is the "Src" node the expected one?
@@ -344,10 +346,15 @@ check' (Th tm) ((), u@(hungry, ty):unders) = case (?my, ty) of
           (overs, _) -> err (ThunkLeftOvers (showRow overs))
     pure dangling
 check' (TypedTh t) ((), ()) = case ?my of
-  -- the thunk itself must be Braty
+  -- the thunk itself must be Braty...
   Kerny -> err . ThunkInKernel $ show (TypedTh t)
   Braty -> do
-    -- but the computation in it could be either Brat or Kern
+    -- ...but the computation in it could be either Brat or Kern
+    --
+    -- FIXME: We only want to use one of these branches - any definitions made
+    -- by the other branch should be undone!
+    -- Possibly fix by snapshotting the state of the Checking monad, and being
+    -- biased as to which Mode we prefer.
     brat <- catchErr $ check t ((), ())
     kern <- catchErr $ let ?my = Kerny in check t ((), ())
     case (brat, kern) of
@@ -367,10 +374,10 @@ check' (TypedTh t) ((), ()) = case ?my of
     Some (ez :* inR) <- mkArgRo ?my S0 (first (fmap toEnd) <$> ins)
     Some (_ :* outR) <- mkArgRo ?my ez (first (fmap toEnd) <$> outs)
     (thunkOut, ()) <- makeBox "thunk" (inR :->> outR) $
-        \(thOvers, thUnders) -> do
+        \(thOvers, thUnders) ->
           -- if these ensureEmpty's fail then its a bug!
-          checkInputs t thOvers ins >>= ensureEmpty "TypedTh inputs"
-          checkOutputs t thUnders outs >>= ensureEmpty "TypedTh outputs"
+          (checkInputs t thOvers ins >>= ensureEmpty "TypedTh inputs") *>
+          (checkOutputs t thUnders outs >>= ensureEmpty "TypedTh outputs")
     pure (((), [thunkOut]), ((), ()))
 check' (Force th) ((), ()) = do
   (((), outs), ((), ())) <- let ?my = Braty in check th ((), ())
@@ -400,10 +407,13 @@ check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
     let inRo = RPr ("left", ty) $ RPr ("right", ty) R0
     let outRo = RPr ("out", ty) R0
     (_, [lunders, runders], [(dangling, _)], _) <- next (show op) (ArithNode op) (S0, Some $ Zy :* S0) inRo outRo
-    (((), ()), ((), leftUnders)) <- check l ((), [lunders])
-    ensureEmpty "arith unders" leftUnders
-    (((), ()), ((), leftUnders)) <- check r ((), [runders])
-    ensureEmpty "arith unders" leftUnders
+    let lhs = do
+         (((), ()), ((), leftUnders)) <- check l ((), [lunders])
+         ensureEmpty "arith unders" leftUnders
+    let rhs = do
+         (((), ()), ((), leftUnders)) <- check r ((), [runders])
+         ensureEmpty "arith unders" leftUnders
+    () <$ lhs <* rhs
     wire (dangling, ty, hungry)
     pure (((), ()), ((), unders))
 check' (fun :$: arg) (overs, unders) = do
@@ -417,6 +427,7 @@ check' (fun :$: arg) (overs, unders) = do
                          ]
 check' (Let abs x y) conn = do
   (((), dangling), ((), ())) <- check x ((), ())
+  -- TODO: Get rid of this: only use of abstractAll - replace with SolvePatterns
   env <- abstractAll dangling (unWC abs)
   localEnv env $ check y conn
 check' (NHole (mnemonic, name)) connectors = do
@@ -476,8 +487,8 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
   aux my lup ty = do
     -- TODO: Use concurrency to avoid strictness - we don't have to work out that
     -- this is a VCon immediately.
-    VCon tycon tyargs <- track "In forked aux for check' Con" $ eval S0 ty
-    (CArgs pats nFree _ argTypeRo) <- track "forked aux doing lup" $ lup vcon tycon
+    VCon tycon tyargs <- awaitTypeDefinition ty
+    (CArgs pats nFree _ argTypeRo) <- lup vcon tycon
     -- Look for vectors to produce better error messages for mismatched lengths
     -- wrap <- detectVecErrors vcon tycon tyargs pats ty (Left tm)
     -- Get the kinds of type args
@@ -485,7 +496,6 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     (_, ks) <- unzip <$> tlup (m, tycon)
     -- Turn `pats` into values for unification
     (varz, patVals) <- "$!" -! valPats2Val ks pats
-    trackM $ "problem: " ++ show tyargs ++ " =?= " ++ show patVals
     -- Create a unification problem between tyargs and the value versions of pats
     typeEq (show tycon) (TypeFor m []) (VCon tycon tyargs) (VCon tycon patVals)
     ty <- eval S0 ty
@@ -526,6 +536,7 @@ check' (Simple tm) ((), (hungry, ty):unders) = do
     -- No defining needed, so everything else can be unified
     _ -> do
       let vty = biType @m ty
+      vty <- awaitTypeDefinition vty
       simpleCheck ?my vty tm
       (_, _, [(dangling, _)], _) <- anext @m "const" (Const tm) (S0,Some (Zy :* S0))
                                      R0 (RPr ("value", vty) R0)

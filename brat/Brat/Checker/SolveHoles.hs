@@ -59,8 +59,8 @@ typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
   mine <- mineToSolve
   exp <- sem sems exp
   act <- sem sems act
-  qexp <- (quote ny exp)
-  qact <- (quote ny act)
+  qexp <- quote ny exp
+  qact <- quote ny act
   trackM ("typeEq' exp: " ++ show qexp)
   trackM ("typeEq' act: " ++ show qact)
   typeEqEta str stuff mine k exp act
