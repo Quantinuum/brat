@@ -324,10 +324,10 @@ doesntOccur e (VFun my (ins :->> outs)) = case my of
   Kerny -> doesntOccurRo my e ins *> doesntOccurRo my e outs
 
 -- This should only be called after checking we have the right to solve the end
-instantiateMeta :: End -> Val Z -> Checking ()
-instantiateMeta e val = do
+instantiateMeta :: String -> End -> Val Z -> Checking ()
+instantiateMeta lbl e val = do
   throwLeft (doesntOccur e val)
-  defineEnd "instantiateMeta" e val
+  defineEnd (lbl ++ "->instantiateMeta") e val
 
 collision :: End -> End -> Either ErrorMsg ()
 collision e v | e == v = Left . UnificationError $

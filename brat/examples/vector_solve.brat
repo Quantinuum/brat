@@ -1,0 +1,9 @@
+sameLength(T :: *, n :: #, Vec(T, n), Vec(T, n)) -> (m :: #)
+sameLength(_, n, _, _) = n
+
+replicate(X :: *, n :: #, x :: X) -> Vec(X, n)
+replicate(_, 0, _) = []
+replicate(X, succ(n), x) = cons(x, replicate(X, n, x))
+
+foo :: (m :: #)
+foo = let xs = replicate(Nat, !, 42) in sameLength(Nat, !, xs, xs =%= xs)

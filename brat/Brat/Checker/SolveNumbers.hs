@@ -38,10 +38,10 @@ solveNumMeta mine e nv = case (e, numVars nv) of
  (ExEnd src,  [InEnd _tgt]) -> do
    -- Compute the value of the `tgt` variable from the known `src` value by inverting nv
    tgtSrc <- invertNatVal nv
-   instantiateMeta (ExEnd src) (VNum (nVar (VPar (toEnd tgtSrc))))
+   instantiateMeta "solveNumExIn" (ExEnd src) (VNum (nVar (VPar (toEnd tgtSrc))))
    wire (NamedPort src "", TNat, tgtSrc)
 
- (ExEnd src, _) -> instantiateMeta (ExEnd src) (VNum nv)
+ (ExEnd src, _) -> instantiateMeta "solveNumEx_" (ExEnd src) (VNum nv)
 
  -- Both targets, we need to create the thing that they both derive from
  (InEnd bigTgt, [InEnd weeTgt]) -> do
@@ -50,16 +50,17 @@ solveNumMeta mine e nv = case (e, numVars nv) of
      defineSrc idSrc (VNum (nVar (VPar (toEnd idTgt))))
      let nv' = fmap (const (VPar (toEnd idSrc))) nv -- weeTgt is the only thing to replace
      bigSrc <- buildNatVal nv'
-     instantiateMeta (InEnd bigTgt) (VNum nv')
+     nv' <- quoteNum Zy <$> numEval S0 nv'
+     instantiateMeta "solveNumInIn" (InEnd bigTgt) (VNum nv')
      wire (bigSrc, TNat, NamedPort bigTgt "")
      unifyNum mine (nVar (VPar (toEnd idSrc))) (nVar (VPar (toEnd weeTgt)))
-   
+
 
 
  -- RHS is constant or Src, wire it into tgt
  (InEnd tgt,  _) -> do
    src <- buildNatVal nv
-   instantiateMeta (InEnd tgt) (VNum nv)
+   instantiateMeta "solveNumIn_" (InEnd tgt) (VNum nv)
    wire (src, TNat, NamedPort tgt "")
 
 unifyNum :: (End -> Maybe String) -> NumVal (VVar Z) -> NumVal (VVar Z) -> Checking ()
