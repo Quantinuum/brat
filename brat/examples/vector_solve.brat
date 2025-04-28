@@ -7,3 +7,17 @@ replicate(X, succ(n), x) = cons(x, replicate(X, n, x))
 
 foo :: (m :: #)
 foo = let xs = replicate(Nat, !, 42) in sameLength(Nat, !, xs, xs =%= xs)
+
+fullTree(T :: *, n :: #, Vec(T, n)) -> Vec(T, 2^n - 1)
+fullTree(_, _, []) = []
+fullTree(_, _, x ,- xs) = fullTree(!, !, xs) =, x ,= fullTree(!, !, xs)
+
+-- goo :: (m :: #)
+-- goo = let xs = replicate(Nat, !, 42) in sameLength(Nat, !, xs, fullTree(!, !, xs))
+
+hoo :: (n :: #), (m :: #)
+hoo = let xs = replicate(Nat, !, 42) in sameLength(Nat, !, xs, xs =%= xs), sameLength(Nat, !, xs, fullTree(!, !, xs))
+
+-- Smarter version, fails badly
+-- hoo2 :: (n :: #), (m :: #)
+-- hoo2 = let xs = replicate(Nat, !, 42) in sameLength(Nat, !, xs, fullTree(!, !, xs)), sameLength(Nat, !, xs, xs =%= xs)
