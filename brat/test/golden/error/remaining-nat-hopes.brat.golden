@@ -3,6 +3,6 @@ bad = let _ = read([]) in show(!)
                               ^^^
 
   Expected to work out values for these holes:
-    In checking_check_defs_1_bad_5_Eval_2 0
+    In checking_check_defs_1_bad_5_$rhs_$!_3 0
 
 

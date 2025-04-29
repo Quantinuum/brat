@@ -2,5 +2,5 @@ Error in test/golden/error/badvec3.brat on line 2:
 v3 = cons(1, nil)
      ^^^^^^^^^^^^
 
-  Unification error: Couldn't force 1 + VPar In checking_check_defs_1_v3_numpat2val_1 0 to be 0
+  Unification error: Couldn't force 1 + VPar In checking_check_defs_1_v3_$rhs_check'Con_$!_numpat2val_1 0 to be 0
 

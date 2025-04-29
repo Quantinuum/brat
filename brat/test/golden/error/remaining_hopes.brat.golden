@@ -3,6 +3,6 @@ g = f(!)
      ^^^
 
   Expected to work out values for these holes:
-    In checking_check_defs_1_g_3_Eval 0
+    In checking_check_defs_1_g_3_$rhs_$!_1 0
 
 
