@@ -32,7 +32,7 @@ trail = const id
 -- We assume that the caller has done the occurs check and rules out trivial equations.
 -- The caller also must check we have the right to solve the End
 solveNumMeta :: (End -> Maybe String) -> End -> NumVal (VVar Z) -> Checking ()
-solveNumMeta _ e nv | trace ("solveNumMeta " ++ show e ++ " " ++ show nv) False = undefined
+solveNumMeta _ e nv | trail ("solveNumMeta " ++ show e ++ " " ++ show nv) False = undefined
 solveNumMeta mine e nv = case (e, numVars nv) of
  -- Compute the thing that the rhs should be based on the src, and instantiate src to that
  (ExEnd src,  [InEnd _tgt]) -> do
@@ -77,7 +77,7 @@ unifyNum mine nv0 nv1 = do
 -- Things which are dynamically unknown must be Tgts - information flows from Srcs
 -- ...But we don't need to do any wiring here, right?
 unifyNum' :: (End -> Maybe String) -> NumVal (VVar Z) -> NumVal (VVar Z) -> Checking ()
--- unifyNum' a b | trace ("unifyNum'\n  " ++ show a ++ "\n  " ++ show b) False = undefined
+unifyNum' _ a b | trail ("unifyNum'\n  " ++ show a ++ "\n  " ++ show b) False = undefined
 unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
   | lup <= rup = lhsFun00 lgro (NumValue (rup - lup) rgro)
   | otherwise  = lhsFun00 rgro (NumValue (lup - rup) lgro)
@@ -116,10 +116,10 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
   lhsStrictMono (StrictMono 0 mono) num = lhsMono mono num
   lhsStrictMono (StrictMono n mono) num = do
     num <- traceChecking "lhsSM demandEven" demandEven num
-    lhsFun00 (StrictMonoFun (StrictMono (n - 1) mono)) num
+    unifyNum mine (NumValue 0 (StrictMonoFun (StrictMono (n - 1) mono))) num
 
   lhsMono :: Monotone (VVar Z) -> NumVal (VVar Z) -> Checking ()
-  lhsMono (Linear (VPar e)) num | x <- mine e, trace ("lhsMono\n  " ++ show e ++ "\n  " ++ show num ++ "\n  " ++ show x) False = undefined
+  lhsMono (Linear (VPar e)) num | x <- mine e, trail ("lhsMono\n  " ++ show e ++ "\n  " ++ show num ++ "\n  " ++ show x) False = undefined
   -- x = f(x) has 3 solutions, otherwise we should complain!
   lhsMono lhs@(Linear (VPar e)) num | [e'] <- numVars num, e == e' = case num of
     (NumValue 0 (StrictMonoFun sm)) -> case anyDoubsAnyFulls sm of
@@ -134,11 +134,11 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
          unifyNum mine (nVar (VPar e)) num
   lhsMono (Full sm) (NumValue 0 (StrictMonoFun (StrictMono 0 (Full sm'))))
     = lhsFun00 (StrictMonoFun sm) (NumValue 0 (StrictMonoFun sm'))
-  lhsMono m@(Full _) (NumValue 0 gro) = lhsFun00 gro (NumValue 0 (StrictMonoFun (StrictMono 0 m)))
+  lhsMono m@(Full _) (NumValue 0 gro) = trail "lhsMono swaps" $ lhsFun00 gro (NumValue 0 (StrictMonoFun (StrictMono 0 m)))
   lhsMono (Full sm) (NumValue up gro) = do
     smPred <- traceChecking "lhsMono demandSucc" demandSucc (NumValue 0 (StrictMonoFun sm))
     sm <- numEval S0 sm
-    -- traceM $ "succ now " ++ show (quoteNum Zy sm)
+    -- trailM $ "succ now " ++ show (quoteNum Zy sm)
     unifyNum mine (n2PowTimes 1 (nFull smPred)) (NumValue (up - 1) gro)
 
   anyDoubsAnyFulls :: StrictMono (VVar Z) -> (Bool, Bool)
@@ -178,7 +178,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
   demandSucc (NumValue 0 (StrictMonoFun x@(StrictMono k (Full nPlus1)))) = do
     n <- traceChecking "demandSucc" demandSucc (NumValue 0 (StrictMonoFun nPlus1))
     -- foo <- numEval S0 x
-    -- traceM $ "ds: " ++ show x ++ " -> " ++ show (quoteNum Zy foo)
+    -- trailM $ "ds: " ++ show x ++ " -> " ++ show (quoteNum Zy foo)
     pure $ nPlus ((2 ^ k) - 1) $ n2PowTimes (k + 1) $ nFull n
   demandSucc n = err . UnificationError $ "Couldn't force " ++ show n ++ " to be a successor"
 
@@ -193,7 +193,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
     evenGro (StrictMonoFun (StrictMono 0 mono)) = case mono of
       Linear (VPar e)
         | Just loc <- mine e -> loc -! do
-          -- traceM $ "Calling makeHalf (" ++ show e ++ ")"
+          -- trailM $ "Calling makeHalf (" ++ show e ++ ")"
           half <- traceChecking "makeHalf" makeHalf e
           pure (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar half)))))
         | otherwise -> do
