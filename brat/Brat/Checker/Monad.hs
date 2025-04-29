@@ -83,7 +83,7 @@ mkFork :: String -> Free sig () -> Free sig ()
 mkFork d par = thTrace ("Forking " ++ d) $ Fork d par $ pure ()
 
 mkYield :: String -> S.Set End -> Free sig ()
-mkYield desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ Yield (AwaitingAny es) (\_ -> Ret ())
+mkYield desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ Yield (AwaitingAny es) (\_ -> trackM ("woke up " ++ desc) >> Ret ())
 
 -- Commands for synchronous operations
 data CheckingSig ty where
@@ -339,7 +339,8 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                   in handler (k news)
                      (ctx { store = st { valueMap = M.insert end v vm },
                                     dynamicSet = case M.lookup end (dynamicSet ctx) of
-                                      Just fc -> M.union
+                                      Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
+                                                 M.union
                                                  (M.fromList (zip newDynamics (repeat fc)))
                                                  (M.delete end (dynamicSet ctx))
                                       Nothing -> dynamicSet ctx
