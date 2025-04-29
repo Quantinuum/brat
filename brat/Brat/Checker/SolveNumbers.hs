@@ -16,9 +16,10 @@ import Control.Monad.Freer
 import qualified Data.Set as S
 
 trailM :: Applicative f => String -> f ()
-trailM = const (pure ())
-trail = const id
---trail = trace
+--trailM = const (pure ())
+trailM = traceM
+--trail = const id
+trail = trace
 
 -- This is currently lifted from SolvePatterns, which still imports it.
 -- It is also used in SolveHoles, where it does the right mathematics
