@@ -759,7 +759,7 @@ checkClause my fnName cty clause = modily my $ do
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
-    let numSrcMap = case ?my of
+    let numSrcMap :: [(OutPort, OutPort)] = case ?my of
          Braty -> makeNumSrcMap sol rhsOvers
          Kerny -> []
     -- Here we're relying too much on the implementation of typeEq, counting on
@@ -772,12 +772,10 @@ checkClause my fnName cty clause = modily my $ do
       env <- mkEnv vars rhsOvers
       ("$rhs" -!) $ do
         traverse (\(outer,inner) -> typeEq "hack" Nat (VApp (VPar (ExEnd outer)) B0) (VApp (VPar (ExEnd inner)) B0)) numSrcMap
-        localEnv env $ interceptWiring numSrcMap (check @m (rhs clause) ((), rhsUnders))
+        localEnv env $ {-interceptWiring numSrcMap-} (check @m (rhs clause) ((), rhsUnders))
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
-
-
   -- Silly wee hack. We don't want to be wiring up srcs from the outer box when
   -- we're building the inner box, so we need to keep track of which srcs in the
   -- inner box the outer ones correspond to for when we call interceptWiring
@@ -802,12 +800,16 @@ checkClause my fnName cty clause = modily my $ do
   -- No Nat on either side
   makeNumSrcMap (_:sol) (_:inner) = makeNumSrcMap sol inner
 
+{-
+
+
   -- Is threading gonna mess this up? :o
   interceptWiring :: [(OutPort, OutPort)] -> Checking a -> Checking a
   interceptWiring srcMap _ | trace ("intercept : " ++ show srcMap) False = undefined
   interceptWiring srcMap (Req (Wire w@(outerSrc, TNat, tgt)) k) | Just innerSrc <- trace ("intercepted "++ show w) (lookup outerSrc srcMap) = Req (Wire (innerSrc, TNat, tgt)) (interceptWiring srcMap . k)
   interceptWiring srcMap (Define lbl e val@(VApp (VPar (ExEnd outerSrc)) B0) k) | Just innerSrc <- trace ("intercepted2 " ++ show e ++ " := " ++ show val) (lookup outerSrc srcMap) = Define lbl e (VApp (VPar (ExEnd innerSrc) ) B0) (interceptWiring srcMap . k)
   interceptWiring _ r = r
+-}
 
   mkEnv :: (?my :: Modey m) => [String] -> [(Src, BinderType m)] -> Checking (Env (EnvData m))
   mkEnv (x:xs) (src:srcs) = do
