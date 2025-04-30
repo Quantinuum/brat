@@ -25,6 +25,7 @@ import Data.Bifunctor (first)
 import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
+import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 
 -- Refine clauses from function definitions (and potentially future case statements)
@@ -98,10 +99,6 @@ solve my ((src, PCon c abs):p) = do
   ty <- typeOfSrc my src
   mine <- mineToSolve
   case (my, ty) of
-    -- TODO: When solving constructors, we need to provide actual wiring to get
-    -- from the fully applied constructor to the bound pattern variables.
-    -- E.g. for cons(x, xs), we need to actually take apart a Vec to get the x
-    -- and xs to put in the environment
     (Kerny, ty) -> solveConstructor Kerny src (c, abs) ty p
     (Braty, Right ty) -> solveConstructor Braty src (c, abs) ty p
     (Braty, Left Nat) -> case c of
@@ -131,16 +128,6 @@ solve my ((src, PCon c abs):p) = do
     (Braty, Left k) -> typeErr $ "Pattern " ++ show c ++ " invalid for kind " ++ show k
 
 
-typeOfEnd :: Modey m -> End -> Checking (BinderType m)
-typeOfEnd my e = (req (TypeOf e) <&> fst) >>= \case
-  EndType my' ty
-    | Just Refl <- testEquality my my' -> case my' of
-        Braty -> case ty of
-          Right ty -> Right <$> eval S0 ty
-          _ -> pure ty
-        Kerny -> eval S0 ty
-    | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
-
 
 solveConstructor :: EvMode m
                  => Modey m
@@ -156,7 +143,7 @@ solveConstructor my src (c, abs) ty p = do
   -- Create a row of hypothetical kinds which contextualise the arguments to the
   -- constructor.
   -- These need to be Tgts because we don't know how to compute them dynamically
-  (_, _, _, stuff) <- next "type_args" Hypo (S0, Some (Zy :* S0)) patRo R0
+  (_, typeArgWires, _, stuff) <- next "type_args" Hypo (S0, Some (Zy :* S0)) patRo R0
   (node, _, patArgWires, _) <- let ?my = my in anext "val_args" Hypo stuff R0 argRo
   trackM ("Constructor " ++ show c ++ "; type " ++ show ty)
   case snd stuff of
@@ -174,6 +161,23 @@ solveConstructor my src (c, abs) ty p = do
       -- unifys lhss (snd <$> tyArgKinds) tyargs
       p <- argProblems (fst <$> patArgWires) (normaliseAbstractor abs) p
       (tests, sol) <- solve my p
+{-
+      sol <- case my of
+        Kerny -> pure sol
+        Braty -> fmap ((++ sol) . concat) $ for typeArgWires $ \(tgt, ty) -> do
+          eval S0 (VApp (VPar (toEnd tgt)) B0) >>= \case
+            VApp (VPar (ExEnd outport)) B0 -> do
+              ty <- case ty of
+                      Left k -> pure (Left k)
+                      Right ty -> Right <$> eval S0 ty
+              pure [("__" ++ portName tgt, (NamedPort outport (portName tgt) , ty))]
+            VNum (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar (ExEnd outport)))))) -> do
+              ty <- case ty of
+                      Left k -> pure (Left k)
+                      Right ty -> Right <$> eval S0 ty
+              pure [("__" ++ portName tgt, (NamedPort outport (portName tgt) , ty))]
+            _ -> pure []
+-}
       pure ((src, PrimCtorTest c tycon node patArgWires) : tests, sol)
 
 -- The variable must be a non-zero nat!!

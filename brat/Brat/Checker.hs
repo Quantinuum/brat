@@ -22,7 +22,8 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
-import Data.Type.Equality ((:~:)(..))
+import Data.Traversable (for)
+import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
 
 import Brat.Checker.Helpers
@@ -706,11 +707,10 @@ check' Hope ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
     (_, [(hungry, _)], [(dangling, _)], _) <- anext "$!" Id (S0, Some (Zy :* S0))
                                               (REx ("hope", k) R0) (REx ("hope", k) R0)
     fc <- req AskFC
-    req (ANewDynamic (toEnd bang) fc)
     wire (dangling, kindType k, NamedPort bang "")
     defineTgt' "check hope (tgt)" tgt (endVal k (toEnd hungry))
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
-    req (ANewDynamic (toEnd hungry) fc)
+    req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
@@ -742,74 +742,93 @@ checkClause my fnName cty clause = modily my $ do
 
   -- First, we check the patterns on the LHS. This requires some overs,
   -- so we make a box, however this box will be skipped during compilation.
-  (sol, match, rhsCty) <- suppressHoles . fmap snd $
+  (sol, match, rhsCty, defs) <- suppressHoles . fmap snd $
        let ?my = my in ("$lhs" -!) $ makeBox (clauseName ++ "_setup") cty $
                      \(overs, unders) -> do
     -- Make a problem to solve based on the lhs and the overs
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
+    trackM $ "Solution (unprocessed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
+    (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
+      Braty -> postProcessSol sol
+      Kerny -> pure (sol, [])
+    trackM $ "Solution (processed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
+    trackM $ "Defs: " ++ intercalate "\n" (show <$> defs)
     -- The solution gives us the variables bound by the patterns.
     -- We turn them into a row
     mkArgRo my S0 ((\(n, (src, ty)) -> (NamedPort (toEnd src) n, ty)) <$> sol) >>= \case
       -- Also make a row for the refined outputs (shifted by the pattern environment)
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
+          trackM ("patEz: " ++ show patEz)
           let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
-          pure (sol, match, patRo :->> outRo)
+          pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
+
+  for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
-    let numSrcMap :: [(OutPort, OutPort)] = case ?my of
-         Braty -> makeNumSrcMap sol rhsOvers
-         Kerny -> []
-    -- Here we're relying too much on the implementation of typeEq, counting on
-    -- the fact that it'll define the first argument in the flex-flex case that
-    -- would arise if we've not yet defined the outer src
+    defs :: Env (EnvData m) <- case my of
+      Braty -> do
+        let kindedRhsOvers = [ toEnd src | (src, Left _) <- rhsOvers ]
+        case Some S0 <><< kindedRhsOvers of
+          Some stk -> foldMap (\((name, k), Some (stk' :* val)) -> case (stkLen stk, testEquality (stkLen stk) (stkLen stk')) of
+            (ny, Just Refl) -> do
+              src <- mkGraph k (changeVar (InxToPar (AddZ ny) stk) val)
+              singletonEnv name (src, Left k)
+            (_, Nothing) -> err $ InternalError "Invariant violated: Number of deps in defs") defs
+      Kerny -> pure emptyEnv
+    case my of
+      Braty -> trackM $ "Updated defs: " ++ show defs
+      _ -> pure ()
 
     let vars = fst <$> sol
-    let abstractor = foldr ((:||:) . APat . Bind) AEmpty vars
     let ?my = my in do
       env <- mkEnv vars rhsOvers
       ("$rhs" -!) $ do
-        traverse (\(outer,inner) -> typeEq "hack" Nat (VApp (VPar (ExEnd outer)) B0) (VApp (VPar (ExEnd inner)) B0)) numSrcMap
-        localEnv env $ {-interceptWiring numSrcMap-} (check @m (rhs clause) ((), rhsUnders))
+        localEnv (env <> defs) $ check @m (rhs clause) ((), rhsUnders)
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
-  -- Silly wee hack. We don't want to be wiring up srcs from the outer box when
-  -- we're building the inner box, so we need to keep track of which srcs in the
-  -- inner box the outer ones correspond to for when we call interceptWiring
-  makeNumSrcMap :: [(String, (Src, BinderType Brat))] -- The solution in terms of outer box srcs
-                -> [(Src, BinderType Brat)] -- The inner box's srcs
-                -> [(OutPort, OutPort)]
-  -- We'll traverse all of both structures so we can error out if they don't
-  -- match exactly
-  --makeNumSrcMap xs ys | trace ("makeNumSrcMap\n  " ++ show xs ++ "\n  " ++ show ys) False = undefined
-  makeNumSrcMap [] [] = []
-  -- Happy case
-  makeNumSrcMap ((varName, (outerSrc, Left Nat)):sol) ((innerSrc, Left Nat):inner)
-   | ('_':_) <- varName = (end outerSrc, end innerSrc) : makeNumSrcMap sol inner
-   | otherwise = makeNumSrcMap sol inner
-  -- Cases we're we found one Nat, need to churn through the other argument to find the matching one
-  makeNumSrcMap sol@((_, (_, Left Nat)):_) inner = case inner of
-    [] -> error "i fucked up"
-    (_:inner) -> makeNumSrcMap sol inner
-  makeNumSrcMap sol inner@((_, Left Nat):_) = case sol of
-    [] -> error "i fucked up"
-    (_:sol) -> makeNumSrcMap sol inner
-  -- No Nat on either side
-  makeNumSrcMap (_:sol) (_:inner) = makeNumSrcMap sol inner
+  (<><<) :: Some (Stack Z End) -> [End] -> Some (Stack Z End)
+  (Some stk) <><< [] = Some stk
+  (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
-{-
+  -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
+  postProcessSol :: [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSol sol = worker B0 sol
+   where
+    worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+    worker zx [] = pure (zx <>> [], [])
+    -- Pat vars beginning with '_' aren't in scope, we can ignore them
+    -- (but if they're kinded they might come up later as the dependency of something else)
+    worker zx (('_':_, (src, ty)):sol) = worker zx sol
+    worker zx (entry@(patVar, (src, Right ty)):sol) = do
+      ty <- eval S0 ty
+      outPorts <- depOutPorts ty
+      srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+      zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+      worker (zx :< entry) sol
+    worker zx (entry@(patVar, (src, Left k)):sol) = let vsrc = VApp (VPar (toEnd src)) B0 in do
+      def <- eval S0 vsrc
+      if def == vsrc
+      then worker (zx :< entry) sol
+      else do
+         outPorts <- depOutPorts def
+         srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+         zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+         (sol, defs) <- worker zx sol
+         pure (sol, ((patVar, k), def):defs)
 
+    insert :: (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat))
+    insert entry@(_, (src, _)) entryz
+     | any (\(_, (src', _f)) -> src == src') entryz = entryz
+     | otherwise = entryz :< entry
 
-  -- Is threading gonna mess this up? :o
-  interceptWiring :: [(OutPort, OutPort)] -> Checking a -> Checking a
-  interceptWiring srcMap _ | trace ("intercept : " ++ show srcMap) False = undefined
-  interceptWiring srcMap (Req (Wire w@(outerSrc, TNat, tgt)) k) | Just innerSrc <- trace ("intercepted "++ show w) (lookup outerSrc srcMap) = Req (Wire (innerSrc, TNat, tgt)) (interceptWiring srcMap . k)
-  interceptWiring srcMap (Define lbl e val@(VApp (VPar (ExEnd outerSrc)) B0) k) | Just innerSrc <- trace ("intercepted2 " ++ show e ++ " := " ++ show val) (lookup outerSrc srcMap) = Define lbl e (VApp (VPar (ExEnd innerSrc) ) B0) (interceptWiring srcMap . k)
-  interceptWiring _ r = r
--}
+    depOutPorts :: (Show t, DepEnds t) => t -> Checking [OutPort]
+    depOutPorts x = for (depEnds x) $ \case
+      ExEnd outport -> pure outport
+      InEnd inport -> err . TypeErr $ "Type dependency of " ++ show x ++ " (" ++ show inport ++ ") had an ambiguous type."
 
   mkEnv :: (?my :: Modey m) => [String] -> [(Src, BinderType m)] -> Checking (Env (EnvData m))
   mkEnv (x:xs) (src:srcs) = do
@@ -853,6 +872,7 @@ mkArgRo Braty ez ((p, Left k):rest) = mkArgRo Braty (ez :<< end p) rest >>= \cas
 mkArgRo Braty ez ((p, Right t):rest) = mkArgRo Braty ez rest >>= \case
   Some (ez' :* ro) -> do
     t <- standardise (TypeFor Brat []) t
+    trackM ("Standardised: " ++ show t)
     pure $ Some $ ez' :* RPr (portName p, abstractEndz ez t) ro
 mkArgRo Kerny ez ((p, t):rest) = mkArgRo Kerny ez rest >>= \case
   Some (ez' :* ro) -> do
@@ -1253,6 +1273,6 @@ run ve initStore ns m = do
     -- show multiple error locations
     hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
  where
-  isNatKinded tyMap e = case tyMap M.! e of
+  isNatKinded tyMap e = case tyMap M.! (InEnd e) of
     (EndType Braty (Left Nat), _) -> True
     _ -> False

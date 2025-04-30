@@ -21,6 +21,8 @@ import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Type.Equality ((:~:)(..), testEquality)
+
 
 -- import Debug.Trace
 
@@ -29,11 +31,11 @@ thTrace = const id
 --thTrace = trace
 
 trackM :: Monad m => String -> m ()
---trackM = const (pure ())
-trackM = traceM
+trackM = const (pure ())
+--trackM = traceM
 
---track = const id
-track = trace
+track = const id
+--track = trace
 trackShowId x = track (show x) x
 
 -- Data for using a type alias. E.g.
@@ -75,7 +77,7 @@ data Context = Ctx { globalVEnv :: VEnv
                    -- On the chopping block
                    , hopes :: Hopes
                    -- Ends which need to be solved because they affect runtime behaviour
-                   , dynamicSet :: M.Map End FC
+                   , dynamicSet :: M.Map InPort FC
                    , captureSets :: CaptureSets
                    }
 
@@ -117,8 +119,8 @@ data CheckingSig ty where
   KDone   :: CheckingSig ()
   AskVEnv :: CheckingSig CtxEnv
   Declare :: End -> Modey m -> BinderType m -> IsSkolem -> CheckingSig ()
-  ANewDynamic :: End -> FC -> CheckingSig ()
-  AskDynamics :: CheckingSig (M.Map End FC)
+  ANewDynamic :: InPort -> FC -> CheckingSig ()
+  AskDynamics :: CheckingSig (M.Map InPort FC)
   AddCapture :: Name -> (QualName, [(Src, BinderType Brat)]) -> CheckingSig ()
 
 wrapper :: (forall a. CheckingSig a -> Checking (Maybe a)) -> Checking v -> Checking v
@@ -273,7 +275,7 @@ handler (Req s k) ctx g
       VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx g
       ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx g
       AddNode name node -> handler (k ()) ctx ((M.singleton name node, []) <> g)
-      Wire w -> handler ((trace ("Wired: " ++ show w) k) ()) ctx ((M.empty,[w]) <> g)
+      Wire w -> handler ((track ("Wired: " ++ show w) k) ()) ctx ((M.empty,[w]) <> g)
       -- We only get a KLup here if the variable has not been found in the kernel context
       KLup _ -> handler (k Nothing) ctx g
       -- Receiving KDone may become possible when merging the two check functions
@@ -333,17 +335,19 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
         -- (c) since there are no infinite end-creating loops, it's correct (merely inefficient)
         -- to just "have another go".
         Just _ -> let news = News (M.singleton end Unstuck)
-                      newDynamics = (\x -> trace ("New dynamics: " ++ show x) x) $ case v of
-                        VNum nv -> numVars nv
+                      newDynamics = (\x -> track ("New dynamics: " ++ show x) x) $ case v of
+                        VNum nv -> [ inport | InEnd inport <- depEnds nv ]
                         _ -> []
                   in handler (k news)
                      (ctx { store = st { valueMap = M.insert end v vm },
-                                    dynamicSet = case M.lookup end (dynamicSet ctx) of
-                                      Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
-                                                 M.union
-                                                 (M.fromList (zip newDynamics (repeat fc)))
-                                                 (M.delete end (dynamicSet ctx))
-                                      Nothing -> dynamicSet ctx
+                                    dynamicSet = case end of
+                                      ExEnd _ -> dynamicSet ctx
+                                      InEnd inport -> case M.lookup inport (dynamicSet ctx) of
+                                        Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
+                                                   M.union
+                                                   (M.fromList (zip newDynamics (repeat fc)))
+                                                   (M.delete inport (dynamicSet ctx))
+                                        Nothing -> dynamicSet ctx
                           }) g
 handler (Yield Unstuck k) ctx g = handler (k mempty) ctx g
 handler (Yield (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ TypeErr $ unlines $

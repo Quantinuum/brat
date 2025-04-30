@@ -23,6 +23,7 @@ import Control.Monad.Freer
 import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Data.Bifunctor
 import Data.Foldable (foldrM)
+import Data.Functor ((<&>))
 import Data.List (partition)
 import Data.Maybe (isJust)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
@@ -224,6 +225,7 @@ endPorts node port2End mkPort n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
   (row, stuff) <- endPorts node port2End mkPort (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
+
 next :: String -> NodeType Brat -> (Semz i, Some Endz)
      -> Ro Brat i j
      -> Ro Brat j k
@@ -469,7 +471,7 @@ runArith _ _ _ = Nothing
 
 buildArithOp :: ArithOp -> Checking ((Tgt, Tgt), Src)
 buildArithOp op = do
-  (_, [(lhs,_), (rhs,_)], [(out,_)], _) <- next (show op) (ArithNode op) (S0, Some (Zy :* S0)) (RPr ("lhs", TNat) (RPr ("rhs", TNat) R0)) (RPr ("value", TNat) R0)
+  (_, [(lhs,_), (rhs,_)], [(out,_)], _) <- next (show op) (ArithNode op) (S0, Some (Zy :* S0)) (REx ("lhs", Nat) (REx ("rhs", Nat) R0)) (REx ("value", Nat) R0)
   pure ((lhs, rhs), out)
 
 buildConst :: SimpleTerm -> Val Z -> Checking Src
@@ -731,3 +733,21 @@ awaitTypeDefinition :: Val Z -> Checking (Val Z)
 awaitTypeDefinition ty = eval S0 ty >>= \case
   VApp (VPar e) _ -> mkYield "awaitTypeDefinition" (S.singleton e) >> awaitTypeDefinition ty
   ty -> pure ty
+
+
+typeOfEnd :: Modey m -> End -> Checking (BinderType m)
+typeOfEnd my e = (req (TypeOf e) <&> fst) >>= \case
+  EndType my' ty
+    | Just Refl <- testEquality my my' -> case my' of
+        Braty -> case ty of
+          Right ty -> Right <$> eval S0 ty
+          _ -> pure ty
+        Kerny -> eval S0 ty
+    | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
+
+
+mkGraph :: TypeKind -> Val Z -> Checking Src
+mkGraph Nat (VNum nv) = buildNatVal nv
+mkGraph k _ = do
+ (_, [], [(src,_)], _) <- next "" (Const Unit) (S0, Some (Zy :* S0)) R0 (REx ("", k) R0)
+ pure src
