@@ -17,10 +17,10 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 trailM :: Applicative f => String -> f ()
---trailM = const (pure ())
-trailM = traceM
---trail = const id
-trail = trace
+trailM = const (pure ())
+--trailM = traceM
+trail = const id
+--trail = trace
 
 -- This is currently lifted from SolvePatterns, which still imports it.
 -- It is also used in SolveHoles, where it does the right mathematics
@@ -34,7 +34,7 @@ trail = trace
 -- The caller also must check we have the right to solve the End
 solveNumMeta :: (End -> Maybe String) -> End -> NumVal (VVar Z) -> Checking ()
 solveNumMeta _ e nv | trail ("solveNumMeta " ++ show e ++ " " ++ show nv) False = undefined
-solveNumMeta mine e nv = case (e, numVars nv) of
+solveNumMeta mine e nv = case (e, depEnds nv) of
  -- Compute the thing that the rhs should be based on the src, and instantiate src to that
  (ExEnd src,  [InEnd _tgt]) -> do
    -- Compute the value of the `tgt` variable from the known `src` value by inverting nv
@@ -122,7 +122,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
   lhsMono :: Monotone (VVar Z) -> NumVal (VVar Z) -> Checking ()
   lhsMono (Linear (VPar e)) num | x <- mine e, trail ("lhsMono\n  " ++ show e ++ "\n  " ++ show num ++ "\n  " ++ show x) False = undefined
   -- x = f(x) has 3 solutions, otherwise we should complain!
-  lhsMono lhs@(Linear (VPar e)) num | [e'] <- numVars num, e == e' = case num of
+  lhsMono lhs@(Linear (VPar e)) num | [e'] <- depEnds num, e == e' = case num of
     (NumValue 0 (StrictMonoFun sm)) -> case anyDoubsAnyFulls sm of
       (True, _) -> lhsMono lhs (nConstant 0)
       (False, True) -> mkYield "lhsMono2Sols" (S.singleton e) >>

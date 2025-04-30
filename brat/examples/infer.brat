@@ -2,9 +2,13 @@
 --map(_, _, _, []) = []
 --map(_, _, f, x ,- xs) = f(x) ,- map(!, !, f, xs)
 
-mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
-mapVec(_, _, _, _, []) = []
-mapVec(_, _, f, _, x ,- xs) = f(x) ,- mapVec(!, !, f, !, xs)
+--mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
+--mapVec(_, _, _, _, []) = []
+--mapVec(_, _, f, n, x ,- xs) = f(x) ,- mapVec(!, !, f, !, xs)
+
+length(X :: *, n :: #, Vec(X, n)) -> (m :: #)
+length(_, n, []) = n
+length(_, n, x ,- xs) = n
 
 -- The "succ" still being required in both of these cases is https://github.com/CQCL/brat/issues/35
 
