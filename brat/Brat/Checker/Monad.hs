@@ -31,11 +31,11 @@ thTrace = const id
 --thTrace = trace
 
 trackM :: Monad m => String -> m ()
-trackM = const (pure ())
---trackM = traceM
+--trackM = const (pure ())
+trackM = traceM
 
-track = const id
---track = trace
+--track = const id
+track = trace
 trackShowId x = track (show x) x
 
 -- Data for using a type alias. E.g.

@@ -43,6 +43,9 @@ data NodeType :: Mode -> Type where
   PatternMatch :: NonEmpty
                   ( TestMatchData a  -- pattern match LHS as conjunctive sequence
                   , Name  -- The node for the RHS box
+                  -- The processed solution solution from pattern matching, which says
+                  -- which extra things we need to feed into the RHS box
+                  --, [(String, (Src, BinderType Brat))]
                   )
                -> NodeType a
   Hypo :: NodeType a  -- Hypothesis for type checking
@@ -59,11 +62,15 @@ deriving instance Show (NodeType a)
 -- tag 0 with the function's inputs returned as they were
 -- tag 1 with the environment of pattern variables from a successful
 data TestMatchData (m :: Mode) where
-  TestMatchData :: Show (BinderType m) => Modey m -> MatchSequence (BinderType m) -> TestMatchData m
+  TestMatchData :: Show (BinderType m)
+                => Modey m
+                -> MatchSequence (BinderType m)
+                -> [(Src, BinderType m)] -- Extra inputs from unification
+                -> TestMatchData m
 
 deriving instance Show (TestMatchData a)
 
--- A collections of tests to determine if a clause matches.
+-- A collection of tests to determine if a clause matches.
 -- Invariants:
 --    1. Each src in `matchTests` has been mentioned earlier (either in `matchInputs`
 --       or in the srcs outputted by a previous `PrimCtorTest`

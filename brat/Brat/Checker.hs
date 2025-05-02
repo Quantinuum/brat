@@ -748,9 +748,10 @@ checkClause my fnName cty clause = modily my $ do
     -- Make a problem to solve based on the lhs and the overs
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
+    trackM $ "Tests: " ++ intercalate "\n" (show <$> tests)
     trackM $ "Solution (unprocessed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
     (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
-      Braty -> postProcessSol sol
+      Braty -> postProcessSolAndOuts sol unders
       Kerny -> pure (sol, [])
     trackM $ "Solution (processed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
     trackM $ "Defs: " ++ intercalate "\n" (show <$> defs)
@@ -761,7 +762,9 @@ checkClause my fnName cty clause = modily my $ do
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
           trackM ("patEz: " ++ show patEz)
-          let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
+          let extraInputs = [srcTy | ('$':_, srcTy) <- sol]
+          let match = TestMatchData my (MatchSequence overs tests (snd <$> sol)) extraInputs
+          trackM $ "TestMatchData " ++ show match
           pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
 
   for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
@@ -795,11 +798,11 @@ checkClause my fnName cty clause = modily my $ do
   (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
-  postProcessSol :: [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
-  postProcessSol sol = worker B0 sol
+  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts sol outputs = worker B0 sol
    where
     worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
-    worker zx [] = pure (zx <>> [], [])
+    worker zx [] = (, []) <$> outputDeps zx [] outputs
     -- Pat vars beginning with '_' aren't in scope, we can ignore them
     -- (but if they're kinded they might come up later as the dependency of something else)
     worker zx (('_':_, (src, ty)):sol) = worker zx sol
@@ -816,7 +819,7 @@ checkClause my fnName cty clause = modily my $ do
       else do
          outPorts <- depOutPorts def
          srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
-         zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+         zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
          (sol, defs) <- worker zx sol
          pure (sol, ((patVar, k), def):defs)
 
@@ -824,6 +827,19 @@ checkClause my fnName cty clause = modily my $ do
     insert entry@(_, (src, _)) entryz
      | any (\(_, (src', _f)) -> src == src') entryz = entryz
      | otherwise = entryz :< entry
+
+    outputDeps :: Bwd (String, (Src, BinderType Brat)) -- The solution for inputs, so we can make sure we don't duplicate anything
+               -> [Tgt] -- Kinded outputs that we're aware of and want to leave out of the solution
+               -> [(Tgt, BinderType Brat)] -- Outputs we're searching for dependencies
+               -> Checking [(String, (Src, BinderType Brat))]
+    outputDeps sol _ [] = pure (sol <>> [])
+    outputDeps sol ignoredTgts ((tgt, Left k):rest) = outputDeps sol (tgt:ignoredTgts) rest
+    outputDeps sol ignoredTgts ((tgt, Right ty):rest) = do
+      ty <- eval S0 ty
+      let deps = [ outport | ExEnd outport <- depEnds ty]
+      depsWithTys <- for deps (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+      sol <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) sol depsWithTys
+      outputDeps sol ignoredTgts rest
 
     depOutPorts :: (Show t, DepEnds t) => t -> Checking [OutPort]
     depOutPorts x = for (depEnds x) $ \case

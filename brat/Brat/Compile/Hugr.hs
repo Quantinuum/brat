@@ -33,7 +33,7 @@ import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>), ($>))
-import Data.List (partition, sort, sortBy)
+import Data.List (intercalate, partition, sort, sortBy)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.Ord (comparing)
@@ -43,10 +43,17 @@ import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import GHC.Base (NonEmpty(..))
 import Data.Tuple (swap)
 
+import Debug.Trace
+
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
 hugr, whose child graph is the body of the function
 -}
+
+bang :: (Ord k, Show k) => String -> M.Map k v -> k -> v
+bang lbl m k = case M.lookup k m of
+  Just v -> v
+  Nothing -> error $ "bang(" ++ lbl ++ ") couldn't find " ++ show k
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 
@@ -237,7 +244,7 @@ renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (fst <$> sorte
                    root : sort rest
 
   names2Pos = M.fromList $ zip (snd <$> sorted_nodes) ([0..] :: [Int])
-  parentOf n = getParent (nodes M.! n)
+  parentOf n = getParent (bang "parentOf" nodes n)
 
   update :: NodeId -> Int
   update name = case M.lookup name names2Pos of
@@ -249,9 +256,9 @@ renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (fst <$> sorte
     -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
     -- require an extra order edge from the source to the sibling that is ancestor of the target
     let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edges,
-            parentOf n1 /= parentOf n2 ,
-            requiresOrderEdge (nodes M.! n1),
-            requiresOrderEdge (nodes M.! n2) ] in
+            (parentOf n1 /= parentOf n2),
+            requiresOrderEdge (bang "orderEdge" nodes n1),
+            requiresOrderEdge (bang "orderEdge " nodes n2) ] in
     [(Port src orderEdgeOffset, Port tgt orderEdgeOffset) | (src, tgt) <- walkUp <$> interEdges]
 
   requiresOrderEdge :: HugrOp NodeId -> Bool
@@ -277,16 +284,23 @@ compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> C
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
   (ns, _) <- gets bratGraph
   -- RHS has to be a box, so it must have a function type
-  outTys <- case nodeOuts (ns M.! rhs) of
+  outTys <- case nodeOuts (bang "compileClauses rhsNode" ns rhs) of
     [(_, VFun my cty)] -> compileSig my cty >>= (\(_, outs) -> pure outs)
     _ -> error "Expected 1 kernel function type from rhs"
 
   -- Compile the match: testResult is the port holding the dynamic match result
   -- with the type `sumTy`
-  let TestMatchData my matchSeq = matchData
+  let TestMatchData my matchSeq extraInps = matchData
   matchSeq <- compileGraphTypes (fmap (binderToValue my) matchSeq)
 
-  let portTbl = zip (fst <$> matchInputs matchSeq) ins
+  extraStuff <- for extraInps $ \(src@(NamedPort (Ex bratNode port) _), ty) -> do
+       hugrNode <- compileWithInputs parent bratNode >>= \case
+         Just node -> pure (Port node port)
+         Nothing -> error $ "Couldn't compile " ++ show bratNode
+       -- TODO: This probably isn't working hard enough - might the type have deps?
+       let hugrTy = compileType (binderToValue my ty)
+       pure (src, (hugrNode, hugrTy))
+  let portTbl = (zip (fst <$> matchInputs matchSeq) ins) ++ extraStuff
   testResult <- compileMatchSequence parent portTbl matchSeq
 
   -- Feed the test result into a conditional
@@ -302,19 +316,23 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
       addNodeWithInputs "Panic" (OpCustom (CustomOp parent "BRAT" "panic" sig [])) ins outTys
 
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
-  didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
-    BratNode (Box src tgt) _ _ -> do
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
-      compileBox (src, tgt) dfgId
-      for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
-      pure $ zip (Port dfgId <$> [0..]) outTys
-    _ -> error "RHS should be a box node"
+  didMatch outTys parent ins = do
+   (ns, _) <- gets bratGraph
+   let rhsNode = bang "didMatch" ns rhs
+   case rhsNode of
+     BratNode (Box src tgt) _ _ -> do
+       dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
+       compileBox (src, tgt) dfgId
+       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
+       pure $ zip (Port dfgId <$> [0..]) outTys
+     _ -> error "RHS should be a box node"
 
 compileBox :: (Name, Name) -> NodeId -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
 compileBox (src, tgt) parent = for_ [src, tgt] (compileWithInputs parent)
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
+compileWithInputs parent name | track ("compileWithInputs " ++ show parent ++ " " ++ show name) False = undefined
 compileWithInputs parent name = gets compiled >>= (\case
   Just nid -> pure (Just nid)
   Nothing -> do
@@ -337,7 +355,7 @@ compileWithInputs parent name = gets compiled >>= (\case
     let hTys = map (compileType . snd . fst) $ sortBy (comparing snd) in_edges
 
     decls <- gets decls
-    let (funcDef, extra_call) = decls M.! name
+    let (funcDef, extra_call) = bang "extra_call" decls name
     nod <- if extra_call
            then addNode ("direct_call(" ++ show funcDef ++ ")")
                         (OpCall (CallOp parent (FunctionType [] hTys bratExts)))
@@ -356,8 +374,7 @@ compileWithInputs parent name = gets compiled >>= (\case
     pure $ Just (nod, [(Port funcDef 0, 0)])
   compileNode in_edges = do
     (ns, _) <- gets bratGraph
-    let node = ns M.! name
-    trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
+    let node = bang "compileNode" ns name
     nod_edge_info <- case node of
       (BratNode thing ins outs) -> compileNode' thing ins outs
       (KernelNode thing ins outs) -> compileNode' thing ins outs
@@ -597,7 +614,7 @@ compileKernBox parent name contents cty = do
   -- compile the kernel that should be spliced in and record its signature.
   ns <- gets (fst . bratGraph)
   hole_ports <- for (holelist <>> []) (\splice -> do
-    let (KernelNode (Splice (Ex kernel_src port)) ins outs) = ns M.! splice
+    let (KernelNode (Splice (Ex kernel_src port)) ins outs) = bang "splice" ns splice
     ins <- compilePorts ins
     outs <- compilePorts outs
     kernel_src <- compileWithInputs parent kernel_src <&> fromJust
@@ -621,9 +638,11 @@ compileMatchSequence :: NodeId -- The parent node
                      -> MatchSequence HugrType
                      -> Compile TypedPort
 compileMatchSequence parent portTable (MatchSequence {..}) = do
+{-
   unless
     ((second snd <$> portTable) == matchInputs)
     (error "compileMatchSequence assert failed")
+-}
   let sumTy = SoR [snd <$> matchInputs, snd <$> matchOutputs]
   case matchTests of
     (src, primTest):tests -> do
@@ -645,6 +664,7 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
 
     [] -> do
       -- Reorder into `matchOutputs` order
+      trackM $  "PortTbl:\n" ++ intercalate "\n" (show <$> portTable)
       let ins = reorderPortTbl portTable (fst <$> matchOutputs)
       -- Need to pack inputs into a tuple before feeding them into a tag node
       ports <- makeRowTag "Success" parent 1 sumTy ins
