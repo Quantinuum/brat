@@ -24,6 +24,8 @@ import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
 import Brat.Syntax.Port (toEnd)
 
+--import Debug.Trace
+
 -- Refine clauses from function definitions (and potentially future case statements)
 -- by processing each one in sequence. This will involve repeating tests for various
 -- branches, the removal of which is a future optimisation.
@@ -203,6 +205,7 @@ instantiateMeta e val = do
 -- Things which are dynamically unknown must be Tgts - information flows from Srcs
 -- ...But we don't need to do any wiring here, right?
 unifyNum :: NumVal (VVar Z) -> NumVal (VVar Z) -> Checking ()
+--unifyNum nv nv' | trace ("unifyNum\n " ++ show nv ++ "\n " ++ show nv') False = undefined
 unifyNum (NumValue lup lgro) (NumValue rup rgro)
   | lup <= rup = lhsFun00 lgro (NumValue (rup - lup) rgro)
   | otherwise  = lhsFun00 rgro (NumValue (lup - rup) lgro)

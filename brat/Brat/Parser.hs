@@ -8,8 +8,9 @@ import Brat.Lexer.Bracketed (BToken(..), brackets)
 import Brat.Lexer.Token (Keyword(..), Token(..), Tok(..))
 import qualified Brat.Lexer.Token as Lexer
 import Brat.QualName ( plain, QualName(..) )
-import Brat.Syntax.Abstractor
-import Brat.Syntax.Common hiding (end)
+import Brat.Syntax.Abstractor hiding (PNone)
+import Brat.Syntax.CircuitProperties (CircuitProperties(..))
+import Brat.Syntax.Common hiding (PNone, end)
 import qualified Brat.Syntax.Common as Syntax
 import Brat.Syntax.FuncDecl (FuncDecl(..), Locality(..))
 import Brat.Syntax.Concrete
@@ -28,7 +29,7 @@ import Data.List (intercalate, uncons)
 import Data.List.HT (chop, viewR)
 import Data.List.NonEmpty (toList, NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, isJust, fromMaybe, maybeToList)
 import Data.Set (empty)
 import Prelude hiding (lex, round)
 import Text.Megaparsec hiding (Pos, Token, State, empty, match, ParseError, parse)
@@ -305,6 +306,22 @@ rawIO' tyP = rowElem `sepBy` void (try comma)
        Just (WC _ p) -> Named p <$> tyP
        Nothing -> Anon <$> tyP
 
+functionType :: Parser RawVType
+functionType = try ctype <|> kernel
+ where
+  ctype = do
+    ins <- inBrackets Paren $ rawIO
+    match Arrow
+    outs <- rawIO
+    pure (RFn (ins :-> outs))
+
+  kernel = do
+    ins <- inBrackets Paren $ rawIO' (unWC <$> vtype)
+    match Lolly
+    isWeird <- isJust <$> optional (match Hash)
+    outs <- rawIO' (unWC <$> vtype)
+    pure (RKernel (if isWeird then PNone else PControllable) (ins :-> outs))
+
 spanningFC :: TypeRow (WC ty) -> Parser (WC (TypeRow ty))
 spanningFC [] = customFailure (Custom "Internal: RawIO shouldn't be empty")
 spanningFC [x] = pure (WC (fcOf $ forgetPortName x) [unWC <$> x])
@@ -350,8 +367,9 @@ cthunk = try bratFn <|> try kernel <|> thunk
   kernel = inBracketsFC Brace $ do
     ss <- rawIO' (unWC <$> vtype)
     match Lolly
+    isWeird <- isJust <$> optional (match Hash)
     ts <- rawIO' (unWC <$> vtype)
-    pure $ FKernel (ss :-> ts)
+    pure (FKernel (if isWeird then PNone else PControllable) (ss :-> ts))
 
 
   -- Explicit lambda or brace section
@@ -623,7 +641,7 @@ decl = do
     where
       is_fun_ty :: RawVType -> Bool
       is_fun_ty (RFn _) = True
-      is_fun_ty (RKernel _) = True
+      is_fun_ty (RKernel _ _) = True
       is_fun_ty _ = False
 
       declClauses :: String -> Parser (WC FBody)
@@ -779,7 +797,7 @@ declSignature = try nDecl <|> vDecl where
  vDecl = functionSignature <&> fmap (\ty -> [Named "thunk" (Right ty)])
 
  functionSignature :: Parser (WC RawVType)
- functionSignature = try (fmap RFn <$> ctype) <|> (fmap RKernel <$> kernel)
+ functionSignature = try (fmap RFn <$> ctype) <|> (fmap (RKernel _) <$> kernel)
   where
    ctype :: Parser (WC RawCType)
    ctype = do

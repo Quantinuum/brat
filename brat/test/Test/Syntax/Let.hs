@@ -34,7 +34,7 @@ test = testCase "let" $
         )
         (dummyFC (Var "x"))
       conn = ((), ())
-  in case fst <$> runEmpty (let ?my = Braty in check (dummyFC tm) conn) of
+  in case fst <$> runEmpty (let ?my = Braty in let ?props = () in check (dummyFC tm) conn) of
        Right (((), [(_, Right TInt)]), ((), ())) -> pure ()
        Right (((), outs), ((), ())) -> assertFailure (show outs)
        Left err -> assertFailure (showError err)

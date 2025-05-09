@@ -13,7 +13,7 @@ import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..))
 import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (Store(..), VEnv)
-import Brat.Eval (eval, evalCTy, kindType)
+import Brat.Eval (eval, evalFunTy, kindType)
 import Brat.Graph hiding (lookupNode)
 import Brat.Naming
 import Brat.QualName
@@ -137,10 +137,11 @@ runCheckingInCompile (Req _ _) = error "Compile monad found a command it can't h
 
 -- To be called on top-level signatures which are already Inx-closed, but not
 -- necessarily normalised.
-compileSig :: Modey m -> CTy m Z -> Compile ([HugrType], [HugrType])
-compileSig my cty = runCheckingInCompile (evalCTy S0 my cty) <&> (\(ss :->> ts) -> (compileRo ss, compileRo ts))
+compileSig :: Modey m -> FunTy m Z -> Compile ([HugrType], [HugrType])
+compileSig my cty = do
+  runCheckingInCompile (evalFunTy S0 my cty) <&> compileFunTy
 
-compileCTy (ss :->> ts) = PolyFuncType [] (FunctionType (compileRo ss) (compileRo ts) bratExts)
+compileFunTy (FunTy _ ss ts) = (compileRo ss, compileRo ts)
 
 compileRo :: Ro m i j -- The Ro that we're processing
           -> [HugrType]       -- The hugr type of the row
@@ -169,7 +170,7 @@ compileType (TList el)  = hugrList (compileType el)
 -- All variables are of kind `TypeFor m xs`, we already checked in `kindCheckRow`
 compileType (VApp _ _) = htTuple []
 -- VFun is already evaluated here, so we don't need to call `compileSig`
-compileType (VFun _ cty) = HTFunc $ compileCTy cty
+compileType (VFun _ cty) = let (ins, outs) = compileFunTy cty in HTFunc (PolyFuncType [] (FunctionType ins outs bratExts))
 compileType ty = error $ "todo: compile type " ++ show ty
 
 compileGraphTypes :: Traversable t => t (Val Z) -> Compile (t HugrType)
@@ -539,7 +540,7 @@ compileConstDfg parent desc (inTys, outTys) contents = do
 -- Brat computations may capture some local variables. Thus, we need
 -- to lambda-lift, producing (as results) a Partial node and a list of
 -- extra arguments i.e. the captured values
-compileBratBox :: NodeId -> Name -> (VEnv, Name, Name) -> CTy Brat Z -> Compile (NodeId, [(PortId NodeId, Int)])
+compileBratBox :: NodeId -> Name -> (VEnv, Name, Name) -> FunTy Brat Z -> Compile (NodeId, [(PortId NodeId, Int)])
 compileBratBox parent name (venv, src, tgt) cty = do
   -- we'll "Partial" over every value in the environment.
   -- (TODO in the future capture which ones are actually used in the sub-hugr. We may need
@@ -571,7 +572,7 @@ compileBratBox parent name (venv, src, tgt) cty = do
   pure (partialNode, zip (map fromJust edge_srcs) [1..])
     -- error on Nothing, the Partial is expecting a value
 
-compileKernBox :: NodeId -> Name -> (NodeId -> Compile ()) -> CTy Kernel Z -> Compile TypedPort
+compileKernBox :: NodeId -> Name -> (NodeId -> Compile ()) -> FunTy Kernel Z -> Compile TypedPort
 compileKernBox parent name contents cty = do
   -- compile kernel nodes only into a Hugr with "Holes"
   -- when we see a Splice, we'll record the func-port onto a list

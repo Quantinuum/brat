@@ -4,6 +4,7 @@ import Data.List.NonEmpty
 
 import Brat.FC
 import Brat.QualName
+import Brat.Syntax.CircuitProperties (CircuitProperties)
 import Brat.Syntax.Common
 import Brat.Syntax.FuncDecl (FuncDecl(..))
 import Brat.Syntax.Raw
@@ -41,7 +42,7 @@ data Flat
  | FPull [PortName] (WC Flat)
  -- We can get away with not elaborating type signatures in the short term
  | FFn RawCType
- | FKernel RawKType
+ | FKernel CircuitProperties RawKType
  | FUnderscore
  | FPass
  | FFanOut

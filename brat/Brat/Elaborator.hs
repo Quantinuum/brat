@@ -188,7 +188,7 @@ elaborate' (FOf n e) = do
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
 elaborate' (FFn cty) = pure $ SomeRaw' (RFn cty)
-elaborate' (FKernel sty) = pure $ SomeRaw' (RKernel sty)
+elaborate' (FKernel ps sty) = pure $ SomeRaw' (RKernel ps sty)
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered

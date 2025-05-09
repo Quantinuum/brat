@@ -9,7 +9,7 @@ module Brat.Eval (EvMode(..)
                  ,sem
                  ,semLvl
                  ,doesntOccur
-                 ,evalCTy
+                 ,evalFunTy
                  ,eqTest
                  ,getNum
                  ,kindEq
@@ -24,6 +24,7 @@ import Brat.Checker.Monad
 import Brat.Checker.Types (EndType(..), kindForMode)
 import Brat.Error (ErrorMsg(..))
 import Brat.QualName (plain)
+import Brat.Syntax.CircuitProperties (eqProps)
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 import Control.Monad.Freer (req)
@@ -71,11 +72,11 @@ numVal val = error $ "Found a " ++ show val ++ " at Nat kind"
 eval :: Stack Z Sem n -> Val n -> Checking (Val Z)
 eval stk v = sem stk v >>= quote Zy
 
-evalCTy :: Stack Z Sem n
-        -> Modey m
-        -> CTy m n
-        -> Checking (CTy m Z)
-evalCTy stk my = quoteCTy Zy my stk
+evalFunTy :: Stack Z Sem n
+          -> Modey m
+          -> FunTy m n
+          -> Checking (FunTy m Z)
+evalFunTy stk my = quoteFunTy Zy my stk
 
 sem :: Stack Z Sem n -- An environment for looking up VInxs
     -> Val n         -- The thing we're evaluating
@@ -122,13 +123,13 @@ quote lvy (SCon nm args) = VCon nm <$> traverse (quote lvy) args
 quote lvy (SLam stk body) = do
   body <- sem (stk :<< semLvl lvy) body
   VLam <$> quote (Sy lvy) body
-quote lvy (SFun my ga cty) = VFun my <$> quoteCTy lvy my ga cty
+quote lvy (SFun my ga cty) = VFun my <$> quoteFunTy lvy my ga cty
 quote lvy (SApp f vz) = VApp (quoteVar lvy f) <$> traverse (quote lvy) vz
 
-quoteCTy :: Ny lv -> Modey m -> Stack Z Sem n -> CTy m n -> Checking (CTy m lv)
-quoteCTy lvy my ga (ins :->> outs) = quoteRo my ga ins lvy >>= \case
+quoteFunTy :: Ny lv -> Modey m -> Stack Z Sem n -> FunTy m n -> Checking (FunTy m lv)
+quoteFunTy lvy my ga (FunTy ps ins outs) = quoteRo my ga ins lvy >>= \case
   (ga', Some (ins' :* lvy')) -> quoteRo my ga' outs lvy' >>= \case
-    (_, Some (outs' :* _)) -> pure (ins' :->> outs')
+    (_, Some (outs' :* _)) -> pure (FunTy ps ins' outs')
 
 -- first number is next Lvl to use in Value
 --         require every Lvl in Sem is < n (converted by n - 1 - lvl), else must fail at runtime
@@ -242,10 +243,16 @@ eqWorker tm lvkz (TypeFor m []) (SCon c args) (SCon c' args') | c == c' =
         Just ks -> eqTests tm lvkz (snd <$> ks) args args'
         Nothing -> pure . Left . TypeErr $ "Type constructor " ++ show c
                         ++ " undefined " ++ " at kind " ++ show (TypeFor m [])
-eqWorker tm lvkz (Star []) (SFun m0 stk0 (ins0 :->> outs0)) (SFun m1 stk1 (ins1 :->> outs1)) | Just Refl <- testEquality m0 m1 =
-  eqRowTest m0 tm lvkz (stk0,ins0) (stk1,ins1) >>= \case
-    Left msg -> pure (Left msg)
-    Right (Some lvkz, stk0, stk1) -> eqRowTest m0 tm lvkz (stk0, outs0) (stk1, outs1) <&> dropRight
+eqWorker tm lvkz (Star []) (SFun m0 stk0 (FunTy ps0 ins0 outs0)) (SFun m1 stk1 (FunTy ps1 ins1 outs1))
+ -- Give nice error for kind mismatch
+  | Just Refl <- testEquality m0 m1
+  = if eqProps m0 ps0 ps1
+    then eqRowTest m0 tm lvkz (stk0,ins0) (stk1,ins1) >>= \case
+      Left msg -> pure (Left msg)
+      Right (Some lvkz, stk0, stk1) -> eqRowTest m0 tm lvkz (stk0, outs0) (stk1, outs1) <&> dropRight
+    -- TODO: Better error message
+    else pure (Left (TypeErr "Kernels had different properties"))
+
 eqWorker tm lvkz (TypeFor _ []) (SSum m0 stk0 rs0) (SSum m1 stk1 rs1)
   | Just Refl <- testEquality m0 m1 = case zipSameLength rs0 rs1 of
       Nothing -> pure (Left (TypeErr "Mismatched sum lengths"))
@@ -256,7 +263,7 @@ eqWorker tm _ _ v0 v1 = pure . Left $ TypeMismatch tm (show v0) (show v1)
 
 -- Type rows have bot0,bot1 dangling de Bruijn indices, which we instantiate with
 -- de Bruijn levels. As we go under binders in these rows, we add to the scope's
--- environments, which we return at the end for eqCType.
+-- environments, which we return at the end for eqFunType.
 eqRowTest :: Modey m
           -> String -- The term we complain about in errors
           -> (Ny :* Stack Z TypeKind) lv -- Next available level, the kinds of existing levels
@@ -312,7 +319,7 @@ doesntOccur e (VApp var args) = case var of
   _ -> pure ()
 doesntOccur e (VCon _ args) = traverse_ (doesntOccur e) args
 doesntOccur e (VLam body) = doesntOccur e body
-doesntOccur e (VFun my (ins :->> outs)) = case my of
+doesntOccur e (VFun my (FunTy _ ins outs)) = case my of
   Braty -> doesntOccurRo my e ins *> doesntOccurRo my e outs
   Kerny -> doesntOccurRo my e ins *> doesntOccurRo my e outs
 

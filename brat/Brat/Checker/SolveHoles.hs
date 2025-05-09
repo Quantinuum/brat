@@ -5,6 +5,7 @@ import Brat.Checker.Monad
 import Brat.Checker.Types (kindForMode)
 import Brat.Error (ErrorMsg(..))
 import Brat.Eval
+import Brat.Syntax.CircuitProperties (eqProps)
 import Brat.Syntax.Common
 import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Value
@@ -159,7 +160,9 @@ typeEqRigid tm lvkz (TypeFor m []) (VCon c args) (VCon c' args') | c == c' =
         Just ks -> typeEqs tm lvkz (snd <$> ks) args args'
         Nothing -> err $ TypeErr $ "Type constructor " ++ show c
                         ++ " undefined " ++ " at kind " ++ show (TypeFor m [])
-typeEqRigid tm lvkz (Star []) (VFun m0 (ins0 :->> outs0)) (VFun m1 (ins1 :->> outs1)) | Just Refl <- testEquality m0 m1 = do
+typeEqRigid tm lvkz (Star []) (VFun m0 (FunTy ps0 ins0 outs0)) (VFun m1 (FunTy ps1 ins1 outs1))
+ | Just Refl <- testEquality m0 m1
+ , eqProps m0 ps0 ps1 = do
   probs :: [Checking ()] <- throwLeft $ typeEqRow m0 tm lvkz ins0 ins1 >>= \case -- this is in Either ErrorMsg
         (Some (lvkz :* (Refl :* Refl)), ps1) -> typeEqRow m0 tm lvkz outs0 outs1 <&> (ps1++) . snd
   sequenceA_ probs -- uses Applicative (unlike sequence_ which uses Monad), hence parallelized

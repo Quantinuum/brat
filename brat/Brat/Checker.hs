@@ -38,6 +38,7 @@ import Brat.Naming
 import Brat.QualName
 -- import Brat.Search
 import Brat.Syntax.Abstractor (NormalisedAbstractor(..), normaliseAbstractor)
+import Brat.Syntax.CircuitProperties (CircuitProperties(..), Properties)
 import Brat.Syntax.Common
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..))
@@ -174,6 +175,7 @@ check :: (CheckConstraints m k
          ,EvMode m
          ,TensorOutputs (Outputs m d)
          ,?my :: Modey m
+         ,?props :: Properties m
          , DIRY d)
       => WC (Term d k)
       -> ChkConnectors m d k
@@ -186,6 +188,7 @@ check' :: forall m d k
           ,EvMode m
           ,TensorOutputs (Outputs m d)
           ,?my :: Modey m
+          ,?props :: Properties m
           , DIRY d)
        => Term d k
        -> ChkConnectors m d k
@@ -218,7 +221,7 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
       -- We'll check the first variant against a Hypo node (omitted from compilation)
       -- to work out how many overs/unders it needs, and then check it again (in Chk)
       -- with the other clauses, as part of the body.
-      (ins :->> outs) <- mkSig usedOvers unders
+      (FunTy _ ins outs) <- mkSig usedOvers unders
       (allFakeUnders, rightFakeUnders, tgtMap) <- suppressHoles $ suppressGraph $ do
         (_, [], fakeOvers, fakeAcc) <- anext "lambda_fake_source" Hypo (S0, Some (Zy :* S0)) R0 ins
         -- Hypo `check` calls need an environment, even just to compute leftovers;
@@ -264,10 +267,11 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
   portNamesToBoundNames :: [(String, (Src, BinderType m))] -> [(String, (Src, BinderType m))]
   portNamesToBoundNames = fmap (\(n, (src, ty)) -> (n, (NamedPort (end src) n, ty)))
 
-  mkSig :: ToEnd t => [(Src, BinderType m)] -> [(NamedPort t, BinderType m)] -> Checking (CTy m Z)
+  mkSig :: ToEnd t => [(Src, BinderType m)] -> [(NamedPort t, BinderType m)] -> Checking (FunTy m Z)
   mkSig overs unders = rowToRo ?my (retuple <$> overs) S0 >>=
     \(Some (inRo :* endz)) -> rowToRo ?my (retuple <$> unders) endz >>=
-      \(Some (outRo :* _)) -> pure (inRo :->> outRo)
+      \(Some (outRo :* _)) -> pure (FunTy ?props inRo outRo)
+
 
   retuple (NamedPort e p, ty) = (p, e, ty)
 
@@ -275,7 +279,7 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
     Nothing -> err $ InternalError "Trying to wire up different sized lists of wires"
     Just conns -> traverse (\((src, ty), (tgt, _)) -> wire (src, binderToValue ?my ty, tgt)) conns
 
-  checkClauses cty@(ins :->> outs) overs all_cs = do
+  checkClauses cty@(FunTy _ ins outs) overs all_cs = do
     let clauses = NE.zip (NE.fromList [0..]) all_cs <&>
             \(i, (abs, tm)) -> Clause i (normaliseAbstractor <$> abs) tm
     clauses <- traverse (checkClause ?my "lambda" cty) clauses
@@ -289,7 +293,7 @@ check' (Pull ports t) (overs, unders) = do
   unders <- pullPortsRow ports unders
   check t (overs, unders)
 check' (t ::: outs) (overs, ()) | Braty <- ?my = do
-  (ins :->> outs) :: CTy Brat Z <- kindCheckAnnotation Braty ":::" outs
+  (ins :->> outs) :: FunTy Brat Z <- kindCheckAnnotation Braty () ":::" outs
   (_, hungries, danglies, _) <- next "id" Id (S0,Some (Zy :* S0)) ins outs
   ((), leftOvers) <- noUnders $ check t (overs, hungries)
   pure (((), danglies), (leftOvers, ()))
@@ -312,13 +316,13 @@ check' (Th tm) ((), u@(hungry, ty):unders) = case (?my, ty) of
   checkThunk :: forall m. (CheckConstraints m UVerb, EvMode m)
            => Modey m
            -> String
-           -> CTy m Z
+           -> FunTy m Z
            -> WC (Term Chk UVerb)
            -> Checking Src
-  checkThunk m name cty tm = do
+  checkThunk m name cty@(FunTy props _ _) tm = do
     ((dangling, _), ()) <- let ?my = m in makeBox name cty $
       \(thOvers, thUnders) -> do
-        (((), ()), leftovers) <- check tm (thOvers, thUnders)
+        (((), ()), leftovers) <- let ?props = props in check tm (thOvers, thUnders)
         case leftovers of
           ([], []) -> pure ()
           ([], unders) -> err (ThunkLeftUnders (showRow unders))
@@ -332,34 +336,38 @@ check' (TypedTh t) ((), ()) = case ?my of
   Braty -> do
     -- but the computation in it could be either Brat or Kern
     brat <- catchErr $ check t ((), ())
-    kern <- catchErr $ let ?my = Kerny in check t ((), ())
+    -- TODO: What if the programmer intends a less strict kernel type?
+    let props = PControllable
+    kern <- catchErr $ let ?my = Kerny in let ?props = props in check t ((), ())
     case (brat, kern) of
       (Left e, Left _) -> req $ Throw e -- pick an error arbitrarily
       -- I don't believe that there is any syntax that could synthesize
       -- both a classical type and a kernel type, but just in case:
       -- (pushing down Emb(TypedTh(v)) to Thunk(Emb+Forget(v)) would help in Checkable cases)
       (Right _, Right _) -> typeErr "TypedTh could be either Brat or Kernel"
-      (Left _, Right (conns, ((), ()))) -> let ?my = Kerny in createThunk conns
-      (Right (conns, ((), ())), Left _) -> createThunk conns
+      (Left _, Right (conns, ((), ()))) -> let ?my = Kerny in createThunk props conns
+      (Right (conns, ((), ())), Left _) -> createThunk () conns
  where
   createThunk :: (CheckConstraints m2 Noun, ?my :: Modey m2, EvMode m2)
-              => SynConnectors m2 Syn KVerb
+              => Properties m2
+              -> SynConnectors m2 Syn KVerb
               -> Checking (SynConnectors Brat Syn Noun
                           ,ChkConnectors Brat Syn Noun)
-  createThunk (ins, outs) = do
+  createThunk ps (ins, outs) = do
     Some (ez :* inR) <- mkArgRo ?my S0 (first (fmap toEnd) <$> ins)
     Some (_ :* outR) <- mkArgRo ?my ez (first (fmap toEnd) <$> outs)
-    (thunkOut, ()) <- makeBox "thunk" (inR :->> outR) $
+    (thunkOut, ()) <- makeBox "thunk" (FunTy ps inR outR) $
         \(thOvers, thUnders) -> do
           -- if these ensureEmpty's fail then its a bug!
           checkInputs t thOvers ins >>= ensureEmpty "TypedTh inputs"
           checkOutputs t thUnders outs >>= ensureEmpty "TypedTh outputs"
     pure (((), [thunkOut]), ((), ()))
 check' (Force th) ((), ()) = do
-  (((), outs), ((), ())) <- let ?my = Braty in check th ((), ())
+  (((), outs), ((), ())) <- let ?my = Braty in let ?props = () in check th ((), ())
   -- pull a bunch of thunks (only!) out of here
-  (_, thInputs, thOutputs) <- getThunks ?my outs
+  (_, thInputs, thOutputs) <- getThunks ?my ?props outs
   pure ((thInputs, thOutputs), ((), ()))
+
 check' (Forget kv) (overs, unders) = do
   ((ins, outs), ((), rightUnders)) <- check kv ((), unders)
   leftOvers <- checkInputs kv overs ins
@@ -384,9 +392,9 @@ check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
     let inRo = RPr ("left", ty) $ RPr ("right", ty) R0
     let outRo = RPr ("out", ty) R0
     (_, [lunders, runders], [(dangling, _)], _) <- next (show op) (ArithNode op) (S0, Some $ Zy :* S0) inRo outRo
-    (((), ()), ((), leftUnders)) <- check l ((), [lunders])
+    (((), ()), ((), leftUnders)) <- let ?props = () in check l ((), [lunders])
     ensureEmpty "arith unders" leftUnders
-    (((), ()), ((), leftUnders)) <- check r ((), [runders])
+    (((), ()), ((), leftUnders)) <- let ?props = () in check r ((), [runders])
     ensureEmpty "arith unders" leftUnders
     wire (dangling, ty, hungry)
     pure (((), ()), ((), unders))
@@ -684,13 +692,13 @@ data Clause = Clause
 -- refined overs)
 checkClause :: forall m. (CheckConstraints m UVerb, EvMode m) => Modey m
             -> String
-            -> CTy m Z
+            -> FunTy m Z
             -> Clause
             -> Checking
                ( TestMatchData m -- TestMatch data (LHS)
                , Name   -- Function node (RHS)
                )
-checkClause my fnName cty clause = modily my $ do
+checkClause my fnName cty@(FunTy props _ _) clause = modily my $ do
   let clauseName = fnName ++ "." ++ show (index clause)
 
   -- First, we check the patterns on the LHS. This requires some overs,
@@ -708,14 +716,14 @@ checkClause my fnName cty clause = modily my $ do
     Some (_ :* outRo) <- mkArgRo my patEz (first (fmap toEnd) <$> unders)
     let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
     let vars = fst <$> sol
-    pure (vars, match, patRo :->> outRo)
+    pure (vars, match, FunTy props patRo outRo)
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
     let abstractor = foldr ((:||:) . APat . Bind) AEmpty vars
     let ?my = my in do
       env <- abstractAll rhsOvers abstractor
-      localEnv env $ check @m (rhs clause) ((), rhsUnders)
+      localEnv env $ let ?props = props in check @m (rhs clause) ((), rhsUnders)
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
 
@@ -724,9 +732,9 @@ checkClause my fnName cty clause = modily my $ do
 checkBody :: (CheckConstraints m UVerb, EvMode m, ?my :: Modey m)
           => String -- The function name
           -> FunBody Term UVerb
-          -> CTy m Z -- Function type
+          -> FunTy m Z -- Function type
           -> Checking Src
-checkBody fnName body cty = do
+checkBody fnName body cty@(FunTy props _ _) = do
   (tm, (absFC, tmFC)) <- case body of
     NoLhs tm -> pure (tm, (fcOf tm, fcOf tm))
     Clauses (c@(abs, tm) :| cs) -> do
@@ -734,7 +742,7 @@ checkBody fnName body cty = do
       pure (WC fc (Lambda c cs), (fcOf abs, fcOf tm))
     Undefined -> err (InternalError "Checking undefined clause")
   ((src, _), _) <- makeBox (fnName ++ ".box") cty $ \conns@(_, unders) -> do
-    (((), ()), leftovers) <- check tm conns
+    (((), ()), leftovers) <- let ?props = props in check tm conns
     case leftovers of
       ([], []) -> pure ()
       ([], rightUnders) -> localFC tmFC $
@@ -825,14 +833,14 @@ kindCheck ((hungry, Star []):unders) (C (ss :-> ts)) = do
         let val = VFun Braty (inRo :->> outRo)
         defineTgt hungry val
         pure ([val], unders)
-kindCheck ((hungry, Star []):unders) (K (ss :-> ts)) = do
+kindCheck ((hungry, Star []):unders) (K ps (ss :-> ts)) = do
   -- N.B. Kernels can't bind so we don't need to pass around a stack of ends
   ss <- kindCheckRow Kerny "" ss
   ts <- kindCheckRow Kerny "" ts
   case (ss, ts) of
     (Some ss, Some ts) -> case kernelNoBind ss of
       Refl -> do
-        let val = VFun Kerny (ss :->> ts)
+        let val = VFun Kerny (FunTy ps ss ts)
         defineTgt hungry val
         pure ([val], unders)
 
@@ -930,10 +938,11 @@ kindCheckRow my name r = do
 -- Checks that an annotation is a valid row, returning the
 -- evaluation of the type of an Id node passing through such values
 kindCheckAnnotation :: Modey m
+                    -> Properties m
                     -> String -- for node name
                     -> [(PortName, ThunkRowType m)]
-                    -> Checking (CTy m Z)
-kindCheckAnnotation my name outs = do
+                    -> Checking (FunTy m Z)
+kindCheckAnnotation my ps name outs = do
   trackM "kca"
   name <- req (Fresh $ "__kca_" ++ name)
   kindCheckRow' my (Zy :* S0) M.empty (name, 0) outs >>= \case
@@ -944,7 +953,7 @@ kindCheckAnnotation my name outs = do
       -- but persuades the Haskell typechecker it's ok to use the copy
       -- as return types (that happen not to mention the argument types).
       case varChangerThroughRo (ParToInx (AddZ n) s) ins of
-        Some (_ :* outs) -> pure (ins :->> outs)
+        Some (_ :* outs) -> pure (FunTy ps ins outs)
 
 kindCheckRow' :: forall m n
                . Modey m

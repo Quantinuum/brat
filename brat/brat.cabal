@@ -82,6 +82,7 @@ library
                        Brat.Elaborator,
                        Brat.QualName,
                        Brat.Syntax.Abstractor,
+                       Brat.Syntax.CircuitProperties,
                        Brat.Syntax.Concrete,
                        Brat.Syntax.FuncDecl,
                        Brat.Syntax.Port,

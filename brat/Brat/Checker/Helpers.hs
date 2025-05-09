@@ -6,7 +6,6 @@ module Brat.Checker.Helpers {-(pullPortsRow, pullPortsSig
                             ,ensureEmpty, noUnders
                             ,rowToSig
                             ,showMode, getVec
-                            ,mkThunkTy
                             ,wire
                             ,next, knext, anext
                             ,kindType, getThunks
@@ -27,7 +26,8 @@ import Brat.Eval (eval, EvMode(..), kindType)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
 import Brat.Naming (Name, FreshMonad(..))
-import Brat.Syntax.Common
+import Brat.Syntax.CircuitProperties (CircuitProperties(..), Properties)
+import Brat.Syntax.Common hiding (pattern PNone)
 import Brat.Syntax.Core (Term(..))
 import Brat.Syntax.Simple
 import Brat.Syntax.Port (ToEnd(..))
@@ -36,6 +36,7 @@ import Bwd
 import Hasochism
 import Util (log2)
 
+import Control.Monad (when)
 import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Control.Monad.Freer (req)
 import Data.Bifunctor
@@ -149,15 +150,6 @@ type family ThunkRowType (m :: Mode) where
   ThunkRowType Brat = KindOr (Term Chk Noun)
   ThunkRowType Kernel = Term Chk Noun
 
-mkThunkTy :: Modey m
-          -> ThunkFCType m
-          -> [(PortName, ThunkRowType m)]
-          -> [(PortName, ThunkRowType m)]
-          -> Term Chk Noun
--- mkThunkTy Braty fc ss ts = C (WC fc (ss :-> ts))
-mkThunkTy Braty _ ss ts = C (ss :-> ts)
-mkThunkTy Kerny () ss ts = K (ss :-> ts)
-
 anext :: forall m i j k
        . EvMode m
       => String
@@ -238,38 +230,56 @@ wire (src, ty, tgt) = do
 -- This is the dual notion to the overs and unders used for typechecking against
 -- Hence, we return them here in the opposite order to `check`'s connectors
 getThunks :: Modey m
+          -> Properties m
           -> [(Src, BinderType Brat)] -- A row of 0 or more function types in the same mode
           -> Checking ([Name]
                       ,Unders m Chk
                       ,Overs m UVerb
                       )
-getThunks _ [] = pure ([], [], [])
-getThunks Braty ((src, Right ty):rest) = do
+getThunks _ _ [] = pure ([], [], [])
+getThunks Braty () ((src, Right ty):rest) = do
   ty <- eval S0 ty
   (src, ss :->> ts) <- vectorise Braty (src, ty)
   (node, unders, overs, _) <- let ?my = Braty in
                                 anext "Eval" (Eval (end src)) (S0, Some (Zy :* S0)) ss ts
-  (nodes, unders', overs') <- getThunks Braty rest
+  (nodes, unders', overs') <- getThunks Braty () rest
   pure (node:nodes, unders <> unders', overs <> overs')
-getThunks Kerny ((src, Right ty):rest) = do
+getThunks Kerny expectedProps ((src, Right ty):rest) = do
   ty <- eval S0 ty
-  (src, ss :->> ts) <- vectorise Kerny (src,ty)
+  (src, sig@(FunTy props ss ts)) <- vectorise Kerny (src,ty)
+  when (props < expectedProps)
+    (err (TypeErr (unwords ["Expected all kernel types to be"
+                           ,expected expectedProps
+                           ,"but kernel with signature"
+                           ,show sig
+                           ,"was"
+                           ,actual props
+                           ])))
   (node, unders, overs, _) <- let ?my = Kerny in anext "Splice" (Splice (end src)) (S0, Some (Zy :* S0)) ss ts
-  (nodes, unders', overs') <- getThunks Kerny rest
+  (nodes, unders', overs') <- getThunks Kerny props rest
   pure (node:nodes, unders <> unders', overs <> overs')
-getThunks Braty ((src, Left (Star args)):rest) = do
+ where
+  expected PControllable = "controllable and reversible"
+  expected PReversible = "reversible"
+  expected _ = undefined
+
+  actual PNone = "neither"
+  actual PReversible = "just reversible, not controllable"
+  actual _ = undefined
+
+getThunks Braty () ((src, Left (Star args)):rest) = do
   (node, unders, overs) <- case bwdStack (B0 <>< args) of
     Some (_ :* stk) -> do
       let (ri,ro) = kindArgRows stk
       (node, unders, overs, _) <- next "Eval" (Eval (end src)) (S0, Some (Zy :* S0)) ri ro
       pure (node, unders, overs)
-  (nodes, unders', overs') <- getThunks Braty rest
+  (nodes, unders', overs') <- getThunks Braty () rest
   pure (node:nodes, unders <> unders', overs <> overs')
-getThunks m ro = err $ ExpectedThunk (showMode m) (showRow ro)
+getThunks m _ ro = err $ ExpectedThunk (showMode m) (showRow ro)
 
 -- The type given here should be normalised
 vecLayers :: Modey m -> Val Z -> Checking ([(Src, NumVal (VVar Z))] -- The sizes of the vector layers
-                                          ,CTy m Z -- The function type at the end
+                                          ,FunTy m Z -- The function type at the end
                                           )
 vecLayers my (TVec ty (VNum n)) = do
   src <- mkStaticNum n
@@ -324,14 +334,14 @@ mkStaticNum n@(NumValue c gro) = do
     wire (oneSrc, TNat, rhs)
     pure src
 
-vectorise :: forall m. Modey m -> (Src, Val Z) -> Checking (Src, CTy m Z)
+vectorise :: forall m. Modey m -> (Src, Val Z) -> Checking (Src, FunTy m Z)
 vectorise my (src, ty) = do
   (layers, cty) <- vecLayers my ty
   modily my $ foldrM mkMapFun (src, cty) layers
  where
   mkMapFun :: (Src, NumVal (VVar Z)) -- Layer to apply
-            -> (Src, CTy m Z) -- The input to this level of mapfun
-            -> Checking (Src, CTy m Z)
+            -> (Src, FunTy m Z) -- The input to this level of mapfun
+            -> Checking (Src, FunTy m Z)
   mkMapFun (lenSrc, len) (valSrc, cty) = do
     let weak1 = changeVar (Thinning (ThDrop ThNull))
     vecFun <- vectorisedFun len my cty
@@ -342,17 +352,17 @@ vectorise my (src, ty) = do
     defineTgt lenTgt (VNum len)
     wire (lenSrc, kindType Nat, lenTgt)
     wire (valSrc, ty, valTgt)
-    let vecCTy = case (my,my',cty) of
+    let vecFunTy = case (my,my',cty) of
           (Braty,Braty,cty) -> cty
           (Kerny,Kerny,cty) -> cty
           _ -> error "next returned wrong mode of computation type to that passed in"
-    pure (vectorSrc, vecCTy)
+    pure (vectorSrc, vecFunTy)
 
-  vectorisedFun :: NumVal (VVar Z) -> Modey m -> CTy m Z -> Checking (Val Z)
-  vectorisedFun nv my (ss :->> ts) = do
+  vectorisedFun :: NumVal (VVar Z) -> Modey m -> FunTy m Z -> Checking (Val Z)
+  vectorisedFun nv my (FunTy ps ss ts) = do
     (ss', ny) <- vectoriseRo True nv Zy ss
     (ts', _)  <- vectoriseRo False nv ny ts
-    pure $ modily my $ VFun my (ss' :->> ts')
+    pure $ modily my $ VFun my (FunTy ps ss' ts')
 
   -- We don't allow existentials in vectorised functions, so the boolean says
   -- whether we are in the input row and can allow binding
@@ -394,10 +404,10 @@ declareTgt tgt my ty = req (Declare (InEnd (end tgt)) my ty)
 -- Build a box corresponding to the inside of a thunk
 makeBox :: (?my :: Modey m, EvMode m)
         => String -- A label for the nodes we create
-        -> CTy m Z
+        -> FunTy m Z
         -> ((Overs m UVerb, Unders m Chk) -> Checking a) -- checks + builds the body using srcs/tgts from the box
         -> Checking ((Src, BinderType Brat), a)
-makeBox name cty@(ss :->> ts) body = do
+makeBox name cty@(FunTy _ ss ts) body = do
   (src, _, overs, ctx) <- anext (name ++ "/in") Source (S0, Some (Zy :* S0)) R0 ss
   (tgt, unders, _, _) <- anext (name ++ "/out") Target ctx ts R0
   case (?my, body) of

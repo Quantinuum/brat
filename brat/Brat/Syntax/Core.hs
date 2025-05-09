@@ -16,6 +16,7 @@ import Brat.Constructors.Patterns (pattern CCons,
 import Brat.FC
 import Brat.Naming
 import Brat.QualName
+import Brat.Syntax.CircuitProperties
 import Brat.Syntax.Common
 import Brat.Syntax.FuncDecl
 import Brat.Syntax.Simple
@@ -69,7 +70,7 @@ data Term :: Dir -> Kind -> Type where
   -- Brat function types
   C        :: CType' (PortName, KindOr (Term Chk Noun)) -> Term Chk Noun
   -- Kernel types
-  K        :: CType' (PortName, Term Chk Noun) -> Term Chk Noun
+  K        :: Properties Kernel ->  CType' (PortName, Term Chk Noun) -> Term Chk Noun
   FanOut   :: Term Syn UVerb
   FanIn    :: Term Chk UVerb
 
@@ -137,7 +138,7 @@ instance Show (Term d k) where
     prettyPat _ = Nothing
 
   show (C f) = "{" ++ show f ++ "}"
-  show (K (ss :-> ts)) = "{" ++ showSig ss ++ " -o " ++ showSig ts ++ "}"
+  show (K _ (ss :-> ts)) = "{" ++ showSig ss ++ " -o " ++ showSig ts ++ "}"
   show FanOut = "[/\\]"
   show FanIn = "[\\/]"
 

@@ -6,6 +6,7 @@ import Brat.Checker (check)
 import Brat.FC
 import Brat.Naming
 import Brat.Search (vsearch)
+import Brat.Syntax.CircuitProperties (CircuitProperties(..))
 import Brat.Syntax.Common
 import Hasochism (N(..))
 import Util (names)
@@ -40,14 +41,14 @@ arbitrarySValue d = case d of
 
 
 instance Arbitrary (Val Z) where
-  arbitrary = chooseInt bounds >>= \n -> row n maxDepth <&> \r -> VFun Kerny (r :->> r)
+  arbitrary = chooseInt bounds >>= \n -> row n maxDepth <&> \r -> VFun Kerny (FunTy PControllable r r)
 
 tokensTypecheck :: Val Z -> Bool
 tokensTypecheck kty =
   let kernels = vsearch fc kty in
     case kernels of
       [] -> False
-      (k:_) -> case runEmpty (let ?my = Braty in check (WC fc k) ((), [(NamedPort (In src 0) "fun", Right kty)])) of
+      (k:_) -> case runEmpty (let ?my = Braty in let ?props = () in check (WC fc k) ((), [(NamedPort (In src 0) "fun", Right kty)])) of
           Right ((((), ()), ((), unders)), _) -> null unders
           Left _ -> False
  where

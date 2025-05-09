@@ -89,7 +89,7 @@ tokenValues fc (VFun Braty (ss :->> ts)) =
   outputsNonBinding (REx _ _) = []
 
 
-tokenValues fc (VFun Kerny (ss :->> ts)) =
+tokenValues fc (VFun Kerny (FunTy _ ss ts)) =
   [ Th (WC fc (Lambda (WC fc abs, WC fc t) [])) | t <- rhs ]
  where
   abs = binders (rowLen ss)

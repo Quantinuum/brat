@@ -18,8 +18,8 @@ ext "tket.CRy" CRy(Float) -> { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.CRz" CRz(Float) -> { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.M" M :: { Qubit -o Bit }
 
-ext "builtin.measure" measure :: { Qubit -o q::Money, b::Bit }
-ext "builtin.fresh" fresh :: { Money -o Qubit }
+ext "builtin.measure" measure :: { Qubit -o# q::Money, b::Bit }
+ext "builtin.fresh" fresh :: { Money -o# Qubit }
 
 uncons(n :: #) -> { Vec(Qubit, succ(n)) -o Qubit, Vec(Qubit, n) }
 uncons(_) = { cons(q, qs) => q, qs }

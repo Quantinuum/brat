@@ -19,6 +19,7 @@ import Brat.Error
 import Brat.FC hiding (end)
 import Brat.Naming
 import Brat.QualName
+import Brat.Syntax.CircuitProperties
 import Brat.Syntax.Common
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
@@ -82,7 +83,7 @@ data Raw :: Dir -> Kind -> Type where
   -- Function types
   RFn       :: RawCType -> Raw Chk Noun
   -- Kernel types
-  RKernel   :: RawKType -> Raw Chk Noun
+  RKernel   :: Properties Kernel -> RawKType -> Raw Chk Noun
   RFanOut   :: Raw Syn UVerb
   RFanIn    :: Raw Chk UVerb
 
@@ -127,7 +128,7 @@ instance Show (Raw d k) where
     showClause (abs, bod) = show abs ++ " => " ++ show bod
   show (RCon c xs) = "Con(" ++ show c ++ "(" ++ show xs ++ "))"
   show (RFn cty) = show cty
-  show (RKernel cty) = show cty
+  show (RKernel _ cty) = show cty
   show RFanOut = "[/\\]"
   show RFanIn = "[\\/]"
   show (ROf n e) = "(" ++ show n ++ " of " ++ show e ++ ")"
@@ -246,7 +247,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
   desugar' (RLet abs thing body) = Let abs <$> desugar thing <*> desugar body
   desugar' (RCon c arg) = Con c <$> desugar arg
   desugar' (RFn cty) = C <$> desugar' cty
-  desugar' (RKernel cty) = K <$> desugar' cty
+  desugar' (RKernel props cty) = K props <$> desugar' cty
   desugar' RFanOut = pure FanOut
   desugar' RFanIn = pure FanIn
   desugar' (ROf n e) = Of <$> desugar n <*> desugar e
