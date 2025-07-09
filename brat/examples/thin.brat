@@ -1,22 +1,22 @@
--- Experiments with selecting out of vectors with first class selections
--- This feature has fallen by the wayside, so expect this to fail
+select(n :: #, m :: #, Thin(n, m), Vec(Bit, m)) -> Vec(Bit, n)
+select(_, _, zero, []) = []
+select(_, _, succ(th), x ,- xs) = x ,- select(!, !, th, xs)
+select(n, _, omit(th), _ ,- xs) = select(n, !, th, xs)
+-- TODO: This should work:
+-- select(_, _, omit(th), _ ,- xs) = select(!, !, th, xs)
 
--- This type is WRONG
-test :: Vec(X, 2) <<< Vec(X, 2)
-test = {0..} -- The identity thinning
+identity(n :: #) -> Thin(n, n)
+identity(0) = zero
+identity(succ(n)) = succ(identity(n))
+-- TODO: This should work:
+-- identity(succ(_)) = succ(identity(!))
 
-test' :: Vec(X, 1) <<< Vec(X, 9)
-test' = {5} -- just the fifth
+empty(n :: #) -> Thin(0, n)
+empty(0) = zero
+empty(succ(n)) = omit(empty(n))
 
-vec :: Vec(Nat, 5)
-vec = [1, 2, 3, 4, 5]
- 
-test'' :: Vec(Nat, 1)
-test'' = vec{0} -- vec{2,4,5}
--- test''' :: Vec Nat 1
--- test''' = <0>
-
-mapOn :: (th :: x <<< y), (f :: X -> X), Vec(X, y) -> Vec(X, y)
-mapOn = ?mapOn
-
-map = mapOn {1,4} f vec
+comp(l :: #, n :: #, m :: #, Thin(l, n), Thin(n, m)) -> Thin(l, m)
+comp(l, n, succ(m), th, omit(ph)) = omit(comp(l, n, m, th, ph))
+comp(l, succ(n), succ(m), omit(th), succ(ph)) = omit(comp(l, n, m, th, ph))
+comp(succ(l), succ(n), succ(m), succ(th), succ(ph)) = succ(comp(l, n, m, th, ph))
+comp(_, _, _, zero, zero) = zero

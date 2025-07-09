@@ -18,6 +18,7 @@ pattern CConcatEqEven = PrefixName [] "concatEqEven"
 pattern CConcatEqOdd = PrefixName [] "concatEqOdd"
 pattern CRiffle = PrefixName [] "riffle"
 pattern CRefl = PrefixName [] "refl"
+pattern COmit = PrefixName [] "omit"
 
 pattern CList, CVec, CNat, CInt, COption, CBool, CBit, CFloat, CString, CEq :: QualName
 pattern CList = PrefixName [] "List"
@@ -30,6 +31,7 @@ pattern CBit = PrefixName [] "Bit"
 pattern CFloat = PrefixName [] "Float"
 pattern CString = PrefixName [] "String"
 pattern CEq = PrefixName [] "Eq"
+pattern CThin = PrefixName [] "Thin"
 
 pattern CQubit, CMoney :: QualName
 pattern CQubit = PrefixName [] "Qubit"
