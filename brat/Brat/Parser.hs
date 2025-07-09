@@ -214,7 +214,8 @@ abstractor = do ps <- many (try portPull)
       WC fc () <- matchString c
       pure $ WC fc (PCon (plain c) AEmpty)
 
-    nullaryConstructors = msum (try . nullaryConstructor <$> ["zero", "nil", "none", "true", "false"])
+    -- TODO: Consult the constructor table!
+    nullaryConstructors = msum (try . nullaryConstructor <$> ["zero", "nil", "none", "true", "false", "refl"])
 
     constructorWithArgs :: String -> Parser (WC Pattern)
     constructorWithArgs c = do
@@ -222,6 +223,7 @@ abstractor = do ps <- many (try portPull)
       abs <- inBracketsFC Paren (unWC <$> abstractor)
       pure $ WC (spanFCOf str abs) (PCon (plain c) (unWC abs))
 
+    -- TODO: Consult the constructor table!
     constructorsWithArgs = msum (try . constructorWithArgs <$> ["succ", "doub", "cons", "some"])
 
 simpleTerm :: Parser (WC SimpleTerm)

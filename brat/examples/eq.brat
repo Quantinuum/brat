@@ -1,0 +1,9 @@
+foo(n :: #, m :: #, Eq(n, m), Vec(Nat, n)) -> Vec(Nat, m)
+foo(_, succ(_), refl, xs) = xs
+
+-- Type error (good)
+--goo :: Vec(Nat, 2)
+--goo = foo(1, 2, refl, [1])
+
+hoo :: Vec(Nat, 1)
+hoo = foo(1, 1, refl, [1])
