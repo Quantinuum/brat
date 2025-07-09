@@ -24,6 +24,8 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
+import Debug.Trace
+
 -- Demand that two closed values are equal, we're allowed to solve variables in the
 -- hope set to make this true.
 -- Raises a user error if the vals cannot be made equal.
@@ -61,8 +63,8 @@ typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
   act <- sem sems act
   qexp <- quote ny exp
   qact <- quote ny act
-  trackM ("typeEq' exp: " ++ show qexp)
-  trackM ("typeEq' act: " ++ show qact)
+  traceM ("typeEq' exp: " ++ show qexp)
+  traceM ("typeEq' act: " ++ show qact)
   typeEqEta str stuff mine k exp act
 
 -- Presumes that the hope set and the two `Sem`s are up to date.

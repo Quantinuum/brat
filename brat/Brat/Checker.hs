@@ -713,7 +713,7 @@ check' Hope ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
     wire (dangling, kindType k, NamedPort bang "")
     defineTgt' "check hope (tgt)" tgt (endVal k (toEnd hungry))
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
-    req (ANewDynamic (toEnd hungry) fc)
+    --req (ANewDynamic (toEnd hungry) fc)
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
