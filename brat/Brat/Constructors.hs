@@ -26,6 +26,14 @@ type ConstructorMap m
      (CtorArgs m)
     )
 
+-- TODO: keep better track of whether a constructor takes arguments
+-- then use that information in the parser!
+--isBuiltinNullary :: QualName -> Maybe Bool
+--isBuiltinNullary con = do
+--  tys <- M.lookup defaultConstructors
+--  --M.head tys
+--  undefined
+
 defaultConstructors :: ConstructorMap Brat
 defaultConstructors = M.fromList
   [(CSucc, M.fromList
@@ -113,6 +121,7 @@ defaultConstructors = M.fromList
         (RPr ("value", VApp (VInx VZ) B0) R0))])
   ,(CTrue, M.fromList [(CBool, CArgs [] Zy R0 [] R0)])
   ,(CFalse, M.fromList [(CBool, CArgs [] Zy R0 [] R0)])
+  ,(CRefl, M.fromList [(CEq, CArgs [VPVar, VPVar] (Sy (Sy Zy)) (REx ("lhs", Nat) (REx ("rhs", Nat) R0)) [(nVar (VInx (VS VZ)), nVar (VInx VZ))] R0)])
   ]
 
 kernelConstructors :: ConstructorMap Kernel
@@ -151,6 +160,7 @@ defaultTypeConstructors = M.fromList
   ,((Brat, CNat),    [])
   ,((Brat, CNil),    [])
   ,((Brat, CCons),   [("head", Star []), ("tail", Star [])])
+  ,((Brat, CEq),     [("lhs", Nat), ("rhs", Nat)])
   ,((Kernel, CQubit), [])
   ,((Kernel, CMoney), [])
   ,((Kernel, CVec), [("X", Dollar []), ("n", Nat)])
