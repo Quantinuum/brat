@@ -1,5 +1,5 @@
 foo(n :: #, m :: #, Eq(n, m), Vec(Nat, n)) -> Vec(Nat, m)
-foo(_, succ(_), refl, xs) = xs
+foo(_, _, refl, xs) = xs
 
 -- Type error (good)
 --goo :: Vec(Nat, 2)
@@ -7,3 +7,21 @@ foo(_, succ(_), refl, xs) = xs
 
 hoo :: Vec(Nat, 1)
 hoo = foo(1, 1, refl, [1])
+
+inj(n :: #, m :: #, Eq(succ(n), succ(m))) -> Eq(n, m)
+inj(_, _, succ(q)) = q
+
+kzero(Eq(0, 0)) -> Nat
+-- TODO: Let this pattern be written as `0`
+kzero(zero) = 0
+
+empty(Vec(Nat, 0)) -> Nat
+empty([]) = 1
+
+jzero(n :: #, Eq(n, n)) -> Nat
+jzero(_, zero) = 0
+jzero(_, succ(q)) = 1 + jzero(!, q)
+
+fullQ(n :: #, m :: #, Eq(n, m)) -> Eq(full(n), full(m))
+fullQ(_, _, zero) = zero
+fullQ(_, _, succ(q)) = succ(doub(fullQ(!, !, q)))
