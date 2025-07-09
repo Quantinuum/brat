@@ -61,7 +61,7 @@ tokenValues fc (VCon tyCon tyArgs) = do
   (ctor, tbl) <- M.toList defaultConstructors
   -- TODO: Match `tyArgs` against `pats` and use the resulting values to
   -- instantiate
-  (tblTyCon, CArgs pats _ _tyArgRo consArgRo) <- M.toList tbl
+  (tblTyCon, CArgs pats _ _tyArgRo _eqs consArgRo) <- M.toList tbl
   guard (tyCon == tblTyCon)
   -- TODO: The values coming back from this should be used to contextualise the
   -- types in `consArgRo`.

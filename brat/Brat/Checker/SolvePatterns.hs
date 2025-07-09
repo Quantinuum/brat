@@ -152,7 +152,7 @@ solveConstructor :: EvMode m
                              ,[(String, (Src, BinderType m))]
                              )
 solveConstructor my src (c, abs) ty p = do
-  (CArgs pats _ patRo argRo, (tycon, tyargs)) <- lookupConstructor my c ty
+  (CArgs pats _ patRo eqs argRo, (tycon, tyargs)) <- lookupConstructor my c ty
   -- Create a row of hypothetical kinds which contextualise the arguments to the
   -- constructor.
   -- These need to be Tgts because we don't know how to compute them dynamically
@@ -171,7 +171,9 @@ solveConstructor my src (c, abs) ty p = do
       -- Constrain tyargs to match pats
       trackM $ unlines ["unifys",show lhss,show tyArgKinds, show tyargs]
       typesEq "pretending to be unifys" (snd <$> tyArgKinds) lhss tyargs
-      -- unifys lhss (snd <$> tyArgKinds) tyargs
+      eqLhss <- traverse (eval (fst stuff)) (VNum . fst <$> eqs)
+      eqRhss <- traverse (eval (fst stuff)) (VNum . snd <$> eqs)
+      typesEq "checking equations" (Nat <$ eqs) eqLhss eqRhss
       p <- argProblems (fst <$> patArgWires) (normaliseAbstractor abs) p
       (tests, sol) <- solve my p
       pure ((src, PrimCtorTest c tycon node patArgWires) : tests, sol)

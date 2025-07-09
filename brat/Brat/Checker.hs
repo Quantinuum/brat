@@ -28,7 +28,7 @@ import Prelude hiding (filter)
 import Brat.Checker.Helpers
 import Brat.Checker.Monad
 import Brat.Checker.Quantity
-import Brat.Checker.SolveHoles (typeEq)
+import Brat.Checker.SolveHoles (typeEq, typesEq)
 import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve)
 import Brat.Checker.Types
 import Brat.Constructors
@@ -488,7 +488,7 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     -- TODO: Use concurrency to avoid strictness - we don't have to work out that
     -- this is a VCon immediately.
     VCon tycon tyargs <- awaitTypeDefinition ty
-    (CArgs pats nFree _ argTypeRo) <- lup vcon tycon
+    (CArgs pats nFree _ eqs argTypeRo) <- lup vcon tycon
     -- Look for vectors to produce better error messages for mismatched lengths
     -- wrap <- detectVecErrors vcon tycon tyargs pats ty (Left tm)
     -- Get the kinds of type args
@@ -496,18 +496,21 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     (_, ks) <- unzip <$> tlup (m, tycon)
     -- Turn `pats` into values for unification
     (varz, patVals) <- "$!" -! valPats2Val ks pats
-    -- Create a unification problem between tyargs and the value versions of pats
-    typeEq (show tycon) (TypeFor m []) (VCon tycon tyargs) (VCon tycon patVals)
-    ty <- eval S0 ty
-    trackM $ "Made it past unification for ty =  " ++ show ty
     Some (ny :* env) <- pure $ bwdStack varz
     -- Make sure env is the correct length for args
     Refl <- throwLeft $ natEqOrBust ny nFree
+    env <- traverseStack (sem S0) env
+    -- Create a unification problem between tyargs and the value versions of pats
+    typeEq (show tycon) (TypeFor m []) (VCon tycon tyargs) (VCon tycon patVals)
+    eqLhss <- traverse (eval env . VNum . fst) eqs
+    eqRhss <- traverse (eval env . VNum . snd) eqs
+    typesEq "Checking equations" (Nat <$ eqs) eqLhss eqRhss
+    ty <- eval S0 ty
+    trackM $ "Made it past unification for ty =  " ++ show ty
     let topy = roTopM my ny argTypeRo
     -- Weaken the scope of ty from Z to the top end of argTypeRo
     -- in the kernel case the bottom and top of the row are the same
     let ty' = weaken topy ty
-    env <- traverseStack (sem S0) env
     (_, argUnders, [(dangling, _)], _) <- anext (show vcon) (Constructor vcon)
                                           (env, Some (Zy :* S0))
                                           argTypeRo (RPr ("value", ty') R0)
@@ -1155,13 +1158,16 @@ abstractPattern my (dangling, bty) pat@(PCon pcon abst) = case (my, bty) of
                                                      ,"with type"
                                                      ,show ty])
 
+  -- N.B. We desperately want to delete these functions and have Let binding use
+  -- the normal SolvePatterns logic, so we haven't bothered to solve equations
+  -- from the CArgs here.
   abstractCon :: Modey m
               -> (QualName -> QualName -> Checking (CtorArgs m))
               -> (QualName, [Val Z])
               -> Checking (Env (EnvData m))
   abstractCon my lup (tycon, tyargs) = do
     let ty = VCon tycon tyargs
-    (CArgs vps nFree _ unders) <- lup pcon tycon
+    (CArgs vps nFree _ _eqs unders) <- lup pcon tycon
     -- Look for vectors to produce better error messages for mismatched lengths
     wrap <- detectVecErrors pcon tycon tyargs vps ty (Right pat)
     Some (ny :* zv) <- throwLeft $ valMatches tyargs vps
