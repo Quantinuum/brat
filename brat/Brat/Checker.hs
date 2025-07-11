@@ -130,13 +130,13 @@ checkWire Braty (WC fc tm) outputs (dangling, o) (hungry, u) = localFC fc $ do
   let ot = binderToValue Braty o
   let ut = binderToValue Braty u
   if outputs
-    then typeEq (show tm) (Star []) ot ut
-    else typeEq (show tm) (Star []) ut ot
+    then typeEq ("checkWire(" ++ show tm ++")") (Star []) ot ut
+    else typeEq ("checkWire(" ++ show tm ++")") (Star []) ut ot
   wire (dangling, ot, hungry)
 checkWire Kerny (WC fc tm) outputs (dangling, ot) (hungry, ut) = localFC fc $ do
   if outputs
-    then typeEq (show tm) (Dollar []) ot ut
-    else typeEq (show tm) (Dollar []) ut ot
+    then typeEq ("checkWire(" ++ show tm ++ ")") (Dollar []) ot ut
+    else typeEq ("checkWire(" ++ show tm ++ ")") (Dollar []) ut ot
   wire (dangling, ot, hungry)
 
 checkIO :: forall m d k exp act . (CheckConstraints m k, ?my :: Modey m)
@@ -504,7 +504,7 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     typeEq (show tycon) (TypeFor m []) (VCon tycon tyargs) (VCon tycon patVals)
     eqLhss <- traverse (eval env . VNum . fst) eqs
     eqRhss <- traverse (eval env . VNum . snd) eqs
-    typesEq "Checking equations" (Nat <$ eqs) eqLhss eqRhss
+    typesEq (show tycon ++ " equations") (Nat <$ eqs) eqLhss eqRhss
     ty <- eval S0 ty
     trackM $ "Made it past unification for ty =  " ++ show ty
     let topy = roTopM my ny argTypeRo

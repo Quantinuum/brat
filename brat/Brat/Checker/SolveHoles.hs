@@ -47,7 +47,7 @@ typesEq :: String -- String representation of the term for error reporting
 typesEq str k exp act = do
   prefix <- whoAmI
   trackM ("typesEq: Who am I: " ++ show prefix)
-  typeEqs str (Zy :* S0 :* S0) k exp act
+  typeEqs str 0 (Zy :* S0 :* S0) k exp act
 
 
 -- Internal version of typeEq with environment for non-closed values
@@ -58,13 +58,18 @@ typeEq' :: String -- String representation of the term for error reporting
         -> Val n -- Actual
         -> Checking ()
 typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
+  prefix <- whoAmI
   mine <- mineToSolve
   exp <- sem sems exp
   act <- sem sems act
   qexp <- quote ny exp
   qact <- quote ny act
-  traceM ("typeEq' exp: " ++ show qexp)
-  traceM ("typeEq' act: " ++ show qact)
+  traceM $
+    unlines
+    [show prefix ++ ":"
+    ,"  typeEq'(" ++ str ++ ") exp: " ++ show qexp
+    ,"  typeEq'(" ++ str ++ ") act: " ++ show qact
+    ]
   typeEqEta str stuff mine k exp act
 
 -- Presumes that the hope set and the two `Sem`s are up to date.
@@ -103,12 +108,12 @@ typeEqEta tm stuff@(ny :* _ks :* _sems) _ k exp act = do
   getEnd (VNum n) = getNumVar n
   getEnd _ = Nothing
 
-typeEqs :: String -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n -> [TypeKind] -> [Val n] -> [Val n] -> Checking ()
-typeEqs _ _ [] [] [] = pure ()
-typeEqs tm stuff (k:ks) (exp:exps) (act:acts) = do
-  mkFork "typeEqsTail" $ typeEqs tm stuff ks exps acts
-  typeEq' tm stuff k exp act
-typeEqs _ _ _ _ _ = typeErr "arity mismatch"
+typeEqs :: String -> Int -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n -> [TypeKind] -> [Val n] -> [Val n] -> Checking ()
+typeEqs _ _ _ [] [] [] = pure ()
+typeEqs tm ix stuff (k:ks) (exp:exps) (act:acts) = do
+  mkFork "typeEqsTail" $ typeEqs tm (ix + 1) stuff ks exps acts
+  typeEq' (tm ++ "." ++ show ix) stuff k exp act
+typeEqs _ _ _ _ _ _ = typeErr "arity mismatch"
 
 typeEqRow :: Modey m
           -> String -- The term we complain about in errors
@@ -141,7 +146,7 @@ typeEqRigid tm (_ :* _ :* semz) Nat exp act = do
   else err $ TypeMismatch tm ("TYPEEQRIGID " ++ show exp) ("TODO " ++ show act)
 typeEqRigid tm stuff@(_ :* kz :* _) (TypeFor m []) (VApp f args) (VApp f' args') | f == f' =
   svKind f >>= \case
-    TypeFor m' ks | m == m' -> typeEqs tm stuff (snd <$> ks) (args <>> []) (args' <>> [])
+    TypeFor m' ks | m == m' -> typeEqs tm 0 stuff (snd <$> ks) (args <>> []) (args' <>> [])
       -- pattern should always match
     _ -> err $ InternalError "quote gave a surprising result"
  where
@@ -149,7 +154,7 @@ typeEqRigid tm stuff@(_ :* kz :* _) (TypeFor m []) (VApp f args) (VApp f' args')
   svKind (VInx n) = pure $ proj kz n
 typeEqRigid tm lvkz (TypeFor m []) (VCon c args) (VCon c' args') | c == c' =
   req (TLup (m, c)) >>= \case
-        Just ks -> typeEqs tm lvkz (snd <$> ks) args args'
+        Just ks -> typeEqs tm 0 lvkz (snd <$> ks) args args'
         Nothing -> err $ TypeErr $ "Type constructor " ++ show c
                         ++ " undefined " ++ " at kind " ++ show (TypeFor m [])
 typeEqRigid tm lvkz (Star []) (VFun m0 (ins0 :->> outs0)) (VFun m1 (ins1 :->> outs1)) | Just Refl <- testEquality m0 m1 = do
