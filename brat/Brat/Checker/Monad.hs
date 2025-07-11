@@ -334,7 +334,7 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
         -- to just "have another go".
         Just _ -> let news = News (M.singleton end Unstuck)
                       newDynamics = case v of
-                        VNum nv -> numVars nv
+                        VNum nv -> [ e | e@(InEnd _) <- numVars nv ]
                         _ -> []
                   in handler (k news)
                      (ctx { store = st { valueMap = M.insert end v vm },
