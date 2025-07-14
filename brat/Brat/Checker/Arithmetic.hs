@@ -21,6 +21,11 @@ instance Ord var => Monoid (Sum var) where
 instance Ord var => Semigroup (Sum var) where
     (<>) = mappend
 
+nv_to_sum :: Ord var => NumVal var -> Sum var
+nv_to_sum (NumValue up grow) = Sum up $ case grow of
+    Constant0 -> []
+    (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
+
 -------------------------------- Number Values ---------------------------------
 -- x is the TYPE of variables, e.g. SVar or (VVar n)
 data NumVal x = NumValue
