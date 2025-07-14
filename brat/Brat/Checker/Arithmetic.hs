@@ -7,6 +7,20 @@ import Data.Ord (comparing)
 -- All Integers positive, all multipliers strictly so
 data Sum var = Sum Integer [(Monotone var, Integer )]
 
+instance Ord var => Monoid (Sum var) where
+    mempty = Sum 0 []
+    mappend (Sum n ts) (Sum n' ts') = Sum (n + n') (merge ts ts')
+     where
+      merge [] ys = ys
+      merge xs [] = xs
+      merge xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> (x, n):(merge xs yys)
+        EQ -> (x, n+m):(merge xs ys)
+        GT -> (y, m):(merge xxs ys)
+
+instance Ord var => Semigroup (Sum var) where
+    (<>) = mappend
+
 -------------------------------- Number Values ---------------------------------
 -- x is the TYPE of variables, e.g. SVar or (VVar n)
 data NumVal x = NumValue
