@@ -1,6 +1,5 @@
 module Brat.Checker.Arithmetic where
 
-import Control.Arrow ((***))
 import Data.List (minimumBy)
 import Data.Ord (comparing)
 
@@ -41,10 +40,6 @@ nv_to_sum (NumValue up grow) = Sum up $ case grow of
 nvs_to_sum :: Ord var => [NumVal var] -> Sum var
 nvs_to_sum = foldMap nv_to_sum
 
-{-gcd :: Integer -> Integer -> Integer
-gcd 0 x = x
-gcd x y = gcd (y `mod` x) x-}
-
 (-/) :: Integer -> Integer -> Integer
 a -/ b = case a-b of
     x | x >0 -> x
@@ -53,23 +48,47 @@ a -/ b = case a-b of
 simplify :: Ord var => (Sum var, Sum var) -> (Sum var, Sum var)
 simplify (Sum n xs, Sum m ys) = defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
  where
-  (xs', ys') = cancel xs ys
-
-  cancel [] ys = ([], ys)
-  cancel xs [] = (xs, [])
-  cancel xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
-        LT -> (((x, n):) *** id) (cancel xs yys)
-        EQ -> (cons_non0 (x, n -/ m) *** cons_non0 (y, m -/ n)) (cancel xs ys)
-        GT -> (id *** ((y, m):)) (cancel xxs ys)
-
-  cons_non0 (_, 0) xs = xs
-  cons_non0 xn xs = xn:xs
+  Pullbacks xs' _ ys' = pullbacks xs ys
 
   defactor (Sum n xs, Sum m ys) = (Sum (n `div` g) [(x, k `div` g) | (x, k) <- xs]
                                   ,Sum (m `div` g) [(y, k `div` g) | (y, k) <- ys]
                                   )
    where
     g = foldr gcd 0 (n : m : map snd (xs ++ ys))
+
+data Pullbacks m = Pullbacks {
+    leftDiff :: m,
+    common :: m,
+    rightDiff :: m
+  }
+
+class (Eq m, Monoid m) => PullbackMonoid m where
+  pullbacks :: m -> m -> Pullbacks m
+
+min_with_diffs :: Integer -> Integer -> Pullbacks Integer
+min_with_diffs x y = let m = min x y in Pullbacks (x - m) m (y - m) -- if x < y then (0, x, y-x) else (x-y, y, 0)
+
+instance Ord thing => PullbackMonoid [(thing, Integer)] where
+  pullbacks [] ys = Pullbacks [] [] ys
+  pullbacks xs [] = Pullbacks xs [] []
+  pullbacks xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> let Pullbacks {..} = pullbacks xs yys in Pullbacks {leftDiff=(x,n):leftDiff, ..}
+        EQ -> let Pullbacks px pc py = pullbacks xs ys
+                  Pullbacks qx qc qy = min_with_diffs n m
+                  cons_non0 (t,q) ts = if q==0 then ts else (t,q):ts
+               in Pullbacks {
+                    leftDiff = cons_non0 (x, qx) px,
+                    common = cons_non0 (x, qc) pc,
+                    rightDiff = cons_non0 (y, qy) py
+               }
+        GT -> let Pullbacks {..} = pullbacks xxs ys in Pullbacks {rightDiff = (y,m):rightDiff, ..}
+
+instance Ord var => PullbackMonoid (Sum var) where
+    pullbacks (Sum n xs) (Sum m ys) =
+        let Pullbacks x c y = min_with_diffs n m
+            Pullbacks {..} = pullbacks xs ys
+        in Pullbacks (Sum x leftDiff) (Sum c common) (Sum y rightDiff)
+
 
 -------------------------------- Number Values ---------------------------------
 -- x is the TYPE of variables, e.g. SVar or (VVar n)
