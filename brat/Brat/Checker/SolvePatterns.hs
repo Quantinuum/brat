@@ -23,6 +23,7 @@ import Brat.Syntax.Port (toEnd)
 import Control.Monad (unless)
 import Data.Bifunctor (first)
 import Data.Functor ((<&>))
+import Data.List (isPrefixOf)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
@@ -74,8 +75,12 @@ solve my ((src, DontCare):p) = do
       case ty of
         Right _ -> pure (tests, sol)
         -- Kinded things might be used to solve hopes. We pass them through so
-        -- that we can do the proper wiring in this case
-        Left k -> pure (tests, ('_':portName src, (src, ty)):sol)
+        -- that we can do the proper wiring in this case.
+        -- N.B. When we automatically create a variable name, we add `'`
+        -- characters to the later instances in the row to avoid name collisions.
+        Left k -> let newName = '_':portName src
+                      bump x = if newName `isPrefixOf` x then x ++ "'" else x
+                  in  pure (tests, (newName, (src, ty)):(first bump <$> sol))
 solve my ((src, Bind x):p) = do
   ty <- typeOfSrc my src
   (tests, sol) <- solve my p
