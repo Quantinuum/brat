@@ -45,7 +45,9 @@ a -/ b = case a-b of
     x | x >0 -> x
     _ -> 0
 
-simplify :: Ord var => (Sum var, Sum var) -> (Sum var, Sum var)
+type Eqn var = (Sum var, Sum var)
+
+simplify :: Ord var => Eqn var -> Eqn var
 simplify (Sum n xs, Sum m ys) = minOnLeft $ defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
  where
   Pullbacks xs' _ ys' = pullbacks xs ys
