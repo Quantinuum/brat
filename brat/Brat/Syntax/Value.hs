@@ -290,7 +290,7 @@ type family BinderVal (m :: Mode) where
 data NumVal x = NumValue
   { upshift :: Integer
   , grower  :: Fun00 x
-  } deriving (Eq, Foldable, Functor, Traversable)
+  } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (NumVal x) where
   show (NumValue 0 g) = show g
@@ -301,7 +301,7 @@ instance Show x => Show (NumVal x) where
 data Fun00 x
  = Constant0
  | StrictMonoFun (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Fun00 x) where
   show Constant0 = "0"
@@ -311,7 +311,7 @@ instance Show x => Show (Fun00 x) where
 data StrictMono x = StrictMono
  { multBy2ToThe :: Integer
  , monotone :: Monotone x
- } deriving (Eq, Foldable, Functor, Traversable)
+ } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (StrictMono x) where
   show (StrictMono 0 m) = show m
@@ -322,7 +322,7 @@ instance Show x => Show (StrictMono x) where
 data Monotone x
  = Linear x
  | Full (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Monotone x) where
   show (Linear v) = show v
