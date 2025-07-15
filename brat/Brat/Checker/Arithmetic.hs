@@ -46,7 +46,7 @@ a -/ b = case a-b of
     _ -> 0
 
 simplify :: Ord var => (Sum var, Sum var) -> (Sum var, Sum var)
-simplify (Sum n xs, Sum m ys) = defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
+simplify (Sum n xs, Sum m ys) = minOnLeft $ defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
  where
   Pullbacks xs' _ ys' = pullbacks xs ys
 
@@ -55,6 +55,11 @@ simplify (Sum n xs, Sum m ys) = defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
                                   )
    where
     g = foldr gcd 0 (n : m : map snd (xs ++ ys))
+
+  minOnLeft (s1@(Sum _ []), s2@(Sum _ (_:_))) = (s2, s1)
+  minOnLeft (s1@(Sum _ (x:_)), s2@(Sum _ (y:_))) | y<x = (s2, s1)
+  minOnLeft eqn = eqn
+
 
 data Pullbacks m = Pullbacks {
     leftDiff :: m,
