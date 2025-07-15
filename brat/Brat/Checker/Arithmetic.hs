@@ -5,12 +5,12 @@ import Data.Ord (comparing)
 
 -- number plus sum over a sequence of (variable/Full * number), ordered
 -- All Integers positive, all multipliers strictly so
-data Sum var = Sum [(Monotone var, Integer)] Integer
-  deriving (Eq, Show, Ord)
+data Sum var = Sum Integer [(Monotone var, Integer)]
+  deriving (Eq, Show)
 
 instance Ord var => Monoid (Sum var) where
-    mempty = Sum [] 0
-    mappend (Sum ts n) (Sum ts' n') = Sum (merge ts ts') (n + n')
+    mempty = Sum 0 []
+    mappend (Sum n ts) (Sum n' ts') = Sum (n + n') (merge ts ts')
      where
       merge [] ys = ys
       merge xs [] = xs
@@ -23,17 +23,17 @@ instance Ord var => Semigroup (Sum var) where
     (<>) = mappend
 
 sConst :: Integer -> Sum var
-sConst n = Sum [] n
+sConst n = Sum n []
 
 sVar :: var -> Sum var
-sVar v = Sum [(Linear v, 1)] 0
+sVar v = Sum 0 [(Linear v, 1)]
 
 sMul :: Sum var -> Integer -> Sum var
-sMul _ 0 = Sum [] 0
-sMul (Sum xs n) m = Sum [(x, k*m) | (x, k) <- xs] (n*m)
+sMul _ 0 = Sum 0 []
+sMul (Sum n xs) m = Sum (n*m) [(x, k*m) | (x, k) <- xs]
 
 nv_to_sum :: NumVal var -> Sum var
-nv_to_sum (NumValue up grow) = flip Sum up $ case grow of
+nv_to_sum (NumValue up grow) = Sum up $ case grow of
     Constant0 -> []
     (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
 
@@ -46,18 +46,15 @@ a -/ b = case a-b of
     _ -> 0
 
 simplify :: Ord var => (Sum var, Sum var) -> (Sum var, Sum var)
-simplify (Sum xs n, Sum ys m) = minOnLeft $ defactor (Sum xs' (n -/ m), Sum ys' (m -/ n))
+simplify (Sum n xs, Sum m ys) = defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
  where
   Pullbacks xs' _ ys' = pullbacks xs ys
 
-  defactor (Sum xs n, Sum ys m) = (Sum [(x, k `div` g) | (x, k) <- xs] (n `div` g)
-                                  ,Sum [(y, k `div` g) | (y, k) <- ys] (m `div` g)
+  defactor (Sum n xs, Sum m ys) = (Sum (n `div` g) [(x, k `div` g) | (x, k) <- xs]
+                                  ,Sum (m `div` g) [(y, k `div` g) | (y, k) <- ys]
                                   )
    where
     g = foldr gcd 0 (n : m : map snd (xs ++ ys))
-
-  minOnLeft (s1, s2) = if s2<s1 then (s2, s1) else (s1, s2)
-
 
 data Pullbacks m = Pullbacks {
     leftDiff :: m,
@@ -87,10 +84,10 @@ instance Ord thing => PullbackMonoid [(thing, Integer)] where
         GT -> let Pullbacks {..} = pullbacks xxs ys in Pullbacks {rightDiff = (y,m):rightDiff, ..}
 
 instance Ord var => PullbackMonoid (Sum var) where
-    pullbacks (Sum xs n) (Sum ys m) =
+    pullbacks (Sum n xs) (Sum m ys) =
         let Pullbacks x c y = min_with_diffs n m
             Pullbacks {..} = pullbacks xs ys
-        in Pullbacks (Sum leftDiff x) (Sum common c) (Sum rightDiff y)
+        in Pullbacks (Sum x leftDiff) (Sum c common) (Sum y rightDiff)
 
 
 -------------------------------- Number Values ---------------------------------
