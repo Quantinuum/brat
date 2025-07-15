@@ -642,6 +642,7 @@ instance DepEnds (Val n) where
   depEnds (VLam body) = depEnds body
   depEnds (VFun m cty) = depEnds cty
   depEnds (VApp (VPar e) args) = e : depEnds args
+  depEnds x = error ("depEnds " ++ show x)
 
 instance DepEnds t => DepEnds [t] where
   depEnds = concatMap depEnds

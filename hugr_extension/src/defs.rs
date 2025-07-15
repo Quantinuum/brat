@@ -12,8 +12,7 @@ use hugr::{
     std_extensions::arithmetic::int_types::INT_TYPES,
     std_extensions::collections::list_type,
     types::{
-        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Signature, Type,
-        TypeArg, TypeBound, TypeEnum, TypeRV,
+        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Signature, Type, TypeArg, TypeBound, TypeEnum,
     },
 };
 

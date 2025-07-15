@@ -52,6 +52,8 @@ import Bwd
 import Hasochism
 import Util (zipSameLength)
 
+import Debug.Trace
+
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
 standardise :: TypeKind -> Val Z -> Checking (Val Z)
@@ -749,12 +751,12 @@ checkClause my fnName cty clause = modily my $ do
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
     trackM $ "Tests: " ++ intercalate "\n" (show <$> tests)
-    trackM $ "Solution (unprocessed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
+    traceM $ "Solution (unprocessed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
     (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
       Braty -> postProcessSolAndOuts sol unders
       Kerny -> pure (sol, [])
-    trackM $ "Solution (processed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
-    trackM $ "Defs: " ++ intercalate "\n" (show <$> defs)
+    traceM $ "Solution (processed) " ++ show (index clause) ++ ": " ++ intercalate "\n" (show <$> sol)
+    traceM $ "Defs: " ++ intercalate "\n" (show <$> defs)
     -- The solution gives us the variables bound by the patterns.
     -- We turn them into a row
     mkArgRo my S0 ((\(n, (src, ty)) -> (NamedPort (toEnd src) n, ty)) <$> sol) >>= \case
@@ -762,9 +764,16 @@ checkClause my fnName cty clause = modily my $ do
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
           trackM ("patEz: " ++ show patEz)
-          let extraInputs = [srcTy | ('$':_, srcTy) <- sol]
-          let match = TestMatchData my (MatchSequence overs tests (snd <$> sol)) extraInputs
-          trackM $ "TestMatchData " ++ show match
+          let extraInputs = [srcTy | (name@('$':_), srcTy) <- sol]
+          traceM ("sol: " ++ show sol)
+--          let testOuts = [ if x == '$' then (Implicit, src, ty) else (Explicit, src, ty) | (x:_,(src, ty)) <- sol ]
+          let testOuts = [ ty | (x:_, ty) <- sol, x /= '$' ]
+          --let testOuts = snd <$> sol
+          traceM ("out: " ++ show testOuts)
+          traceM ("extra: " ++ show extraInputs)
+          let match = TestMatchData my (MatchSequence overs tests testOuts) []
+          traceM $ "[[[[[[TestMatchData\n" ++ show match ++ "\n]]]]]]"
+          traceM $ "Sig:\n  " ++ show patRo ++ "\n  ->\n  " ++ show outRo
           pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
 
   for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
@@ -820,8 +829,8 @@ checkClause my fnName cty clause = modily my $ do
          outPorts <- depOutPorts def
          srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
          zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
-         (sol, defs) <- worker zx sol
-         pure (sol, ((patVar, k), def):defs)
+         (sol, defs) <- worker (zx :< entry) sol
+         pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
 
     insert :: (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat))
     insert entry@(_, (src, _)) entryz

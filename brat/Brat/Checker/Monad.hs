@@ -26,16 +26,21 @@ import Data.Type.Equality ((:~:)(..), testEquality)
 
 -- import Debug.Trace
 
+trackDecl = const id
+--trackDecl = trace
+trackDef = const id
+--trackDef = trace
+
 -- Used for messages about thread forking / spawning
 thTrace = const id
 --thTrace = trace
 
 trackM :: Monad m => String -> m ()
---trackM = const (pure ())
-trackM = traceM
+trackM = const (pure ())
+--trackM = traceM
 
---track = const id
-track = trace
+track = const id
+--track = trace
 trackShowId x = track (show x) x
 
 -- Data for using a type alias. E.g.
@@ -290,7 +295,7 @@ handler (Req s k) ctx g
         in case M.lookup end m of
           Just _ -> Left $ dumbErr (InternalError $ "Redeclaring " ++ show end)
           Nothing -> let bty_str = case my of { Braty -> show bty; Kerny -> show bty } in
-                       track ("Declared " ++ show end ++ " :: " ++ bty_str) $
+                       trackDecl ("Declared " ++ show end ++ " :: " ++ bty_str) $
                        handler (k ())
                        (ctx { store =
                               st { typeMap = M.insert end (EndType my bty, skol) m }
@@ -322,7 +327,7 @@ handler (Req s k) ctx g
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
 
 handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
-  case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
+  case trackDef ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
       Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
       Nothing -> case M.lookup end tm of
         Nothing -> Left $ dumbErr (InternalError $ "Defining un-Declared " ++ show end ++ " in \n" ++ show tm)

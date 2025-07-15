@@ -12,6 +12,7 @@ import Hasochism (N(..))
 
 import qualified Data.Graph as G
 import qualified Data.Map as M
+import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Kind (Type)
 
@@ -80,7 +81,13 @@ data MatchSequence ty = MatchSequence
   , matchTests :: [(Src, PrimTest ty)]
   , matchOutputs ::[(Src, ty)]
   } deriving (Foldable, Functor, Traversable)
-deriving instance Show ty => Show (MatchSequence ty)
+--deriving instance Show ty => Show (MatchSequence ty)
+
+instance Show ty => Show (MatchSequence ty) where
+  show (MatchSequence { .. }) = unlines ["matchInputs:\n  " ++ intercalate "\n  " (show <$> matchInputs)
+                                        ,"matchTests:\n  " ++ intercalate "\n  " (show <$> matchTests)
+                                        ,"matchOutputs:\n  " ++ intercalate "\n  " (show <$> matchOutputs)
+                                        ]
 
 data PrimTest ty
   = PrimCtorTest

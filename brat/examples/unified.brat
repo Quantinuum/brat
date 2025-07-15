@@ -13,7 +13,8 @@
 
 replicate(X :: *, n :: #, x :: X) -> Vec(X, n)
 replicate(_, 0, _) = []
-replicate(X, succ(n), x) = cons(x, replicate(X, n, x))
+replicate(_, succ(_), x) = cons(x, replicate(!, !, x))
+
 
 -- ap(X :: *, Y :: *, n :: #, fs :: Vec({ X -> Y }, n), xs :: Vec(X, n)) -> Vec(Y, n)
 -- ap(_, _, _, [], []) = []

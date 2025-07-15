@@ -203,6 +203,9 @@ data Error = Err { fc  :: Maybe FC
 showError :: Error -> String
 showError (Err _ msg) = show msg
 
+instance Show Error where
+  show = showError -- TODO: Delete
+
 data SrcErr = SrcErr String Error
 
 instance Show SrcErr where
