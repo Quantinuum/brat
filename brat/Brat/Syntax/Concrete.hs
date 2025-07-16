@@ -9,16 +9,16 @@ import Brat.Syntax.FuncDecl (FuncDecl(..))
 import Brat.Syntax.Raw
 import Brat.Syntax.Simple
 
+type FlatIO expr = TypeRowElem (WC Flat) (KindOr RawVType)
+
 data FBody
   = FClauses (NonEmpty (WC Abstractor, WC Flat))
   | FNoLhs (WC Flat)
   | FUndefined
  deriving Show
 
-type FDecl = FuncDecl [RawIO] FBody
+type FDecl = FuncDecl [RawIO (WC Flat)] FBody
 deriving instance Show FDecl
-type FEnv = ([FDecl], [RawAlias])
-
 
 data Flat
  = FVar QualName
