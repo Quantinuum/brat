@@ -488,7 +488,7 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     -- TODO: Use concurrency to avoid strictness - we don't have to work out that
     -- this is a VCon immediately.
     VCon tycon tyargs <- awaitTypeDefinition ty
-    (CArgs pats nFree _ eqs argTypeRo) <- lup vcon tycon
+    (CArgs pats nFree _ argTypeRo) <- lup vcon tycon
     -- Look for vectors to produce better error messages for mismatched lengths
     -- wrap <- detectVecErrors vcon tycon tyargs pats ty (Left tm)
     -- Get the kinds of type args
@@ -502,9 +502,9 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
     env <- traverseStack (sem S0) env
     -- Create a unification problem between tyargs and the value versions of pats
     typeEq (show tycon) (TypeFor m []) (VCon tycon tyargs) (VCon tycon patVals)
-    eqLhss <- traverse (eval env . VNum . fst) eqs
-    eqRhss <- traverse (eval env . VNum . snd) eqs
-    typesEq (show tycon ++ " equations") (Nat <$ eqs) eqLhss eqRhss
+    -- eqLhss <- traverse (eval env . VNum . fst) eqs
+    -- eqRhss <- traverse (eval env . VNum . snd) eqs
+    -- typesEq (show tycon ++ " equations") (Nat <$ eqs) eqLhss eqRhss
     ty <- eval S0 ty
     trackM $ "Made it past unification for ty =  " ++ show ty
     let topy = roTopM my ny argTypeRo
@@ -1167,7 +1167,7 @@ abstractPattern my (dangling, bty) pat@(PCon pcon abst) = case (my, bty) of
               -> Checking (Env (EnvData m))
   abstractCon my lup (tycon, tyargs) = do
     let ty = VCon tycon tyargs
-    (CArgs vps nFree _ _eqs unders) <- lup pcon tycon
+    (CArgs vps nFree _ unders) <- lup pcon tycon
     -- Look for vectors to produce better error messages for mismatched lengths
     wrap <- detectVecErrors pcon tycon tyargs vps ty (Right pat)
     Some (ny :* zv) <- throwLeft $ valMatches tyargs vps
