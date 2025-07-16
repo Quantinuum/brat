@@ -2,6 +2,13 @@ module Brat.Checker.Arithmetic where
 
 import Brat.Syntax.Value (NumSum(..), Monotone(..))
 
+import Data.Functor ((<&>))
+import Data.List (minimumBy)
+import Data.Maybe (fromMaybe)
+import qualified Data.Set as S
+import qualified Data.Map as M
+import Data.Ord (comparing)
+
 nsConst :: Integer -> NumSum var
 nsConst n = NumSum n []
 
@@ -17,8 +24,10 @@ a -/ b = case a-b of
     x | x >0 -> x
     _ -> 0
 
-simplify :: Ord var => (NumSum var, NumSum var) -> (NumSum var, NumSum var)
-simplify (NumSum n xs, NumSum m ys) = defactor (NumSum (n -/ m) xs', NumSum (m -/ n) ys')
+type Eqn var = (NumSum var, NumSum var)
+
+simplify :: Ord var => Eqn var -> Eqn var
+simplify (NumSum n xs, NumSum m ys) = minOnLeft $ defactor (NumSum (n -/ m) xs', NumSum (m -/ n) ys')
  where
   Pullbacks xs' _ ys' = pullbacks xs ys
 
@@ -27,6 +36,10 @@ simplify (NumSum n xs, NumSum m ys) = defactor (NumSum (n -/ m) xs', NumSum (m -
                                   )
    where
     g = foldr gcd 0 (n : m : map snd (xs ++ ys))
+
+  minOnLeft (s1@(NumSum _ []), s2@(NumSum _ (_:_))) = (s2, s1)
+  minOnLeft (s1@(NumSum _ (x:_)), s2@(NumSum _ (y:_))) | y<x = (s2, s1)
+  minOnLeft eqn = eqn
 
 data Pullbacks m = Pullbacks {
     leftDiff :: m,

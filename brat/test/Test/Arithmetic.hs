@@ -7,7 +7,9 @@ import Test.Tasty.HUnit
 
 test_simplify :: TestTree
 test_simplify = testGroup "simplify" $
-    [testCase "onevar" $
+    [testCase "gcd_and_flip" $
+       (nsVar "x" `nsMul` 2, nsVar "y" <> nsConst 3) @=? simplify (nsConst 6 <> (nsVar "y" `nsMul` 2), nsVar "x" `nsMul` 4)
+    ,testCase "onevar" $
         let expected = (nsVar "x", nsConst 3)
             lhs = (nsConst 42) <> (nsVar "x" `nsMul` 10)
             rhs = (nsConst 63) <> (nsVar "x" `nsMul` 3)
