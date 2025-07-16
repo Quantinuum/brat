@@ -312,7 +312,7 @@ handler (Req s k) ctx g
                 M.lookup tycon tbl
         handler (k args) ctx g
 
-      ANewDynamic e fc -> traceM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) }) g
+      ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) }) g
 
       AskDynamics -> handler (k (dynamicSet ctx)) ctx g
 
@@ -320,7 +320,7 @@ handler (Req s k) ctx g
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
 
 handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
-  case trace ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
+  case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
       Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
       Nothing -> case M.lookup end tm of
         Nothing -> Left $ dumbErr (InternalError $ "Defining un-Declared " ++ show end ++ " in \n" ++ show tm)
@@ -339,7 +339,7 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                   in handler (k news)
                      (ctx { store = st { valueMap = M.insert end v vm },
                                     dynamicSet = case M.lookup end (dynamicSet ctx) of
-                                      Just fc -> trace ("Replace " ++ show end ++ " with " ++ show newDynamics) $
+                                      Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
                                                  M.union
                                                  (M.fromList (zip newDynamics (repeat fc)))
                                                  (M.delete end (dynamicSet ctx))

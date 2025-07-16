@@ -64,7 +64,7 @@ typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
   act <- sem sems act
   qexp <- quote ny exp
   qact <- quote ny act
-  traceM $
+  trackM $
     unlines
     [show prefix ++ ":"
     ,"  typeEq'(" ++ str ++ ") exp: " ++ show qexp

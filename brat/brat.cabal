@@ -161,6 +161,7 @@ test-suite tests
   hs-source-dirs:      test
   main-is:             Main.hs
   other-modules:       Test.Abstractor,
+                       Test.Arithmetic,
                        Test.Checking,
                        Test.Compile.Hugr,
                        Test.Elaboration,
