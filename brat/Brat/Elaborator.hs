@@ -12,6 +12,8 @@ import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Raw
 import Brat.Error
 
+type FEnv = ([FDecl], [RawAlias])
+
 assertSyn :: Dirable d => WC (Raw d k) -> Either Error (WC (Raw Syn k))
 assertSyn s@(WC fc r) = case dir r of
   Syny -> pure s
@@ -196,6 +198,12 @@ elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
 
+elabSig :: [RawIO (WC Flat)] -> Either Error (RawIO (NumSum (WC RawVType)))
+elabSig [] = pure []
+elabSig (Named x ty:rest) = (Named x ty:) <$> elabSig rest
+elabSig (Anon ty:rest) = (Anon ty:) <$> elabSig rest
+elabSig (Constraint e0 e1) = Constraint . Eqn <$> elaborateChkNoun e0 <*> elaborateChkNounArith e1
+
 elabBody :: FBody -> FC -> Either Error (FunBody Raw Noun)
 elabBody (FClauses cs) fc = ThunkOf . WC fc . Clauses <$> traverse elab1Clause cs
  where
@@ -217,6 +225,7 @@ elabBody FUndefined _ = pure Undefined
 elabFunDecl :: FDecl -> Either Error RawFuncDecl
 elabFunDecl d = do
   rc <- elabBody (fnBody d) (fnLoc d)
+  sig <- elabSig (fnSig d)
   pure $ FuncDecl
     { fnName = fnName d
     , fnLoc = fnLoc d
@@ -224,7 +233,6 @@ elabFunDecl d = do
     , fnBody = rc
     , fnLocality = fnLocality d
     }
-
 
 elabEnv :: FEnv -> Either Error RawEnv
 elabEnv (ds, x) = (,x,empty) <$> forM ds elabFunDecl

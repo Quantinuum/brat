@@ -14,6 +14,7 @@ import qualified Data.Map as M
 import Data.Tuple.HT (thd3)
 
 import Bwd
+import Brat.Checker.Arithmetic
 import Brat.Constructors
 import Brat.Error
 import Brat.FC hiding (end)
@@ -23,7 +24,8 @@ import Brat.Syntax.Common
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Simple
-import Util (names, (**^))
+import Brat.Syntax.Value (NumSum(..), NumVal, nFull, nPlus, n2PowTimes, nVar, nv_to_sum)
+import Util (log2, names, (**^))
 
 type family TypeOf (k :: Kind) :: Type where
   TypeOf Noun = [InOut]
@@ -31,28 +33,36 @@ type family TypeOf (k :: Kind) :: Type where
 
 type RawVType = Raw Chk Noun
 
-type RawIO = TypeRowElem (KindOr RawVType)
+-- Raw stuff that's also used in Brat.Syntax.Concrete
+type RawIO = TypeRowElem (WC RawVType) (KindOr RawVType)
 
 type RawCType = CType' RawIO
-type RawKType = CType' (TypeRowElem RawVType)
+type RawKType = CType' (TypeRowElem (WC RawVType) RawVType)
 
 data TypeAliasF tm = TypeAlias FC QualName [(PortName,TypeKind)] tm deriving Show
-type RawAlias = TypeAliasF (Raw Chk Noun)
 type TypeAlias = TypeAliasF (Term Chk Noun)
 
 type TypeAliasTable = M.Map QualName TypeAlias
 
+type RawAlias = TypeAliasF (Raw Chk Noun)
+
+
 type RawEnv = ([RawFuncDecl], [RawAlias], TypeAliasTable)
 type RawFuncDecl = FuncDecl [RawIO] (FunBody Raw Noun)
 
-addNames :: TypeRow ty -> [(PortName, ty)]
+type ConstraintOrPort ty = Either TermConstraint (PortName, ty)
+type TermConstraint = Eqn QualName
+
+addNames :: TypeRow (WC RawVType) ty -> [Either (Eqn (WC RawVType)) (PortName, ty)]
 addNames tms = aux (fromList names) tms
  where
   -- aux is passed the infinite list `names`, so we can use the partial function
   -- `fromList` to repeatedly convert it to NonEmpty so GHC doesn't complain
   -- about the missing case `aux [] _`
-  aux (n :| ns) ((Anon tm):tms) = (n, tm) : aux (fromList ns) tms
-  aux ns ((Named n tm):tms)  = (n, tm) : aux ns tms
+  aux :: NonEmpty String -> [TypeRowElem (NumSum QualName) ty] -> [ConstraintOrPort ty]
+  aux (n :| ns) ((Anon tm):tms) = Right (n, tm) : aux (fromList ns) tms
+  aux ns ((Named n tm):tms)  = Right (n, tm) : aux ns tms
+  aux ns ((Constraint a b):rest) = Left (a, b) : aux ns rest
   aux _ [] = []
 
 data Raw :: Dir -> Kind -> Type where
@@ -194,8 +204,46 @@ class Desugarable ty where
 
   desugar' :: ty -> Desugar (Desugared ty)
 
-instance Desugarable ty => Desugarable (TypeRow ty) where
-  type Desugared (TypeRow ty) = TypeRow (Desugared ty)
+instance Desugarable ty => Desugarable (TypeRowElem (WC RawVType) ty) where
+    type Desugared (TypeRowElem (WC RawVType) ty) = TypeRowElem (NumSum QualName) (Desugared ty)
+    desugar' (Anon ty) = Anon <$> desugar' ty
+    desugar' (Named x ty) = Named x <$> desugar' ty
+    desugar' (Constraint a b) = case (,) <$> elabArith a <*> elabArith b of
+      Left e -> throwError e
+      Right (a,b) -> pure (Constraint a b)
+     where
+      elabArith :: WC RawVType -> Either Error (NumSum QualName)
+      elabArith (WC _ (RVar x)) = pure (nsVar x)
+      elabArith (WC fc (RArith Add a b)) = do
+        nsa <- elabArith a
+        nsb <- elabArith b
+        pure (nsa <> nsb)
+      elabArith (WC fc (RArith Mul a b)) = do
+        nsa <- elabArith a
+        nsb <- elabArith b
+        case (isScalar nsa, isScalar nsb) of
+          (Just n, _) -> pure $ nsb `nsMul` n
+          (_, Just n) -> pure $ nsa `nsMul` n
+          _ -> Left $ Err (Just fc) (DesugarErr "Arithmetic too confusing")
+      elabArith (WC fc (RArith Pow a b)) = do
+        nsa <- elabArith a
+        nsb <- elabArith b
+        case (isScalar a, sumToVal b) of
+          (Just 2, Just nv) -> nsConst 1 <> nv_to_sum (nFull nv)
+          _ -> Left $ Err (Just fc) (DesugarErr "Arithmetic too confusing")
+      elabArith (WC fc (RArith op _ _)) = Left $ Err (Just fc) (DesugarErr ("Operation " ++ show op ++ " not allowed in constraints"))
+      elabArith (WC fc _) = Left $ Err (Just fc) (DesugarErr "Malformed arithmetic in constraint")
+
+      isScalar :: NumSum QualName -> Maybe Integer
+      isScalar (NumSum n []) = Just n
+      isScalar _ = Nothing
+
+      sumToVal :: NumSum QualName -> Maybe (NumVal QualName)
+      sumToVal (NumSum up [(n, k)]) | Just l <- log2 k = Just $ nPlus up (n2PowTimes l (nVar n)
+
+
+instance (Desugarable e, Desugarable ty) => Desugarable (TypeRow e ty) where
+  type Desugared (TypeRow e ty) = TypeRow (Desugared e) (Desugared ty)
   desugar' = traverse (traverse desugar')
 
 instance (Kindable k) => Desugarable (Raw d k) where
@@ -255,8 +303,8 @@ instance Desugarable ty => Desugarable (PortName, ty) where
   type Desugared (PortName, ty) = (PortName, Desugared ty)
   desugar' (p, ty) = (p,) <$> desugar' ty
 
-instance Desugarable (CType' (TypeRowElem RawVType)) where
-  type Desugared (CType' (TypeRowElem RawVType)) = CType' (PortName, Term Chk Noun)
+instance Desugarable (CType' (TypeRowElem (WC RawVType) RawVType)) where
+  type Desugared (CType' (TypeRowElem (WC RawVType) RawVType)) = CType' (Either TermConstraint (PortName, Term Chk Noun))
   desugar' (ss :-> ts) = do
     ss <- traverse desugar' (addNames ss)
     ts <- traverse desugar' (addNames ts)
@@ -299,8 +347,8 @@ desugarBind tys m = worker (addNames tys)
     pure ((p, Right ty):ns, t)
   worker [] = ([],) <$> m
 
-instance Desugarable (CType'  RawIO) where
-  type Desugared (CType' RawIO) = CType' (PortName, KindOr (Term Chk Noun))
+instance Desugarable (CType' RawIO) where
+  type Desugared (CType' RawIO) = CType' (Either TermConstraint (PortName, KindOr (Term Chk Noun)))
   desugar' (ss :-> ts) = do
     (ss, (ts, ())) <- desugarBind ss $ desugarBind ts $ pure ()
     pure $ ss :-> ts

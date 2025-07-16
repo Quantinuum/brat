@@ -46,7 +46,7 @@ import Brat.QualName
 import Brat.Syntax.Abstractor
 import Brat.Syntax.Port
 
-import Data.Bifunctor (first)
+import Data.Bifunctor
 import Data.List (intercalate)
 import Data.Kind (Type)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
@@ -94,25 +94,42 @@ instance TestEquality Modey where
   testEquality Kerny Kerny = Just Refl
   testEquality _ _ = Nothing
 
-data TypeRowElem ty = Named PortName ty | Anon ty deriving (Foldable, Functor, Traversable)
-type TypeRow ty = [TypeRowElem ty]
+-- This is double parameterised because Constraints are parsed as if they're terms
+-- and require some extra elaboration
+data TypeRowElem expr ty = Named PortName ty | Anon ty | Constraint expr expr
+ deriving (Functor, Foldable, Traversable)
 
-forgetPortName :: TypeRowElem ty -> ty
+instance Bifunctor TypeRowElem where
+  first f (Constraint a b) = Constraint (f a) (f b)
+  first _ (Named p ty) = Named p ty
+  first _ (Anon ty) = Anon ty
+
+  second _ (Constraint a b) = Constraint a b
+  second f (Named p ty) = Named p (f ty)
+  second f (Anon ty) = Anon (f ty)
+
+type TypeRow expr ty = [TypeRowElem expr ty]
+
+forgetPortName :: TypeRowElem expr ty -> ty
 forgetPortName (Anon ty) = ty
 forgetPortName (Named _ ty) = ty
 
-toTypeRow :: [(String, ty)] -> TypeRow ty
+toTypeRow :: [(String, ty)] -> TypeRow expr ty
 toTypeRow = fmap (uncurry Named)
 
-instance Show ty => Show (TypeRowElem ty) where
+instance (Show ty, Show expr) => Show (TypeRowElem expr ty) where
   show (Named p ty) = p ++ " :: " ++ show ty
   show (Anon ty) = show ty
+  show (Constraint a b) = show a ++ " = " ++ show b
 
+{-
 instance Eq ty => Eq (TypeRowElem ty) where
   Named _ ty == Named _ ty' = ty == ty'
   Anon ty == Named _ ty' = ty == ty'
   Named _ ty == Anon ty' = ty == ty'
   Anon ty == Anon ty' = ty == ty'
+  _ == _ = False
+-}
 
 data TypeKind = TypeFor Mode [(PortName, TypeKind)] | Nat
   deriving (Eq, Ord)

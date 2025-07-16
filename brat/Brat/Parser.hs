@@ -15,6 +15,7 @@ import Brat.Syntax.FuncDecl (FuncDecl(..), Locality(..))
 import Brat.Syntax.Concrete
 import Brat.Syntax.Raw
 import Brat.Syntax.Simple
+import Brat.Syntax.Value (Eqn(..), NumSum(..))
 import Brat.Elaborator
 import Data.Bracket
 import Util ((**^))
@@ -274,7 +275,18 @@ rawIOFC = rowElem `sepBy` void (try comma)
   rowElem = try (inBrackets Paren rowElem') <|> rowElem'
 
   rowElem' :: Parser (TypeRowElem (WC (KindOr RawVType)))
-  rowElem' = try namedKind <|> try namedType <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> vtype)
+  rowElem' = constraint <|> try namedKind <|> try namedType <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> vtype)
+
+  -- The introduction of a constraint is signalled by a `|`, followed by
+  -- `<expr> = <expr>`. We'll check the `<expr>`s are valid arithmetic
+  -- expressions during elaboration.
+  constraint :: Parser (TypeRowElem (WC (KindOr (RawVType))))
+  constraint = do
+    match Pipe
+    lhs <- expr' PAddSub
+    match Equal
+    rhs <- expr' PAddSub
+    pure (lhs, rhs)
 
   namedType :: Parser (TypeRowElem (WC (KindOr RawVType)))
   namedType = do
@@ -290,7 +302,7 @@ rawIOFC = rowElem `sepBy` void (try comma)
     WC kFC k <- typekind
     pure (Named p (WC (spanFC pFC kFC) (Left k)))
 
-rawIO :: Parser [RawIO]
+rawIO :: Parser [FlatIO]
 rawIO = fmap (fmap unWC) <$> rawIOFC
 
 rawIO' :: Parser ty -> Parser (TypeRow ty)
@@ -312,7 +324,7 @@ spanningFC [] = customFailure (Custom "Internal: RawIO shouldn't be empty")
 spanningFC [x] = pure (WC (fcOf $ forgetPortName x) [unWC <$> x])
 spanningFC (x:xs) = pure (WC (spanFC (fcOf $ forgetPortName x) (fcOf . forgetPortName $ last xs)) (fmap unWC <$> (x:xs)))
 
-rawIOWithSpanFC :: Parser (WC [RawIO])
+rawIOWithSpanFC :: Parser (WC [FlatIO])
 rawIOWithSpanFC = spanningFC =<< rawIOFC
 
 vec :: Parser (WC Flat)
@@ -775,7 +787,7 @@ pstmt = ((comment <?> "comment")                 <&> \_ -> ([] , []))
                  , fnLocality = Extern symbol
                  }
 
-declSignature :: Parser (WC [RawIO])
+declSignature :: Parser (WC [FlatIO])
 declSignature = try nDecl <|> vDecl where
  nDecl = match TypeColon >> rawIOWithSpanFC
  vDecl = functionSignature <&> fmap (\ty -> [Named "thunk" (Right ty)])
