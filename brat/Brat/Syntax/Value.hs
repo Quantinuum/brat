@@ -226,6 +226,8 @@ data Ro :: Mode
   RPr :: {------} (PortName, Val bot)
       -> {--------------------------} Ro m bot top
       -> Ro m bot {--------------------------} top
+  -- Numeric constraints
+  RCo :: (NumSum (VVar bot), NumSum (VVar bot)) -> Ro m bot top -> Ro m bot top
 
 
 instance forall m top bot. MODEY m => Show (Ro m bot top) where
