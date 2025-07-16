@@ -1,38 +1,13 @@
 module Brat.Checker.Arithmetic where
 
-import Brat.Syntax.Value (NumVal(..), Fun00(..), StrictMono(..), Monotone(..))
+import Brat.Syntax.Value (NumSum(..), Monotone(..))
 
--- number plus sum over a sequence of (variable/Full * number), ordered
--- All Integers positive, all multipliers strictly so
-data NumSum var = NumSum Integer [(Monotone var, Integer)]
-  deriving (Eq, Show)
 nsConst :: Integer -> NumSum var
 nsConst n = NumSum n []
 
-instance Ord var => Monoid (NumSum var) where
-    mempty = NumSum 0 []
-    mappend (NumSum n ts) (NumSum n' ts') = NumSum (n + n') (merge ts ts')
-     where
-      merge [] ys = ys
-      merge xs [] = xs
-      merge xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
-        LT -> (x, n):(merge xs yys)
-        EQ -> (x, n+m):(merge xs ys)
-        GT -> (y, m):(merge xxs ys)
-
-instance Ord var => Semigroup (NumSum var) where
-    (<>) = mappend
-
-
-nv_to_sum :: NumVal var -> NumSum var
-nv_to_sum (NumValue up grow) = NumSum up $ case grow of
-    Constant0 -> []
-    (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
 nsVar :: var -> NumSum var
 nsVar v = NumSum 0 [(Linear v, 1)]
 
-nvs_to_sum :: Ord var => [NumVal var] -> NumSum var
-nvs_to_sum = foldMap nv_to_sum
 nsMul :: NumSum var -> Integer -> NumSum var
 nsMul _ 0 = NumSum 0 []
 nsMul (NumSum n xs) m = NumSum (n*m) [(x, k*m) | (x, k) <- xs]

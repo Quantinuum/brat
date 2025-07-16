@@ -634,3 +634,30 @@ numVars nv = [e | v@(VPar e) <- vvars nv]
  where
   vvars :: NumVal a -> [a]
   vvars = foldMap pure
+
+-- number plus sum over a sequence of (variable/Full * number), ordered
+-- All Integers positive, all multipliers strictly so
+data NumSum var = NumSum Integer [(Monotone var, Integer)]
+  deriving (Eq, Show)
+
+instance Ord var => Monoid (NumSum var) where
+    mempty = NumSum 0 []
+    mappend (NumSum n ts) (NumSum n' ts') = NumSum (n + n') (merge ts ts')
+     where
+      merge [] ys = ys
+      merge xs [] = xs
+      merge xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> (x, n):(merge xs yys)
+        EQ -> (x, n+m):(merge xs ys)
+        GT -> (y, m):(merge xxs ys)
+
+instance Ord var => Semigroup (NumSum var) where
+    (<>) = mappend
+
+nv_to_sum :: NumVal var -> NumSum var
+nv_to_sum (NumValue up grow) = NumSum up $ case grow of
+    Constant0 -> []
+    (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
+
+nvs_to_sum :: Ord var => [NumVal var] -> NumSum var
+nvs_to_sum = foldMap nv_to_sum
