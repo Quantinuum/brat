@@ -2,5 +2,5 @@ Error in test/golden/kernel/kernel_application.brat on line 16:
 rotate = { q => maybeRotate(true) }
                 ^^^^^^^^^^^
 
-  Type error: Expected a (kernel) function or vector of functions, got { (a1 :: Bool) -> (a1 :: { (a1 :: Qubit) -o (a1 :: Qubit) }) }
+  Type error: Expected a (kernel) function or vector of functions, got { (_0 :: Bool) -> (_1 :: { (_0 :: Qubit) -o (_0 :: Qubit) }) }
 

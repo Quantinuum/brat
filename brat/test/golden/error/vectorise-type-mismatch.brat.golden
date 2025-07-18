@@ -3,6 +3,6 @@ panic = 2 of 42
         ^^^^^^^
 
   Type error: Got: Vector of length 2
-Expected: (a1 :: Vec(Nat, 1))
+Expected: (_0 :: Vec(Nat, 1))
 
 

@@ -5,8 +5,8 @@ Nodes:
 (check_defs_1_n_$rhs_check'Con_succ_1,BratNode (Constructor succ) [("value",Nat)] [("value",Nat)])
 (globals_Int_4,BratNode (Constructor Int) [] [("value",[])])
 (globals_Nat_1,BratNode (Constructor Nat) [] [("value",[])])
-(globals_decl_2_n,BratNode Id [("a1",Nat)] [("a1",Nat)])
-(globals_decl_5_m,BratNode Id [("a1",Int)] [("a1",Int)])
+(globals_decl_2_n,BratNode Id [("_0",Nat)] [("_0",Nat)])
+(globals_decl_5_m,BratNode Id [("_0",Int)] [("_0",Int)])
 
 Wires:
 (Ex check_defs_1_m_2_$rhs_check'Con_const_2 0,Int,In check_defs_1_m_2_$rhs_check'Con_doub_1 0)

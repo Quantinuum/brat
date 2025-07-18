@@ -2,6 +2,7 @@ module Brat.Load (loadFilename
                  ,loadFiles
                  ,parseFile
                  ,desugarEnv
+                 ,VDecl(..)
                  ) where
 
 import Brat.Checker

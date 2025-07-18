@@ -2,5 +2,5 @@ Error in test/golden/error/portpull-ambiguous.brat on line 6:
 id2 = x, y => (id,id)(a1:x, y)
                      ^^^^^^^^^
 
-  Port a1 is ambiguous in (a1 :: Nat), (a1 :: Nat)
+  Port not found: a1 in (_0 :: Nat, _0 :: Nat)
 

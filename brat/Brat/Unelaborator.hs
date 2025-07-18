@@ -1,17 +1,23 @@
 module Brat.Unelaborator (unelab) where
 
-import Brat.FC (unWC)
-import Brat.Syntax.Concrete (Flat(..))
-import Brat.Syntax.Common (Dir(..), Kind(..), Diry(..), Kindy(..)
-                          ,KindOr, PortName, TypeRowElem(Named), CType'(..)
+import Brat.FC (dummyFC, spanFC, unWC, WC(..))
+import Brat.QualName (QualName(..))
+import Brat.Syntax.Common (ArithOp(..), Dir(..), Kind(..), Diry(..), Kindy(..)
+                          ,KindOr, PortName, TypeRowElem(..), CType'(..)
+                          ,TypeKind(..)
                           )
-import Brat.Syntax.Core (Term(..))
-import Brat.Syntax.Raw (Raw(..), RawVType)
+import Brat.Syntax.Concrete (Flat(..))
+import Brat.Syntax.Core (Term(..), TermConstraint)
+import Brat.Syntax.Raw (Raw(..), RawIO, RawVType)
+import Brat.Syntax.Simple (SimpleTerm(..))
+import Brat.Syntax.Value (Monotone(..), NumSum(..), StrictMono(..))
 
-import Data.Bifunctor (second)
+import Data.Bifunctor (bimap, second)
 import Data.List.NonEmpty (NonEmpty(..))
 
-unelab :: Diry d -> Kindy k -> Term d k -> Flat
+type Type = Term Chk Noun
+
+unelab :: TypeRowTransform Flat => Diry d -> Kindy k -> Term d k -> Flat
 unelab _ _ (Simple tm) = FSimple tm
 unelab dy ky (Let abs expr body) = FLetIn abs (unelab Syny Nouny <$> expr) (unelab dy ky <$> body)
 unelab _ _ (NHole name) = FHole (show name)
@@ -28,15 +34,21 @@ unelab _ ky (Pull ps tm) = FPull ps (unelab Chky ky <$> tm)
 unelab _ _ (Var v) = FVar v
 unelab dy ky (Arith op lhs rhs) = FArith op (unelab dy ky <$> lhs) (unelab dy ky <$> rhs)
 unelab dy _ (Of n e) = FOf (unelab Chky Nouny <$> n) (unelab dy Nouny <$> e)
-unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (toRawRo outs)
+unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (unelabRowElem (dummyFC . second (unelab Chky Nouny)) <$> outs)
 unelab dy ky (top :-: bot) = case ky of
   Nouny -> FInto (unelab Syny Nouny <$> top) (unelab dy UVerby <$> bot)
   _ -> FApp (unelab Syny ky <$> top) (unelab dy UVerby <$> bot)
 unelab dy ky (f :$: s) = FApp (unelab dy KVerby <$> f) (unelab Chky ky <$> s)
 unelab dy _ (Lambda (abs,rhs) cs) = FLambda ((abs, unelab dy Nouny <$> rhs) :| (second (fmap (unelab Chky Nouny)) <$> cs))
 unelab _ _ (Con c args) = FCon c (unelab Chky Nouny <$> args)
-unelab _ _ (C (ss :-> ts)) = FFn (toRawRo ss :-> toRawRo ts)
-unelab _ _ (K cty) = FKernel $ fmap (\(p, ty) -> Named p (toRaw ty)) cty
+unelab _ _ (C (ss :-> ts)) = FFn ((f <$> ss)
+                                  :->
+                                  (f <$> ts)
+                                 )
+ where
+  f :: TypeRowElem TermConstraint (KindOr (Term Chk Noun)) -> TypeRowElem (WC Flat) (WC (KindOr Flat))
+  f = unelabRowElem (dummyFC . second (unelab Chky Nouny))
+unelab _ _ (K cty) = FKernel $ fmap (unelabRowElem (dummyFC . unelab Chky Nouny)) cty
 unelab _ _ Identity = FIdentity
 unelab _ _ Hope = FHope
 unelab _ _ FanIn = FFanIn
@@ -60,17 +72,74 @@ toRaw (Pull ps tm) = RPull ps $ toRaw <$> tm
 toRaw (Var v) = RVar v
 toRaw (Arith op lhs rhs) = RArith op (toRaw <$> lhs) (toRaw <$> rhs)
 toRaw (Of n e) = ROf (toRaw <$> n) (toRaw <$> e)
-toRaw (tm ::: outs) = (toRaw <$> tm) ::::: toRawRo outs
+toRaw (tm ::: outs) = (toRaw <$> tm) ::::: (fmap (unelabRowElem (second toRaw)) outs)
 toRaw (top :-: bot) = (toRaw <$> top) ::-:: (toRaw <$> bot)
 toRaw (f :$: s) = (toRaw <$> f) ::$:: (toRaw <$> s)
 toRaw (Lambda (abs,rhs) cs) = RLambda (abs, toRaw <$> rhs) (second (fmap toRaw) <$> cs)
 toRaw (Con c args) = RCon c (toRaw <$> args)
-toRaw (C (ss :-> ts)) = RFn (toRawRo ss :-> toRawRo ts)
-toRaw (K cty) = RKernel $ (\(p, ty) -> Named p (toRaw ty)) <$> cty
+toRaw (C (ss :-> ts)) = let f row = fmap (unelabRowElem (second toRaw)) row
+                         in RFn (f ss :-> f ts)
+toRaw (K (ss :-> ts)) = let f row = fmap (unelabRowElem toRaw) row
+                         in RKernel (f ss :-> f ts)
 toRaw Identity = RIdentity
 toRaw Hope = RHope
 toRaw FanIn = RFanIn
 toRaw FanOut = RFanOut
 
-toRawRo :: [(PortName, KindOr (Term Chk Noun))] -> [TypeRowElem (KindOr RawVType)]
-toRawRo = fmap (\(p, bty) -> Named p (second toRaw bty))
+--rawConstraints :: NumSum QualName -> WC (Raw Chk Noun)
+--rawConstraints = transformConstraints RArith RSimple (REmb . dummyFC . RVar)
+
+class TypeRowTransform raw where
+  -- Constructor for an arith op in `raw`
+  fArith :: ArithOp -> WC raw -> WC raw -> raw
+  -- Constructor for simple terms in `raw`
+  fSimple :: SimpleTerm -> raw
+  -- Constructor for variables in `raw`
+  fVar :: QualName -> raw
+
+--  -- Transform types
+--  transformType :: Term d k -> raw
+
+--  transform :: [TypeRowElem (NumSum QualName) (Term d k)] -> [TypeRowElem (WC raw) raw]
+--  transform = fmap (bimap transformConstraint transformRow)
+--
+--  transformRow :: [TypeRowElem con (Term d k)] -> [TypeRowElem con raw]
+--  transformRow = fmap (second transformType)
+
+  transformConstraint :: NumSum QualName -> WC raw
+  transformConstraint ns = dummyFC (nsToRaw ns)
+   where
+    arith :: ArithOp -> raw -> raw -> raw
+    arith op lhs rhs = fArith op (dummyFC lhs) (dummyFC rhs)
+
+    num :: Integer -> raw
+    num n = fSimple (Num (fromIntegral n))
+
+    nsToRaw :: NumSum QualName -> raw
+    nsToRaw (NumSum 0 [nk]) = nkToRaw nk
+    nsToRaw (NumSum 0 (nk:rest)) = arith Add (nkToRaw nk) (nsToRaw (NumSum 0 rest))
+    nsToRaw (NumSum n nks) = arith Add (num n) (nsToRaw (NumSum 0 nks))
+
+    nkToRaw (n, k) = arith Mul (num k) (monoToRaw n)
+
+    monoToRaw :: Monotone QualName -> raw
+    monoToRaw (Linear name) = fVar name
+    monoToRaw (Full mono) = let pow = arith Pow (num 2) (smToRaw mono)
+                             in arith Sub pow (num 1)
+
+    smToRaw :: StrictMono QualName -> raw
+    smToRaw (StrictMono 0 mono) = monoToRaw mono
+    smToRaw (StrictMono k mono) = arith Mul (arith Pow (num 2) (num k)) (monoToRaw mono)
+
+instance TypeRowTransform (Raw Chk Noun) where
+  fArith = RArith
+  fSimple = RSimple
+  fVar = REmb . dummyFC . RVar
+
+instance TypeRowTransform Flat where
+  fArith = FArith
+  fSimple = FSimple
+  fVar = FVar
+
+unelabRowElem :: TypeRowTransform rawCon => (ty -> rawTy) -> TypeRowElem (NumSum QualName) ty -> TypeRowElem (WC rawCon) rawTy
+unelabRowElem f = bimap transformConstraint f

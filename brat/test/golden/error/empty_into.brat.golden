@@ -2,8 +2,8 @@ Error in test/golden/error/empty_into.brat on line 5:
 intoErr = |> makeInt
           ^^^^^^^^^^
 
-  Type mismatch when checking makeInt()(())
-Expected: (a1 :: Bool)
-But got:  (a1 :: Int)
+  Type mismatch when checking checkWire(makeInt()(()))
+Expected: (_0 :: Bool)
+But got:  (_0 :: Int)
 
 

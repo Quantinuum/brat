@@ -3,5 +3,5 @@ go(n) = thunks(n)
         ^^^^^^^^^
 
   Type error: Expected function thunks() to consume all of its arguments (「n」)
- but found leftovers: (a1 :: Int)
+ but found leftovers: (_0 :: Int)
 
