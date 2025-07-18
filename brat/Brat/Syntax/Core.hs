@@ -3,7 +3,8 @@ module Brat.Syntax.Core (Term(..)
                         ,Output
                         ,InOut
                         ,CType
-                        ,CoreFuncDecl
+--                        ,CoreFuncDecl
+                        ,TermConstraint
                         ,Precedence(..)
                         ,precedence
                         ) where
@@ -19,17 +20,18 @@ import Brat.QualName
 import Brat.Syntax.Common
 import Brat.Syntax.FuncDecl
 import Brat.Syntax.Simple
+import Brat.Syntax.Value (NumSum)
 
 import Data.Kind (Type)
 import Data.Maybe (fromJust)
 
+type TermConstraint = NumSum QualName
+
 type Input = InOut
 type Output = InOut
-type InOut = (PortName, KindOr (Term Chk Noun))
+type InOut = (KindOr (Term Chk Noun))
 
 type CType = CType' InOut
-
-type CoreFuncDecl = FuncDecl [InOut] (FunBody Term Noun)
 
 data Term :: Dir -> Kind -> Type where
   Simple   :: SimpleTerm -> Term Chk Noun
@@ -54,7 +56,7 @@ data Term :: Dir -> Kind -> Type where
   Of       :: WC (Term Chk Noun) -> WC (Term d Noun) -> Term d Noun
 
   -- Type annotations (annotating a term with its outputs)
-  (:::)    :: WC (Term Chk Noun) -> [Output] -> Term Syn Noun
+  (:::)    :: WC (Term Chk Noun) -> [TypeRowElem TermConstraint (KindOr (Term Chk Noun))] -> Term Syn Noun
   -- Composition: values fed from source (first) into dest (second),
   -- of number/type determined by the source
   (:-:)    :: WC (Term Syn k) -> WC (Term d UVerb) -> Term d k
@@ -67,13 +69,13 @@ data Term :: Dir -> Kind -> Type where
   -- Type constructors
   Con      :: QualName -> WC (Term Chk Noun) -> Term Chk Noun
   -- Brat function types
-  C        :: CType' (PortName, KindOr (Term Chk Noun)) -> Term Chk Noun
+  C        :: CType' (TypeRowElem TermConstraint (KindOr (Term Chk Noun))) -> Term Chk Noun
   -- Kernel types
-  K        :: CType' (PortName, Term Chk Noun) -> Term Chk Noun
+  K        :: CType' (TypeRowElem TermConstraint (Term Chk Noun)) -> Term Chk Noun
   FanOut   :: Term Syn UVerb
   FanIn    :: Term Chk UVerb
 
-deriving instance Eq (Term d k)
+-- deriving instance Eq (Term d k)
 
 -- N.B. The effort going into making a nice show instance for Term should also
 -- go into the Show instance for Flat, which should be the user facing format,

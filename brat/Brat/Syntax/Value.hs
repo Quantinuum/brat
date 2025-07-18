@@ -25,7 +25,6 @@ module Brat.Syntax.Value {-(VDecl
 import Brat.Error
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.Core (Term (..))
 import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
@@ -35,15 +34,6 @@ import Data.Ord (comparing)
 import Data.Kind (Type)
 import Data.Maybe (isJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
-
-newtype VDecl = VDecl (FuncDecl (Some (Ro Brat Z)) (FunBody Term Noun))
-
-instance MODEY Brat => Show VDecl where
-  show (VDecl decl) = show $ aux decl
-   where
-    aux :: FuncDecl (Some (Ro Brat Z)) body -> FuncDecl String body
-    aux (FuncDecl { .. }) = case fnSig of
-      Some sig -> FuncDecl { fnName = fnName, fnSig = show sig, fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
 
 ------------------------------------ Variable Indices ------------------------------------
 -- Well scoped de Bruijn indices
@@ -640,7 +630,7 @@ numVars nv = [e | v@(VPar e) <- vvars nv]
 -- number plus sum over a sequence of (variable/Full * number), ordered
 -- All Integers positive, all multipliers strictly so
 data NumSum var = NumSum Integer [(Monotone var, Integer)]
-  deriving (Eq, Show)
+  deriving (Eq, Foldable, Functor, Show, Traversable)
 
 instance Ord var => Monoid (NumSum var) where
     mempty = NumSum 0 []
@@ -655,6 +645,9 @@ instance Ord var => Monoid (NumSum var) where
 
 instance Ord var => Semigroup (NumSum var) where
     (<>) = mappend
+
+changeNumSumVars :: VarChanger src tgt -> NumSum (VVar src) -> NumSum (VVar tgt)
+changeNumSumVars ch = fmap (changeVar ch)
 
 nv_to_sum :: NumVal var -> NumSum var
 nv_to_sum (NumValue up grow) = NumSum up $ case grow of

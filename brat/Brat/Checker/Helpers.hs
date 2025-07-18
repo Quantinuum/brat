@@ -111,12 +111,6 @@ pullPortsRow :: Show ty
              -> Checking [(NamedPort e, ty)]
 pullPortsRow = pullPorts (portName . fst) showRow
 
-pullPortsSig :: Show ty
-             => [PortName]
-             -> [(PortName, ty)]
-             -> Checking [(PortName, ty)]
-pullPortsSig = pullPorts fst showSig
-
 pullPorts :: forall a ty
            . (a -> PortName) -- A way to get a port name for each element
           -> ([a] -> String) -- A way to print the list
@@ -135,10 +129,7 @@ pullPorts toPort showFn to_pull types =
 
 ensureEmpty :: Show ty => String -> [(NamedPort e, ty)] -> Checking ()
 ensureEmpty _ [] = pure ()
-ensureEmpty str xs = err $ InternalError $ "Expected empty " ++ str ++ ", got:\n  " ++ showSig (rowToSig xs)
-
-rowToSig :: Traversable t => t (NamedPort e, ty) -> t (PortName, ty)
-rowToSig = fmap $ first portName
+ensureEmpty str xs = err $ InternalError $ "Expected empty " ++ str ++ ", got:\n  " ++ showRow xs
 
 showMode :: Modey m -> String
 showMode Braty = ""
@@ -152,14 +143,17 @@ type family ThunkRowType (m :: Mode) where
   ThunkRowType Brat = KindOr (Term Chk Noun)
   ThunkRowType Kernel = Term Chk Noun
 
+simpleTypeRow :: [(PortName, ty)] -> [TypeRowElem a ty]
+simpleTypeRow = fmap aux where aux (p, ty) = Named p ty
+
 mkThunkTy :: Modey m
           -> ThunkFCType m
           -> [(PortName, ThunkRowType m)]
           -> [(PortName, ThunkRowType m)]
           -> Term Chk Noun
 -- mkThunkTy Braty fc ss ts = C (WC fc (ss :-> ts))
-mkThunkTy Braty _ ss ts = C (ss :-> ts)
-mkThunkTy Kerny () ss ts = K (ss :-> ts)
+mkThunkTy Braty _ ss ts = C (simpleTypeRow ss :-> simpleTypeRow ts)
+mkThunkTy Kerny () ss ts = K (simpleTypeRow ss :-> simpleTypeRow ts)
 
 anext :: forall m i j k
        . EvMode m

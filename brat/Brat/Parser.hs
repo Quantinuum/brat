@@ -15,8 +15,8 @@ import Brat.Syntax.FuncDecl (FuncDecl(..), Locality(..))
 import Brat.Syntax.Concrete
 import Brat.Syntax.Raw
 import Brat.Syntax.Simple
-import Brat.Syntax.Value (Eqn(..), NumSum(..))
-import Brat.Elaborator
+import Brat.Syntax.Value (NumSum(..))
+--import Brat.Elaborator
 import Data.Bracket
 import Util ((**^))
 
@@ -262,51 +262,48 @@ typekind = try (fmap (const Nat) <$> matchFC Hash) <|> kindHelper Lexer.Dollar S
     match TypeColon
     (p,) . unWC <$> typekind
 
-vtype :: Parser (WC (Raw Chk Noun))
-vtype = cnoun (expr' PApp)
+vtype :: Parser (WC Flat)
+vtype = expr' PApp
 
 -- Parse a row of type and kind parameters
 -- N.B. kinds must be named
 -- TODO: Update definitions so we can retain the FC info, instead of forgetting it
-rawIOFC :: Parser (TypeRow (WC (KindOr RawVType)))
-rawIOFC = rowElem `sepBy` void (try comma)
+flatIO :: Parser [FlatIO]
+flatIO = rowElem `sepBy` void (try comma)
  where
-  rowElem :: Parser (TypeRowElem (WC (KindOr RawVType)))
+  rowElem :: Parser FlatIO
   rowElem = try (inBrackets Paren rowElem') <|> rowElem'
 
-  rowElem' :: Parser (TypeRowElem (WC (KindOr RawVType)))
+  rowElem' :: Parser FlatIO
   rowElem' = constraint <|> try namedKind <|> try namedType <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> vtype)
 
   -- The introduction of a constraint is signalled by a `|`, followed by
   -- `<expr> = <expr>`. We'll check the `<expr>`s are valid arithmetic
   -- expressions during elaboration.
-  constraint :: Parser (TypeRowElem (WC (KindOr (RawVType))))
+  constraint :: Parser FlatIO
   constraint = do
     match Pipe
     lhs <- expr' PAddSub
     match Equal
     rhs <- expr' PAddSub
-    pure (lhs, rhs)
+    pure $ Constraint lhs rhs
 
-  namedType :: Parser (TypeRowElem (WC (KindOr RawVType)))
+  namedType :: Parser FlatIO
   namedType = do
     WC pFC p <- port
     match TypeColon
     WC tyFC ty <- vtype
     pure (Named p (WC (spanFC pFC tyFC) (Right ty)))
 
-  namedKind :: Parser (TypeRowElem (WC (KindOr ty)))
+  namedKind :: Parser FlatIO
   namedKind = do
     WC pFC p <- port
     match TypeColon
     WC kFC k <- typekind
     pure (Named p (WC (spanFC pFC kFC) (Left k)))
 
-rawIO :: Parser [FlatIO]
-rawIO = fmap (fmap unWC) <$> rawIOFC
-
-rawIO' :: Parser ty -> Parser (TypeRow ty)
-rawIO' tyP = rowElem `sepBy` void (try comma)
+flatIO' :: Parser ty -> Parser (TypeRow (WC Flat) ty)
+flatIO' tyP = rowElem `sepBy` void (try comma)
  where
   rowElem = try (inBrackets Paren rowElem') <|> rowElem'
 
@@ -319,13 +316,13 @@ rawIO' tyP = rowElem `sepBy` void (try comma)
        Just (WC _ p) -> Named p <$> tyP
        Nothing -> Anon <$> tyP
 
-spanningFC :: TypeRow (WC ty) -> Parser (WC (TypeRow ty))
-spanningFC [] = customFailure (Custom "Internal: RawIO shouldn't be empty")
-spanningFC [x] = pure (WC (fcOf $ forgetPortName x) [unWC <$> x])
-spanningFC (x:xs) = pure (WC (spanFC (fcOf $ forgetPortName x) (fcOf . forgetPortName $ last xs)) (fmap unWC <$> (x:xs)))
+spanningFC :: TypeRow con (WC ty) -> Parser (WC (TypeRow con (WC ty)))
+spanningFC [] = customFailure (Custom "Internal: FlatIO shouldn't be empty")
+spanningFC [x] = pure (WC (fcOf $ forgetPortName x) [x])
+spanningFC (x:xs) = pure (WC (spanFC (fcOf $ forgetPortName x) (fcOf . forgetPortName $ last xs)) (x:xs))
 
-rawIOWithSpanFC :: Parser (WC [FlatIO])
-rawIOWithSpanFC = spanningFC =<< rawIOFC
+flatIOWithSpanFC :: Parser (WC [FlatIO])
+flatIOWithSpanFC = spanningFC =<< flatIO
 
 vec :: Parser (WC Flat)
 vec = (\(WC fc x) -> WC fc (unWC (vec2Cons fc x))) <$> inBracketsFC Square elems
@@ -356,15 +353,15 @@ cthunk :: Parser (WC Flat)
 cthunk = try bratFn <|> try kernel <|> thunk
  where
   bratFn = inBracketsFC Brace $ do
-    ss <- rawIO
+    ss <- flatIO
     match Arrow
-    ts <- rawIO
+    ts <- flatIO
     pure $ FFn (ss :-> ts)
 
   kernel = inBracketsFC Brace $ do
-    ss <- rawIO' (unWC <$> vtype)
+    ss <- flatIO' vtype
     match Lolly
-    ts <- rawIO' (unWC <$> vtype)
+    ts <- flatIO' vtype
     pure $ FKernel (ss :-> ts)
 
 
@@ -522,7 +519,7 @@ expr' p = choice $ (try . getParser <$> enumFrom p) ++ [atomExpr]
   annotation = do
     tm <- subExpr PAnn
     colon <- matchFC TypeColon
-    WC (spanFCOf tm colon) . FAnnotation tm <$> rawIO
+    WC (spanFCOf tm colon) . FAnnotation tm <$> flatIO
 
   letIn :: Parser (WC Flat)
   letIn = label "let ... in" $ do
@@ -601,27 +598,14 @@ expr' p = choice $ (try . getParser <$> enumFrom p) ++ [atomExpr]
 fanout = inBracketsFC Square (FFanOut <$ match Slash <* match Backslash)
 fanin = inBracketsFC Square (FFanIn <$ match Backslash <* match Slash)
 
-cnoun :: Parser (WC Flat) -> Parser (WC (Raw 'Chk 'Noun))
-cnoun pe = do
-  e <- pe
-  case elaborate e of
-    Left err -> fail (showError err)
-    Right (SomeRaw r) -> case do
-      r <- assertChk r
-      assertNoun r
-     of
-      Left err -> fail (showError err)
-      Right r -> pure r
-
-
 decl :: Parser FDecl
 decl = do
       (fc, nm, ty, body) <- do
         WC startFC nm <- simpleName
         WC _ ty <- declSignature
         let allow_clauses = case ty of
-                                 [Named _ (Right t)] -> is_fun_ty t
-                                 [Anon (Right t)] -> is_fun_ty t
+                                 [Named _ (WC _ (Right t))] -> is_fun_ty t
+                                 [Anon (WC _ (Right t))] -> is_fun_ty t
                                  _ -> False
         WC endFC body <- if allow_clauses
                          then declClauses nm <|> declNounBody nm
@@ -635,9 +619,9 @@ decl = do
         , fnLocality = Local
         }
     where
-      is_fun_ty :: RawVType -> Bool
-      is_fun_ty (RFn _) = True
-      is_fun_ty (RKernel _) = True
+      is_fun_ty :: Flat -> Bool
+      is_fun_ty (FFn _) = True
+      is_fun_ty (FKernel _) = True
       is_fun_ty _ = False
 
       declClauses :: String -> Parser (WC FBody)
@@ -742,11 +726,11 @@ pstmt = ((comment <?> "comment")                 <&> \_ -> ([] , []))
         <|> try (extDecl                         <&> \x -> ([x], []))
         <|> ((decl <?> "declaration")            <&> \x -> ([x], []))
  where
-  alias :: Parser RawAlias
+  alias :: Parser FAlias
   alias = aliasContents <&>
           \(fc, name, args, ty) -> TypeAlias fc name args ty
 
-  aliasContents :: Parser (FC, QualName, [(String, TypeKind)], RawVType)
+  aliasContents :: Parser (FC, QualName, [(String, TypeKind)], Flat)
   aliasContents = do
     WC startFC () <- matchFC (K KType)
     WC _ alias <- qualName
@@ -789,28 +773,28 @@ pstmt = ((comment <?> "comment")                 <&> \_ -> ([] , []))
 
 declSignature :: Parser (WC [FlatIO])
 declSignature = try nDecl <|> vDecl where
- nDecl = match TypeColon >> rawIOWithSpanFC
- vDecl = functionSignature <&> fmap (\ty -> [Named "thunk" (Right ty)])
+ nDecl :: Parser (WC [FlatIO])
+ nDecl = match TypeColon >> flatIOWithSpanFC
 
- functionSignature :: Parser (WC RawVType)
- functionSignature = try (fmap RFn <$> ctype) <|> (fmap RKernel <$> kernel)
+ vDecl :: Parser (WC [FlatIO])
+ vDecl = functionSignature <&> (\(WC fc ty) -> WC fc [Named "thunk" (WC fc (Right ty))])
+
+ functionSignature :: Parser (WC Flat)
+ functionSignature = try (fmap FFn <$> ctype) <|> (fmap FKernel <$> kernel)
   where
-   ctype :: Parser (WC RawCType)
+   ctype :: Parser (WC (CType' FlatIO))
    ctype = do
-     WC startFC ins <- inBracketsFC Paren rawIO
+     WC startFC ins <- inBracketsFC Paren flatIO
      match Arrow
-     WC endFC outs <- rawIOWithSpanFC
+     WC endFC outs <- flatIOWithSpanFC
      pure (WC (spanFC startFC endFC) (ins :-> outs))
 
-   kernel :: Parser (WC RawKType)
+   kernel :: Parser (WC (CType' (TypeRowElem (WC Flat) (WC Flat))))
    kernel = do
-     WC startFC ins <- inBracketsFC Paren $ rawIO' (unWC <$> vtype)
+     WC startFC ins <- inBracketsFC Paren $ flatIO' vtype
      match Lolly
-     WC endFC outs <- spanningFC =<< rawIO' vtype
+     WC endFC outs <- spanningFC =<< flatIO' vtype
      pure (WC (spanFC startFC endFC) (ins :-> outs))
-
-
-
 
 pfile :: Parser ([Import], FEnv)
 pfile = do

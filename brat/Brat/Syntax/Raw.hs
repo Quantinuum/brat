@@ -24,7 +24,7 @@ import Brat.Syntax.Common
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Simple
-import Brat.Syntax.Value (NumSum(..), NumVal, nFull, nPlus, n2PowTimes, nVar, nv_to_sum)
+import Brat.Syntax.Value (NumFun(numValue), NumSum(..), NumVal, nFull, nPlus, n2PowTimes, nVar, nv_to_sum)
 import Util (log2, names, (**^))
 
 type family TypeOf (k :: Kind) :: Type where
@@ -39,7 +39,6 @@ type RawIO = TypeRowElem (WC RawVType) (KindOr RawVType)
 type RawCType = CType' RawIO
 type RawKType = CType' (TypeRowElem (WC RawVType) RawVType)
 
-data TypeAliasF tm = TypeAlias FC QualName [(PortName,TypeKind)] tm deriving Show
 type TypeAlias = TypeAliasF (Term Chk Noun)
 
 type TypeAliasTable = M.Map QualName TypeAlias
@@ -49,21 +48,7 @@ type RawAlias = TypeAliasF (Raw Chk Noun)
 
 type RawEnv = ([RawFuncDecl], [RawAlias], TypeAliasTable)
 type RawFuncDecl = FuncDecl [RawIO] (FunBody Raw Noun)
-
-type ConstraintOrPort ty = Either TermConstraint (PortName, ty)
-type TermConstraint = Eqn QualName
-
-addNames :: TypeRow (WC RawVType) ty -> [Either (Eqn (WC RawVType)) (PortName, ty)]
-addNames tms = aux (fromList names) tms
- where
-  -- aux is passed the infinite list `names`, so we can use the partial function
-  -- `fromList` to repeatedly convert it to NonEmpty so GHC doesn't complain
-  -- about the missing case `aux [] _`
-  aux :: NonEmpty String -> [TypeRowElem (NumSum QualName) ty] -> [ConstraintOrPort ty]
-  aux (n :| ns) ((Anon tm):tms) = Right (n, tm) : aux (fromList ns) tms
-  aux ns ((Named n tm):tms)  = Right (n, tm) : aux ns tms
-  aux ns ((Constraint a b):rest) = Left (a, b) : aux ns rest
-  aux _ [] = []
+type CoreFuncDecl = FuncDecl (TypeRow TermConstraint (KindOr (Term Chk Noun))) (FunBody Term Noun)
 
 data Raw :: Dir -> Kind -> Type where
   RSimple   :: SimpleTerm -> Raw Chk Noun
@@ -144,7 +129,6 @@ instance Show (Raw d k) where
 
 type Desugar = StateT Namespace (ReaderT (RawEnv, Bwd QualName) (Except Error))
 
--- instance {-# OVERLAPPING #-} MonadFail Desugar where
 instance {-# OVERLAPPING #-} MonadFail Desugar where
   fail = throwError . desugarErr
 
@@ -174,23 +158,6 @@ isAlias name = do
   pure $ M.member name aliases
 
 
-{-
-findDuplicates :: Env -> Desugar ()
-findDuplicates (ndecls, vdecls, aliases)
-  = aux $ concat [(fst &&& show . fst . snd) <$> (unWC <$> ndecls)
-                 ,(fst &&& show . fst . snd) <$> (unWC <$> vdecls)
-                 ,(fst &&& show . snd) <$> aliases]
- where
-  aux :: [(String, String)] -> Desugar ()
-  aux xs = case filter ((1<).length) [ filter ((==x).fst) xs | (x,_) <- xs ] of
-             []  -> pure () -- all good
-             ([]:_) -> undefined -- this should be unreachable
-             -- TODO: Include FC
-             ((x:xs):_) -> desugarErr . unlines $ (("Multiple definitions of " ++ fst x)
-                                                   :(snd <$> (x:xs))
-                                                  )
--}
-
 desugarErr :: String -> Error
 desugarErr = dumbErr . DesugarErr
 
@@ -205,7 +172,7 @@ class Desugarable ty where
   desugar' :: ty -> Desugar (Desugared ty)
 
 instance Desugarable ty => Desugarable (TypeRowElem (WC RawVType) ty) where
-    type Desugared (TypeRowElem (WC RawVType) ty) = TypeRowElem (NumSum QualName) (Desugared ty)
+    type Desugared (TypeRowElem (WC RawVType) ty) = TypeRowElem TermConstraint (Desugared ty)
     desugar' (Anon ty) = Anon <$> desugar' ty
     desugar' (Named x ty) = Named x <$> desugar' ty
     desugar' (Constraint a b) = case (,) <$> elabArith a <*> elabArith b of
@@ -213,7 +180,7 @@ instance Desugarable ty => Desugarable (TypeRowElem (WC RawVType) ty) where
       Right (a,b) -> pure (Constraint a b)
      where
       elabArith :: WC RawVType -> Either Error (NumSum QualName)
-      elabArith (WC _ (RVar x)) = pure (nsVar x)
+      elabArith (WC _ (REmb (WC _ (RVar x)))) = pure (nsVar x)
       elabArith (WC fc (RArith Add a b)) = do
         nsa <- elabArith a
         nsb <- elabArith b
@@ -228,8 +195,8 @@ instance Desugarable ty => Desugarable (TypeRowElem (WC RawVType) ty) where
       elabArith (WC fc (RArith Pow a b)) = do
         nsa <- elabArith a
         nsb <- elabArith b
-        case (isScalar a, sumToVal b) of
-          (Just 2, Just nv) -> nsConst 1 <> nv_to_sum (nFull nv)
+        case (isScalar nsa, sumToVal nsb) of
+          (Just 2, Just nv) -> pure $ nsConst 1 <> nv_to_sum (nFull nv)
           _ -> Left $ Err (Just fc) (DesugarErr "Arithmetic too confusing")
       elabArith (WC fc (RArith op _ _)) = Left $ Err (Just fc) (DesugarErr ("Operation " ++ show op ++ " not allowed in constraints"))
       elabArith (WC fc _) = Left $ Err (Just fc) (DesugarErr "Malformed arithmetic in constraint")
@@ -239,13 +206,14 @@ instance Desugarable ty => Desugarable (TypeRowElem (WC RawVType) ty) where
       isScalar _ = Nothing
 
       sumToVal :: NumSum QualName -> Maybe (NumVal QualName)
-      sumToVal (NumSum up [(n, k)]) | Just l <- log2 k = Just $ nPlus up (n2PowTimes l (nVar n)
+      sumToVal (NumSum up [(n, k)]) | Just l <- log2 k = Just $ nPlus up (n2PowTimes l (numValue n))
+      sumToVal _ = Nothing
 
+instance Desugarable (TypeRowElem con ty) => Desugarable [TypeRowElem con ty] where
+  type Desugared [TypeRowElem con ty] = [Desugared (TypeRowElem con ty)]
+  desugar' = traverse desugar'
 
-instance (Desugarable e, Desugarable ty) => Desugarable (TypeRow e ty) where
-  type Desugared (TypeRow e ty) = TypeRow (Desugared e) (Desugared ty)
-  desugar' = traverse (traverse desugar')
-
+-- Desugaring terms
 instance (Kindable k) => Desugarable (Raw d k) where
   type Desugared (Raw d k) = Term d k
   -- TODO: holes need to know their arity for type checking
@@ -287,7 +255,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
   desugar' (fun ::$:: arg) = (:$:) <$> desugar fun <*> desugar arg
   desugar' (tm ::::: outputs) = do
     tm <- desugar tm
-    (tys, ()) <- desugarBind outputs $ pure ()
+    tys <- traverse desugar' outputs
     pure (tm ::: tys)
   desugar' (syn ::-:: verb) = (:-:) <$> desugar syn <*> desugar verb
   desugar' (RLambda c cs) = Lambda <$> (id **^ desugar) c <*> traverse (id **^ desugar) cs
@@ -299,15 +267,12 @@ instance (Kindable k) => Desugarable (Raw d k) where
   desugar' RFanIn = pure FanIn
   desugar' (ROf n e) = Of <$> desugar n <*> desugar e
 
-instance Desugarable ty => Desugarable (PortName, ty) where
-  type Desugared (PortName, ty) = (PortName, Desugared ty)
-  desugar' (p, ty) = (p,) <$> desugar' ty
-
 instance Desugarable (CType' (TypeRowElem (WC RawVType) RawVType)) where
-  type Desugared (CType' (TypeRowElem (WC RawVType) RawVType)) = CType' (Either TermConstraint (PortName, Term Chk Noun))
+  type Desugared (CType' (TypeRowElem (WC RawVType) RawVType)) = CType' (TypeRowElem TermConstraint (Term Chk Noun))
+  desugar' :: CType' (TypeRowElem (WC RawVType) RawVType) -> Desugar (CType' (TypeRowElem TermConstraint (Term Chk Noun)))
   desugar' (ss :-> ts) = do
-    ss <- traverse desugar' (addNames ss)
-    ts <- traverse desugar' (addNames ts)
+    ss <- traverse desugar' ss -- (addNames ss)
+    ts <- traverse desugar' ts -- (addNames ts)
     pure (ss :-> ts)
 
 isConOrAlias :: QualName -> Desugar Bool
@@ -331,27 +296,9 @@ instance Desugarable ty => Desugarable (KindOr ty) where
   desugar' (Left k) = pure (Left k)
   desugar' (Right ty) = Right <$> desugar' ty
 
-desugarBind :: forall t. [RawIO]
-            -> Desugar t
-            -> Desugar ([(PortName, KindOr (Term Chk Noun))], t)
-desugarBind tys m = worker (addNames tys)
- where
-  worker :: [(PortName, KindOr (Raw Chk Noun))]
-         -> Desugar ([(PortName, KindOr (Term Chk Noun))], t)
-  worker ((p, Left k):ns) = do
-    (ns, t) <- local (second (:< PrefixName [] p)) $ worker ns
-    pure ((p, Left k):ns, t)
-  worker ((p, Right ty):ns) = do
-    ty <- desugar' ty
-    (ns, t) <- worker ns
-    pure ((p, Right ty):ns, t)
-  worker [] = ([],) <$> m
-
 instance Desugarable (CType' RawIO) where
-  type Desugared (CType' RawIO) = CType' (Either TermConstraint (PortName, KindOr (Term Chk Noun)))
-  desugar' (ss :-> ts) = do
-    (ss, (ts, ())) <- desugarBind ss $ desugarBind ts $ pure ()
-    pure $ ss :-> ts
+  type Desugared (CType' RawIO) = CType' (TypeRowElem TermConstraint (KindOr (Term Chk Noun)))
+  desugar' (ss :-> ts) = (:->) <$> desugar' ss <*> desugar' ts
 
 instance Desugarable RawAlias where
   type Desugared RawAlias = TypeAlias
@@ -374,7 +321,7 @@ desugarVBody Undefined = pure Undefined
 instance Desugarable RawFuncDecl where
   type Desugared RawFuncDecl = CoreFuncDecl
   desugar' d@FuncDecl{..} = do
-    tys  <- addNames <$> desugar' fnSig
+    tys  <- desugar' fnSig
     noun <- desugarNBody fnBody
     pure $ d { fnBody = noun
              , fnSig  = tys
