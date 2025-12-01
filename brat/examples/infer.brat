@@ -1,10 +1,16 @@
+id(n :: #, Vec(Nat, n)) -> Vec(Nat, n)
+id(_, xs) = xs
+
+foo(n :: #, Vec(Nat, n + 1)) -> Vec(Nat, n)
+foo(succ(n), _ ,- xs) = id(!, xs)
+
 --map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
 --map(_, _, _, []) = []
 --map(_, _, f, x ,- xs) = f(x) ,- map(!, !, f, xs)
 
-mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
-mapVec(_, _, _, _, []) = []
-mapVec(_, _, f, n, x ,- xs) = f(x) ,- mapVec(!, !, f, !, xs)
+--mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
+--mapVec(_, _, _, _, []) = []
+--mapVec(_, _, f, n, x ,- xs) = f(x) ,- mapVec(!, !, f, !, xs)
 
 --length(X :: *, n :: #, Vec(X, n)) -> (m :: #)
 --length(_, n, []) = n

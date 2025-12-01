@@ -28,8 +28,6 @@ import Data.Maybe (fromJust)
 import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 
-import Debug.Trace
-
 -- Refine clauses from function definitions (and potentially future case statements)
 -- by processing each one in sequence. This will involve repeating tests for various
 -- branches, the removal of which is a future optimisation.
@@ -64,7 +62,6 @@ solve :: forall m. Modey m
                     [(Src, PrimTest (BinderType m))]
                    ,[(String, (Src, BinderType m))] -- Remember the names given by programmers
                    )
-solve _ (x:_) | trace ("solve: " ++ show x) False = undefined
 solve _ [] = pure ([], [])
 solve my ((src, DontCare):p) = do
   case my of

@@ -2,5 +2,5 @@ Error in test/golden/error/vec_length.brat on line 2:
 f(_, _, xs) = xs
               ^^
 
-  Unification error: Can't make Ex checking_check_defs_1_f_LambdaChk_7_checkClauses_1_$lhs_lambda.0_setup/in 1 = 1 + VPar Ex checking_check_defs_1_f_LambdaChk_7_checkClauses_1_$lhs_lambda.0_setup/in 1
+  Unification error: Can't make Ex checking_check_defs_1_f_LambdaChk_7_checkClauses_1_lambda.0_rhs/in_1 1 = 1 + VPar Ex checking_check_defs_1_f_LambdaChk_7_checkClauses_1_lambda.0_rhs/in_1 1
 

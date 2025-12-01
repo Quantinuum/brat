@@ -45,8 +45,6 @@ import GHC.Base (NonEmpty(..))
 import GHC.Stack (HasCallStack)
 import Data.Tuple (swap)
 
-import Debug.Trace
-
 zipStrict :: HasCallStack => [a] -> [b] -> [(a,b)]
 zipStrict a b = fromJust $ zipSameLength a b
 
@@ -136,7 +134,7 @@ addNode name op = do
 inputNodeForParent :: NodeId -> String -> InputNode NodeId -> Compile NodeId
 inputNodeForParent parent name op | track ("inputNodeForParent " ++ show parent ++ " " ++ name ++ " " ++ show op) False = undefined
 inputNodeForParent parent name op = gets (M.lookup parent . inputNodes) >>= \case
-  Just nodeId -> nodeId <$ traceM ("Found input " ++ show nodeId ++ " for parent " ++ show parent)
+  Just nodeId -> nodeId <$ trackM ("Found input " ++ show nodeId ++ " for parent " ++ show parent)
   Nothing -> do
     nodeId <- addNode name (OpIn op)
     modify (\st -> st { inputNodes = M.insert parent nodeId (inputNodes st) })
@@ -221,7 +219,6 @@ addOp op name = do
   put (st { nodes = new_nodes })
 
 registerCompiled :: Name -> NodeId -> Compile ()
---registerCompiled from to | trace (show from ++ " |-> " ++ show to) False = undefined
 registerCompiled from to = do
   st <- get
   put (st { compiled = M.insert from to (compiled st) })
@@ -349,7 +346,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
           pure [(src, (hugrNode, hugrTy))])
 -}
 
-  traceM ("Extra stuff: " ++ show extraStuff)
+  trackM ("Extra stuff: " ++ show extraStuff)
   let portTbl = (zipStrict (fst <$> matchInputs matchSeq) ins) ++ extraStuff
   testResult <- compileMatchSequence parent portTbl matchSeq
 
@@ -358,23 +355,23 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
                                                                   ,("didMatch", didMatch outTys)
                                                                   ]
  where
-  didntMatch :: [HugrType] -> NodeId -> ([TypedPort], [TypedPort]) -> Compile [TypedPort]
-  didntMatch outTys parent (ins, otherIns) = case nonEmpty clauses of
+  didntMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
+  didntMatch outTys parent ins = case nonEmpty clauses of
     Just clauses -> compileClauses parent ins clauses
     -- If there are no more clauses left to test, then the Hugr panics
     Nothing -> let sig = FunctionType (snd <$> ins) outTys ["BRAT"] in
       addNodeWithInputs "Panic" (OpCustom (CustomOp parent "BRAT" "panic" sig [])) ins outTys
 
-  didMatch :: [HugrType] -> NodeId -> ([TypedPort], [TypedPort]) -> Compile [TypedPort]
-  didMatch _ _ ins | trace ("didMatch case: " ++ show ins) False = undefined
-  didMatch outTys parent (ins, otherIns) = do
+  didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
+  didMatch _ _ ins | track ("didMatch case: " ++ show ins) False = undefined
+  didMatch outTys parent ins = do
    (ns, _) <- gets bratGraph
    let rhsNode = bang "didMatch" ns rhs
    case rhsNode of
      BratNode (Box src tgt) _ _ -> do
        -- The child nodes we compile don't know about the otherIns, so what do we do?
-       traceM $ "DFG Sig " ++ show  (FunctionType (snd <$> (ins <> otherIns)) outTys bratExts)
-       dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> (ins <> otherIns)) outTys bratExts) []))
+       trackM $ "DFG Sig " ++ show  (FunctionType (snd <$> ins) outTys bratExts)
+       dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
        compileBox (src, tgt) dfgId
        for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
        pure $ zip (Port dfgId <$> [0..]) outTys
@@ -721,11 +718,11 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
       testResult <- compilePrimTest parent typedPort primTest
       let testIx = length left
       let remainingMatchTests = MatchSequence (primTestOuts primTest ++ (second snd <$> others)) tests matchOutputs
-      traceM $ "test: " ++ show (src, primTest)
-      traceM $ "matchInputs: " ++ printTy (snd <$> matchInputs)
-      traceM $ "matchOutputs: " ++ printTy (snd <$> matchOutputs)
-      traceM $ unlines ("others:":(("  " ++) . show <$> others))
-      traceM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
+      trackM $ "test: " ++ show (src, primTest)
+      trackM $ "matchInputs: " ++ printTy (snd <$> matchInputs)
+      trackM $ "matchOutputs: " ++ printTy (snd <$> matchOutputs)
+      trackM $ unlines ("others:":(("  " ++) . show <$> others))
+      trackM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
       ports <- makeConditional ("matching " ++ show (src, primTest)) parent testResult (snd <$> others)
                [("didNotMatch", didNotMatchCase testIx sumTy)
                ,("didMatch",    didMatchCase testIx (primTest, snd typedPort) remainingMatchTests sumTy)]
@@ -736,18 +733,18 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     [] -> do
       -- Reorder into `matchOutputs` order
       trackM $  "PortTbl:\n" ++ intercalate "\n" (show <$> portTable)
-      traceM $ unlines ["parent: " ++ show parent, "matchInputs: " ++ printTy (snd <$> matchInputs), "matchOutputs: " ++ printTy (snd <$> matchOutputs)]
+      trackM $ unlines ["parent: " ++ show parent, "matchInputs: " ++ printTy (snd <$> matchInputs), "matchOutputs: " ++ printTy (snd <$> matchOutputs)]
       let ins = reorderPortTbl portTable (fst <$> matchOutputs)
       -- Need to pack inputs into a tuple before feeding them into a tag node
       trackM $ "New PortTbl: \n" ++ intercalate "\n" (show <$> portTable)
-      traceM $ unlines ["Bleep bloop",show sumTy,show ins]
+      trackM $ unlines ["Bleep bloop",show sumTy,show ins]
       ports <- makeRowTag "Success" parent 1 sumTy ins
       case ports of
         [port] -> pure port
         _ -> error "Expected one port out of tag node"
  where
   reorderPortTbl :: [(Src, TypedPort)] -> [Src] -> [TypedPort]
-  reorderPortTbl portTbl srcs | trace ("REORDER\n  " ++ show (toEnd <$> srcs) ++ "\n  " ++ show (toEnd . fst <$> portTbl)) False = undefined
+  reorderPortTbl portTbl srcs | track ("REORDER\n  " ++ show (toEnd <$> srcs) ++ "\n  " ++ show (toEnd . fst <$> portTbl)) False = undefined
   reorderPortTbl portTbl srcs = fmap (fromJust . flip lookup portTbl) srcs
 
   didMatchCase :: Int -- The index to put the rebuilt thing back in the wires in case of failure
@@ -756,16 +753,15 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
                -> MatchSequence HugrType -- The remaining tests for further matching
                -> SumOfRows
                -> NodeId
-               -> ([TypedPort], [TypedPort])
+               -> [TypedPort]
                -> Compile [TypedPort]
-  didMatchCase _ _ _ sumTy _ _ | trace ("didMatchCase Sum: " ++ show sumTy) False = undefined
-  didMatchCase ix (prevTest, oldTy) ms@(MatchSequence{..}) sumTy parent (ins, otherIns) = do
+--  didMatchCase _ _ _ sumTy _ ins | trace ("didMatchCase Sum: " ++ show sumTy ++ "\n> ins: " ++ show ins) False = undefined
+  didMatchCase ix (prevTest, oldTy) ms@(MatchSequence{..}) sumTy parent ins = do
     -- Remember which port a src corresponds to
-    traceM $ unlines (("didMatchInputs(" ++ show prevTest ++ ")"):("SUM: " ++ show sumTy):((("  " ++) . show <$> matchInputs) ++ ("=====":(("  " ++) . show <$> ins))))
-    let portTable = zipStrict (fst <$> matchInputs) (ins <> otherIns)
+    let portTable = zipStrict (fst <$> matchInputs) ins
     didAllTestsSucceed <- compileMatchSequence parent portTable ms
-    traceM $ "allTests return " ++ show didAllTestsSucceed ++ " (" ++ show matchTests ++ ")" ++ "(" ++ show matchOutputs ++ ")"
-    makeConditional ("all matched (" ++ show ix ++ ")") parent didAllTestsSucceed otherIns
+    trackM $ "allTests return " ++ show didAllTestsSucceed ++ " (" ++ show matchTests ++ ")" ++ "(" ++ show matchOutputs ++ ")"
+    makeConditional ("all matched (" ++ show ix ++ ")") parent didAllTestsSucceed []
       [("Undo", undo)
       ,("AllMatched", allMatched)
       ]
@@ -782,10 +778,10 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
 
     -- All of the results from tests will be at the front of `ins`.
     undo :: NodeId
-         -> ([TypedPort], [TypedPort])
+         -> [TypedPort]
          -> Compile [TypedPort]
-    undo _ ins | trace ("undo: " ++ show ins) False = undefined
-    undo parent (ins, otherIns) = do
+--    undo _ ins | trace ("undo ins: " ++ show ins) False = undefined
+    undo parent ins = do
 --      -- Test results, and the rest of the inputs
       -- This is wrong because the outs from the prim test for some reason
       -- includes the unification inputs!
@@ -794,8 +790,8 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
       -- Put it back in the right place
       let (as, bs) = splitAt ix others
       let ins = as ++ undoPort : bs
-      traceM (unlines ["Undo parent: " ++ show parent, "Undo ins: " ++ show ins, "Undo others: " ++ show otherIns])
-      (++ otherIns) <$> makeRowTag "Fail_Undo" parent 0 sumTy ins
+--      traceM (unlines ["Undo parent: " ++ show parent, "Undo ins: " ++ show ins])
+      makeRowTag "Fail_Undo" parent 0 sumTy ins
 
 {-
       let SoR (thisRow:_) = sumTy
@@ -806,27 +802,24 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
       makeRowTag "Fail_Undo" parent 0 sumTy ins
 -}
 
-    allMatched :: NodeId -> ([TypedPort], [TypedPort]) -> Compile [TypedPort]
-    allMatched _ ins | trace ("allMatched\n  " ++ show sumTy ++ "\n  " ++ show ins) False = undefined
+    allMatched :: NodeId -> [TypedPort] -> Compile [TypedPort]
+    allMatched _ ins | track ("allMatched\n  " ++ show sumTy ++ "\n  " ++ show ins) False = undefined
   --  allMatched parent ins = makeRowTag "AllMatched" parent 1 sumTy ins
-    allMatched parent (ins, otherIns) = (++ otherIns) <$> makeRowTag "AllMatched" parent 1 sumTy ins
+    allMatched parent ins = makeRowTag "AllMatched" parent 1 sumTy ins
 
   didNotMatchCase :: Int -- The index at which to put the thing we inspected in outputs
                   -> SumOfRows
                   -> NodeId
-                  -> ([TypedPort], [TypedPort])
+                  -> [TypedPort]
                   -> Compile [TypedPort]
-  didNotMatchCase _ _ _ ([], _) = error "No scrutinee input in didNotMatchCase"
-  didNotMatchCase _ _ _ ins | trace ("didNotMatch ins: " ++ show ins) False = undefined
-  didNotMatchCase ix sumTy parent (scrutinee:ins, otherIns) = do
+  didNotMatchCase _ _ _ [] = error "No scrutinee input in didNotMatchCase"
+--  didNotMatchCase _ sor parent ins | trace ("didNotMatch sor (parent: " ++ show parent ++ "): " ++ show sor ++ "\n> ins: " ++ show ins) False = undefined
+  didNotMatchCase ix sumTy parent (scrutinee:ins) = do
     let (as, bs) = splitAt ix ins
     -- We need to wire inputs to a `Tag0`, but bringing the tested src back to
     -- the original position
-
-    traceM $ "OI OI OI" ++ show (as,scrutinee,bs)
-    traceM $ "OI2 OI2 OI2" ++ show (ins,scrutinee,otherIns)
     let ins = as ++ scrutinee:bs
-    (++ otherIns) <$> makeRowTag "DidNotMatch" parent 0 sumTy ins
+    makeRowTag "DidNotMatch" parent 0 sumTy ins
 
 {-
     -- This is a failure, so will be the first variant of the sum
@@ -840,7 +833,7 @@ makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [Ty
 makeRowTag hint parent tag sor@(SoR sumRows) ins = assert (sumRows !! tag == (snd <$> ins)) $ do
   tp <- addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!0))])) ins [compileSumOfRows sor]
   let showRows = intercalate "\n====================\n" (show <$> zip [0..] sumRows)
-  traceM (hint ++ "\nDidNotMatchTag_" ++ show (nodeId (fst (head tp))) ++ ":\n" ++ showRows ++ "\n--------------------------------------------------------------------------------\nins: " ++ show ins ++ "\n--------------------------------------------------------------------------------\n")
+  trackM (hint ++ "\nDidNotMatchTag_" ++ show (nodeId (fst (head tp))) ++ ":\n" ++ showRows ++ "\n--------------------------------------------------------------------------------\nins: " ++ show ins ++ "\n--------------------------------------------------------------------------------\n")
   pure tp
 
 getSumVariants :: HugrType -> [[HugrType]]
@@ -863,13 +856,13 @@ makeConditional :: String    -- Label
                 -> NodeId    -- Parent node id
                 -> TypedPort -- The discriminator
                 -> [TypedPort] -- Other inputs
-                -> [(String, NodeId -> ([TypedPort], [TypedPort]) -> Compile [TypedPort])] -- Must be ordered
+                -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
-makeConditional lbl _ discrim otherInputs cases | trace ("makeConditional(" ++ show lbl ++ ")\n  " ++ unlines (fst <$> cases) ++ "\n  " ++ show (snd discrim) ++ "\n  " ++ show otherInputs) False = undefined
+makeConditional lbl _ discrim otherInputs cases | track ("makeConditional(" ++ show lbl ++ ")\n  " ++ unlines (fst <$> cases) ++ "\n  " ++ show (snd discrim) ++ "\n  " ++ show otherInputs) False = undefined
 makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional"
   let rows = getSumVariants (snd discrim)
-  outTyss <- for (zipStrict (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row, snd <$> otherInputs) f)
+  outTyss <- for (zipStrict (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   unless
     (allRowsEqual outTyss)
     (error "Conditional output types didn't match")
@@ -879,23 +872,16 @@ makeConditional lbl parent discrim otherInputs cases = do
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
   pure $ zip (Port condId <$> [0..]) (head outTyss)
  where
-  makeCase :: NodeId -> String -> Int -> ([HugrType], [HugrType]) -> (NodeId -> ([TypedPort], [TypedPort]) -> Compile [TypedPort]) -> Compile [HugrType]
-  makeCase parent name ix (tys, otherTys) _ | trace (unwords ["makeCase", show parent, name, show ix, show (tys, otherTys)]) False = undefined
-  makeCase parent name ix (tys, otherTys) f = do
+  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
+  makeCase parent name ix tys _ | track (unwords ["makeCase", show parent, name, show ix, show tys]) False = undefined
+  makeCase parent name ix tys f = do
     caseId <- freshNode name
-    inpId <- inputNodeForParent caseId ("Input_" ++ name) (InputNode caseId (tys <> otherTys) [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)])
-    outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys, zipWith (\offset ty -> (Port inpId offset, ty)) [length tys..] otherTys)
+    inpId <- inputNodeForParent caseId ("Input_" ++ name) (InputNode caseId tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)])
+    outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs
-
-    traceM $ let showTys tys = if null tys then "[]" else intercalate "\n  " (show <$> tys)
-                 showIns tys others = showTys tys ++ if null others then "" else "\n  &\n  " ++ showTys others in
-
-      ("Case signature (" ++ show parent ++ "): (" ++ lbl ++ "/" ++ name ++ "):\n  " ++ showIns tys otherTys ++ "\n  ->\n  " ++ showTys outTys)
-
     outId <- addNode ("Output" ++ name) (OpOut (OutputNode caseId outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-
-    addOp (OpCase (ix, Case parent (FunctionType (tys <> otherTys) outTys bratExts) [("name",lbl ++ "/" ++ name)])) caseId
+    addOp (OpCase (ix, Case parent (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)])) caseId
     pure outTys
 
   allRowsEqual :: [[HugrType]] -> Bool
