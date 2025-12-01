@@ -109,7 +109,7 @@ addEdge e = do
 addNode :: String -> HugrOp NodeId -> Compile NodeId
 addNode name op = do
   id <- freshNode name
-  addOp op id
+  addOp (addMetadata [("id", show id)] op) id
   pure id
 
 type Compile = State CompilationState
@@ -228,7 +228,11 @@ compileArithNode parent op TFloat  = addNode (show op ++ "_Float") $ OpCustom $ 
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
 renameAndSortHugr :: M.Map NodeId (HugrOp NodeId) -> [(PortId NodeId, PortId NodeId)] -> Hugr Int
-renameAndSortHugr nodes edges = fmap update (Hugr (fst <$> sorted_nodes) (edges ++ orderEdges)) where
+renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (fst <$> sorted_nodes) (edges ++ orderEdges)) where
+  indexMetadata :: Hugr Int -> Hugr Int
+  indexMetadata (Hugr ops edges) = Hugr [addMetadata [("index", show ix)] op | (ix, op) <- zip [0..] ops] edges
+
+
   sorted_nodes = let ([root], rest) = partition (\(n, nid) -> nid == getParent n) (swap <$> M.assocs nodes) in
                    root : sort rest
 
@@ -286,9 +290,9 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   testResult <- compileMatchSequence parent portTbl matchSeq
 
   -- Feed the test result into a conditional
-  makeConditional parent testResult [] [("didntMatch", didntMatch outTys)
-                                       ,("didMatch", didMatch outTys)
-                                       ]
+  makeConditional ("clause of " ++ show rhs) parent testResult [] [("didntMatch", didntMatch outTys)
+                                                                  ,("didMatch", didMatch outTys)
+                                                                  ]
  where
   didntMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didntMatch outTys parent ins = case nonEmpty clauses of
@@ -300,7 +304,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
     BratNode (Box src tgt) _ _ -> do
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts)))
+      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
       compileBox (src, tgt) dfgId
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
@@ -399,13 +403,14 @@ compileWithInputs parent name = gets compiled >>= (\case
     Prim (ext,op) -> do
       let n = ext ++ ('_':op)
       let [] = ins
+      -- TODO: Handle primitives which aren't functions
       let [(_, VFun Braty cty)] = outs
       boxSig@(inputTys, outputTys) <- compileSig Braty cty
       let boxFunTy = FunctionType inputTys outputTys bratExts
       ((Port loadConst _, _ty), ()) <- compileConstDfg parent n boxSig $ \dfgId -> do
-        ins <- addNodeWithInputs ("Inputs" ++ n) (OpIn (InputNode dfgId inputTys)) [] inputTys
+        ins <- addNodeWithInputs ("Inputs" ++ n) (OpIn (InputNode dfgId inputTys [("source", "Prim")])) [] inputTys
         outs <- addNodeWithInputs n (OpCustom (CustomOp dfgId ext op boxFunTy [])) ins outputTys
-        addNodeWithInputs ("Outputs" ++ n) (OpOut (OutputNode dfgId outputTys)) outs []
+        addNodeWithInputs ("Outputs" ++ n) (OpOut (OutputNode dfgId outputTys [("source", "Prim")])) outs []
         pure ()
       pure $ default_edges loadConst
 
@@ -455,10 +460,10 @@ compileWithInputs parent name = gets compiled >>= (\case
 
     Source -> default_edges <$> do
       outs <- compilePorts outs
-      addNode "Input" (OpIn (InputNode parent outs))
+      addNode "Input" (OpIn (InputNode parent outs [("source", "Source"), ("parent", show parent)]))
     Target -> default_edges <$> do
       ins <- compilePorts ins
-      addNode "Output" (OpOut (OutputNode parent ins))
+      addNode "Output" (OpOut (OutputNode parent ins [("source", "Target")]))
 
     Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
@@ -474,10 +479,10 @@ compileWithInputs parent name = gets compiled >>= (\case
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType ins outs bratExts)))
-      inputNode <- addNode "PatternMatch.Input" (OpIn (InputNode dfgId ins))
+      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType ins outs bratExts) []))
+      inputNode <- addNode "PatternMatch.Input" (OpIn (InputNode dfgId ins [("source", "PatternMatch"), ("parent", show dfgId)]))
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
-      addNodeWithInputs "PatternMatch.Output" (OpOut (OutputNode dfgId (snd <$> ccOuts))) ccOuts []
+      addNodeWithInputs "PatternMatch.Output" (OpOut (OutputNode dfgId (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)])) ccOuts []
       pure dfgId
     ArithNode op -> default_edges <$> compileArithNode parent op (snd $ head ins)
     Selector _c -> error "Todo: selector"
@@ -495,7 +500,7 @@ compileConstructor parent tycon con sig
       -- A boolean value is a tag which takes no inputs and produces an empty tuple
       -- This is the same thing that happens in Brat.Checker.Clauses to make the
       -- discriminator (makeRowTag)
-      addNode "bool.tag" (OpTag (TagOp parent (if b then 1 else 0) [[], []]))
+      addNode "bool.tag" (OpTag (TagOp parent (if b then 1 else 0) [[], []] [("hint", "bool")]))
   | otherwise = let name = "Constructor " ++ show tycon ++ "::" ++ show con in
                   addNode name (constructorOp parent tycon con sig)
  where
@@ -532,7 +537,7 @@ compileConstDfg parent desc (inTys, outTys) contents = do
       dfg_id <- freshNode ("Box_" ++ show desc)
       a <- contents dfg_id
       let funTy = FunctionType inTys outTys bratExts
-      addOp (OpDFG $ DFG dfg_id funTy) dfg_id
+      addOp (OpDFG $ DFG dfg_id funTy []) dfg_id
       pure (funTy, a)
   let nestedHugr = renameAndSortHugr (nodes cs) (edges cs)
   let ht = HTFunc $ PolyFuncType [] funTy
@@ -559,7 +564,7 @@ compileBratBox parent name (venv, src, tgt) cty = do
   let boxInnerSig = FunctionType allInputTys outputTys bratExts
 
   (templatePort, _) <- compileConstDfg parent ("BB" ++ show name) (allInputTys, outputTys) $ \dfgId -> do
-    src_id <- addNode ("LiftedCapturesInputs" ++ show name) (OpIn (InputNode dfgId allInputTys))
+    src_id <- addNode ("LiftedCapturesInputs" ++ show name) (OpIn (InputNode dfgId allInputTys [("source", "compileBratBox")]))
     -- Now map ports in the BRAT Graph to their Hugr equivalents.
           -- Each captured value is read from an element of src_id, starting from 0
     let lifted = [(src, Port src_id i) | ((src, _ty), i) <- zip params [0..]]
@@ -631,12 +636,12 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
       testResult <- compilePrimTest parent typedPort primTest
       let testIx = length left
       let remainingMatchTests = MatchSequence (primTestOuts primTest ++ (second snd <$> others)) tests matchOutputs
-      ports <- makeConditional parent testResult (snd <$> others)
+      ports <- makeConditional ("matching " ++ show (src, primTest)) parent testResult (snd <$> others)
                [("didNotMatch", didNotMatchCase testIx sumTy)
                ,("didMatch",    didMatchCase testIx (primTest, snd typedPort) remainingMatchTests sumTy)]
       case ports of
-        [port] -> pure port
-        _ -> error "Expected exactly one output port from makeConditional"
+        (port:_) -> pure port
+        _ -> error $ "Expected at least one output port from makeConditional: got\n  " ++ show ports
 
     [] -> do
       -- Reorder into `matchOutputs` order
@@ -662,7 +667,7 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     -- Remember which port a src corresponds to
     let portTable = zip (fst <$> matchInputs) ins
     didAllTestsSucceed <- compileMatchSequence parent portTable ms
-    makeConditional parent didAllTestsSucceed []
+    makeConditional ("all matched (" ++ show ix ++ ")") parent didAllTestsSucceed []
       [("Undo", undo)
       ,("AllMatched", allMatched)
       ]
@@ -697,8 +702,8 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     makeRowTag "DidNotMatch" parent 0 sumTy ins
 
 makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [TypedPort]
-makeRowTag hint parent tag sor@(SoR sumRows) ins = assert (sumRows !! tag == (snd <$> ins)) $
-  addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows)) ins [compileSumOfRows sor]
+makeRowTag hint parent tag sor@(SoR sumRows) ins = assert (sumRows !! tag == (snd <$> ins)) $ do
+  addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!0))])) ins [compileSumOfRows sor]
 
 getSumVariants :: HugrType -> [[HugrType]]
 getSumVariants (HTSum (SU (UnitSum n))) = replicate n []
@@ -716,19 +721,20 @@ addNodeWithInputs name op inWires outTys = do
   for_ (zip (fst <$> inWires) (Port nodeId <$> [0..])) addEdge
   pure $ zip (Port nodeId <$> [0..]) outTys
 
-makeConditional :: NodeId    -- Parent node id
+makeConditional :: String    -- Label
+                -> NodeId    -- Parent node id
                 -> TypedPort -- The discriminator
                 -> [TypedPort] -- Other inputs
                 -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
-makeConditional parent discrim otherInputs cases = do
+makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional"
   let rows = getSumVariants (snd discrim)
   outTyss <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   unless
     (allRowsEqual outTyss)
     (error "Conditional output types didn't match")
-  let condOp = OpConditional (Conditional parent rows (snd <$> otherInputs) (head outTyss))
+  let condOp = OpConditional (Conditional parent rows (snd <$> otherInputs) (head outTyss) [("label", lbl)])
   addOp condOp condId
   addEdge (fst discrim, Port condId 0)
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
@@ -737,14 +743,12 @@ makeConditional parent discrim otherInputs cases = do
   makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
   makeCase parent name ix tys f = do
     caseId <- freshNode name
-    inpId <- addNode ("Input_" ++ name) (OpIn (InputNode caseId tys))
+    inpId <- addNode ("Input_" ++ name) (OpIn (InputNode caseId tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
     outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs
-
-    outId <- addNode ("Output" ++ name) (OpOut (OutputNode caseId outTys))
+    outId <- addNode ("Output" ++ name) (OpOut (OutputNode caseId outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-
-    addOp (OpCase (ix, Case parent (FunctionType tys outTys bratExts))) caseId
+    addOp (OpCase (ix, Case parent (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)])) caseId
     pure outTys
 
   allRowsEqual :: [[HugrType]] -> Bool
@@ -812,7 +816,7 @@ compileModule venv = do
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
     (funTy, extra_call, body) <- analyseDecl idNode
-    defNode <- addNode (show fnName ++ "_def") (OpDefn $ FuncDefn moduleNode (show fnName) funTy)
+    defNode <- addNode (show fnName ++ "_def") (OpDefn $ FuncDefn moduleNode (show fnName) funTy [])
     registerFuncDef idNode (defNode, extra_call)
     pure (body defNode)
     )
@@ -857,8 +861,8 @@ compileModule venv = do
 
   withIO :: NodeId -> HugrType -> Compile TypedPort -> Compile ()
   withIO parent output c = do
-    addNode "input" (OpIn (InputNode parent []))
-    output <- addNode "output" (OpOut (OutputNode parent [output]))
+    addNode "input" (OpIn (InputNode parent [] [("source", "analyseDecl")]))
+    output <- addNode "output" (OpOut (OutputNode parent [output] [("source", "analyseDecl")]))
     wire <- c
     addEdge (fst wire, Port output 0)
 
@@ -882,8 +886,8 @@ compileModule venv = do
 
 compileNoun :: [HugrType] -> [OutPort] -> NodeId -> Compile ()
 compileNoun outs srcPorts parent = do
-  addNode "input" (OpIn (InputNode parent []))
-  output <- addNode "output" (OpOut (OutputNode parent outs))
+  addNode "input" (OpIn (InputNode parent [] [("source", "compileNoun")]))
+  output <- addNode "output" (OpOut (OutputNode parent outs [("source", "compileNoun")]))
   for_ (zip [0..] srcPorts) (\(outport, Ex src srcPort) ->
     compileWithInputs parent src >>= \case
       Just nodeId -> addEdge (Port nodeId srcPort, Port output outport) $> ()
