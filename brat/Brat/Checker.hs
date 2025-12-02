@@ -702,9 +702,9 @@ check' (Of n e) ((), unders) = case ?my of
       (elems, unders, rightUnders) <- getVecs len unders
       pure ((tgt, el):elems, (tgt, ty):unders, rightUnders)
   getVecs _ unders = pure ([], [], unders)
-check' Hope ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
+check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) of
   (Braty, Left k) -> do
-    (_, [(hungry, _)], [(dangling, _)], _) <- anext "$!" Id (S0, Some (Zy :* S0))
+    (_, [(hungry, _)], [(dangling, _)], _) <- anext ("$!" ++ ident) Id (S0, Some (Zy :* S0))
                                               (REx ("hope", k) R0) (REx ("hope", k) R0)
     fc <- req AskFC
     wire (dangling, kindType k, NamedPort bang "")

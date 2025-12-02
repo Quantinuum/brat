@@ -71,7 +71,7 @@ data Raw :: Dir -> Kind -> Type where
   RPull     :: [PortName] -> WC (Raw Chk k) -> Raw Chk k
   RVar      :: QualName -> Raw Syn Noun
   RIdentity :: Raw Syn UVerb
-  RHope     :: Raw Chk Noun
+  RHope     :: String -> Raw Chk Noun
   RArith    :: ArithOp -> WC (Raw Chk Noun) -> WC (Raw Chk Noun) -> Raw Chk Noun
   ROf       :: WC (Raw Chk Noun) -> WC (Raw d Noun) -> Raw d Noun
   (:::::)   :: WC (Raw Chk Noun) -> [RawIO] -> Raw Syn Noun
@@ -103,7 +103,7 @@ instance Show (Raw d k) where
     = unwords ["let", show abs, "=", show xs, "in", show body]
   show (RNHole name) = '?':name
   show (RVHole name) = '?':name
-  show RHope = "!"
+  show (RHope ident) = '!':ident
   show (RSimple tm) = show tm
   show RPass = show "pass"
   show REmpty = "()"
@@ -203,7 +203,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
   -- TODO: holes need to know their arity for type checking
   desugar' (RNHole strName) = NHole . (strName,) <$> freshM strName
   desugar' (RVHole strName) = VHole . (strName,) <$> freshM strName
-  desugar' RHope = pure Hope
+  desugar' (RHope ident) = pure (Hope ident)
   desugar' RPass = pure Pass
   desugar' (RSimple simp) = pure $ Simple simp
   desugar' REmpty = pure Empty

@@ -1,8 +1,8 @@
 id(n :: #, Vec(Nat, n)) -> Vec(Nat, n)
 id(_, xs) = xs
 
-foo(n :: #, Vec(Nat, n + 1)) -> Vec(Nat, n)
-foo(succ(n), _ ,- xs) = id(!, xs)
+foo(n :: #, Vec(Nat, n + 1)) -> Vec(Nat, n), (k :: #)
+foo(succ(l), _ ,- xs) = id(!nhope, xs), l
 
 --map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
 --map(_, _, _, []) = []
