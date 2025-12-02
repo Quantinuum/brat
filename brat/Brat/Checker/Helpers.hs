@@ -705,7 +705,7 @@ allowedToSolve me it =
       itBwd = (B0 <>< itFwd)
   in  case (it, dollarAndItsPrefix me, dollarAndItsPrefix itBwd) of
         -- Solving a hope
-        (InEnd _, Just (region, "rhs"), Just (maker, "!"))
+        (InEnd _, Just (region, "rhs"), Just (maker, '!':_))
           | Just region == prefixLeftOf maker "$rhs"
            ->
           trackPermission ("Allowed to solve:\n  " ++ show me ++ " / " ++ show it)
