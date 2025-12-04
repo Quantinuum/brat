@@ -618,3 +618,53 @@ stkLen (zx :<< _) = Sy (stkLen zx)
 numValIsConstant :: NumVal (VVar Z) -> Maybe Integer
 numValIsConstant (NumValue up Constant0) = pure up
 numValIsConstant _ = Nothing
+
+
+---------------------- Kernel Types ----------------------
+
+data N3 = QMB { numQubits :: N, numMoney :: N, numBits :: N }
+
+data Add3 :: N3 -> N3 -> N3 -> Type where
+  Add3 :: AddL ql qr q -> AddL ml mr m -> AddL bl br b -> Add3 (QMB ql ml bl) (QMB qr mr br) (QMB q m b)
+
+data Mul3 :: N3 -> N -> N3 -> Type where
+  Mul3 :: MulL q n qn -> MulL m n mn -> MulL b n bn -> Mul3 (QMB q m b) n (QMB qn mn bn)
+
+data N3y :: N3 -> Type where
+  QMBy :: Ny q -> Ny m -> Ny b -> N3y (QMB q m b)
+
+add3 :: N3y l -> N3y r -> Some (Add3 l r)
+add3 (QMBy ql ml bl) (QMBy qr mr br) = case (addL ql qr, addL ml mr, addL bl br) of
+                                          (Some q, Some m, Some b) -> Some (Add3 q m b)
+
+add3Tot :: Add3 l r t -> N3y t
+add3Tot (Add3 aq am ab) = QMBy (addTot aq) (addTot am) (addTot ab)
+
+mul3 :: N3y x -> Ny n -> Some (Mul3 x n)
+mul3 (QMBy q m b) n = case (mulL q n, mulL m n, mulL b n) of
+                        (Some qn, Some mn, Some bn) -> Some (Mul3 qn mn bn)
+
+mul3Tot :: Mul3 x n t -> N3y t
+mul3Tot (Mul3 q m b) = QMBy (mulTot q) (mulTot m) (mulTot b)
+
+type ZERO3  = QMB Z Z Z
+type QUBIT3 = QMB (S Z) Z Z
+type MONEY3 = QMB Z (S Z) Z
+type BIT3   = QMB Z Z (S Z)
+
+data KernTy :: N3 -> Type where
+  KTQubit :: KernTy QUBIT3
+  KTMoney :: KernTy MONEY3
+  KTBit :: KernTy BIT3
+  KTUnit :: KernTy ZERO3
+  KTPair :: KernTy l -> KernTy r -> Add3 l r t -> KernTy t
+  KTVec :: KernTy x -> Ny n -> Mul3 x n t -> KernTy t
+
+ktN3y :: KernTy x -> N3y x
+ktN3y KTQubit = QMBy (Sy Zy) Zy Zy
+ktN3y KTMoney = QMBy Zy (Sy Zy) Zy
+ktN3y KTBit = QMBy Zy Zy (Sy Zy)
+ktN3y KTUnit = QMBy Zy Zy Zy
+ktN3y (KTPair _ _ a) = add3Tot a
+ktN3y (KTVec _ _ m) = mul3Tot m
+

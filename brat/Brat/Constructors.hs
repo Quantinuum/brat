@@ -1,13 +1,14 @@
 module Brat.Constructors where
 
 import qualified Data.Map as M
+import Data.Type.Equality ((:~:)(..))
 
 import Brat.Constructors.Patterns
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 import Bwd
-import Hasochism (N(..), Ny(..))
+import Hasochism (N(..), Ny(..), Some(..), integer2Ny, mulL)
 
 -- TODO: Enforce the invariant that the number of pattern variables is n
 data CtorArgs m where
@@ -169,3 +170,21 @@ natConstructors = M.fromList
   ,(plain "full", (Nothing, nFull))
   ,(plain "zero", (Just NP0, id))
   ]
+
+
+kernTy :: Val Z -> Some KernTy
+kernTy (VCon CQubit []) = Some KTQubit
+kernTy (VCon CMoney []) = Some KTMoney
+kernTy (VCon CBool []) = Some KTBit
+kernTy (VCon CBit []) = Some KTBit
+-- Vectors with constant length
+kernTy (VCon CVec [elems, VNum (NumValue size Constant0)]) = case (kernTy elems, integer2Ny size) of
+         (Some elemsTy, Some sizey) -> case mul3 (ktN3y elemsTy) sizey of
+            Some qmb -> Some (KTVec elemsTy sizey qmb)
+kernTy _ = error "kernTy: Not of kind $"
+
+kernRo :: Ro Kernel Z top -> (top :~: Z, Some KernTy)
+kernRo R0 = (Refl, Some KTUnit)
+kernRo (RPr (_, ty) ro) = case (kernTy ty, kernRo ro) of
+      (Some kty, (Refl, Some kro)) -> case add3 (ktN3y kty) (ktN3y kro) of
+         Some qmb -> (Refl, Some (KTPair kty kro qmb))
