@@ -5,10 +5,12 @@ pub mod ops;
 use enum_iterator::all;
 use hugr::{
     extension::{
+        prelude,
         simple_op::{MakeOpDef, MakeRegisteredOp},
-        ExtensionId, ExtensionRegistry, ExtensionSet,
+        ExtensionId, ExtensionRegistry, ExtensionSet, TypeDefBound,
     },
     std_extensions::{arithmetic::int_types, collections},
+    types::{type_param::TypeParam, CustomType, Type, TypeArg, TypeBound, TypeName, TypeRV},
     Extension,
 };
 
@@ -18,6 +20,9 @@ use crate::defs::BratOpDef;
 
 /// Reported unique name of the Brat extension
 pub const EXTENSION_ID: ExtensionId = ExtensionId::new_unchecked("Brat");
+
+/// Name of the Brat closure type
+pub const CLOSURE_TYPE_ID: TypeName = TypeName::new_inline("Closure");
 
 lazy_static! {
     /// Extension for Brat operations.
@@ -30,11 +35,19 @@ lazy_static! {
             op.add_to_extension(&mut extension).unwrap();
         }
 
+        extension.add_type(
+            CLOSURE_TYPE_ID,
+            vec![TypeParam::new_list(TypeBound::Any), TypeParam::new_list(TypeBound::Any)],
+            "Function closure".to_string(),
+            TypeDefBound::Explicit(TypeBound::Copyable)
+        ).unwrap();
+
         extension
     };
 
     /// Registry of extensions required to validate Brat operations.
     pub static ref BRAT_OPS_REGISTRY: ExtensionRegistry  = ExtensionRegistry::try_new([
+        prelude::PRELUDE.to_owned(),
         int_types::EXTENSION.to_owned(),
         collections::EXTENSION.to_owned(),
         EXTENSION.to_owned(),
@@ -52,12 +65,36 @@ impl MakeRegisteredOp for BratOpDef {
     }
 }
 
+/// The function closure type.
+pub fn closure_custom_type(ins: Vec<TypeRV>, outs: Vec<TypeRV>) -> CustomType {
+    CustomType::new(
+        CLOSURE_TYPE_ID,
+        [
+            TypeArg::Sequence {
+                elems: ins.into_iter().map(|ty| ty.into()).collect(),
+            },
+            TypeArg::Sequence {
+                elems: outs.into_iter().map(|ty| ty.into()).collect(),
+            },
+        ],
+        EXTENSION_ID,
+        TypeBound::Copyable,
+    )
+}
+
+/// The function closure type.
+///
+/// Constructed from [closure_custom_type].
+pub fn closure_type(ins: Vec<TypeRV>, outs: Vec<TypeRV>) -> Type {
+    closure_custom_type(ins, outs).into()
+}
+
 #[cfg(test)]
 mod test {
     use hugr::{
         extension::simple_op::MakeExtensionOp,
         ops::{custom::ExtensionOp, NamedOp},
-        types::{type_param::TypeParam, FunctionType, Type, TypeArg},
+        types::{type_param::TypeParam, Signature, Type, TypeArg},
     };
 
     use crate::{
@@ -70,6 +107,7 @@ mod test {
     #[test]
     fn test_round_trip() {
         fn round_trip(op: &BratOp) -> BratOp {
+            println!("{}", op.name());
             BratOp::from_extension_op(
                 &ExtensionOp::new(
                     EXTENSION.get_op(&op.name()).unwrap().clone(),
@@ -81,13 +119,14 @@ mod test {
             .unwrap()
         }
 
-        let sig1 = FunctionType::new(vec![Type::UNIT, Type::UNIT], vec![Type::UNIT]);
-        let sig2 = FunctionType::new(vec![Type::UNIT], vec![Type::UNIT, Type::UNIT]);
-        let sig3 = FunctionType::new_endo(vec![Type::UNIT]);
+        let exts = ExtensionSet::from_iter([EXTENSION_ID]);
+        let sig1 = Signature::new(vec![Type::UNIT, Type::UNIT], vec![Type::UNIT]);
+        let sig2 = Signature::new(vec![Type::UNIT], vec![Type::UNIT, Type::UNIT]);
+        let sig3 = Signature::new_endo(vec![Type::UNIT]);
 
         let hole = BratOp::Hole {
             idx: 0,
-            sig: sig1.clone(),
+            sig: sig1.clone().with_extension_delta(exts.clone()),
         };
         assert_eq!(round_trip(&hole), hole);
 
@@ -97,13 +136,21 @@ mod test {
         };
         assert_eq!(round_trip(&substitute), substitute);
 
+        let make_closure = BratOp::MakeClosure { sig: sig1.clone() };
+        assert_eq!(round_trip(&make_closure), make_closure);
+
+        let closure_call = BratOp::ClosureCall { sig: sig1.clone() };
+        assert_eq!(round_trip(&closure_call), closure_call);
+
         let partial = BratOp::Partial {
             inputs: vec![Type::UNIT].into(),
             output_sig: sig1.clone(),
         };
         assert_eq!(round_trip(&partial), partial);
 
-        let panic = BratOp::Panic { sig: sig1.clone() };
+        let panic = BratOp::Panic {
+            sig: sig1.clone().with_extension_delta(exts.clone()),
+        };
         assert_eq!(round_trip(&panic), panic);
 
         for ctor in all::<BratCtor>() {

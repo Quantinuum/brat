@@ -3,8 +3,12 @@ name: Brat CI
 on:
   push:
     branches: [ main ]
+    paths:
+      - "**.hs"
   pull_request:
     branches: [ main ]
+    paths:
+      - "**.hs"
 
 env:
   GHC_VERSION: 9.6.4
@@ -73,6 +77,8 @@ jobs:
     - name: Install rust
       if: ${{ steps.cached_validator.outputs.out != 'true' }}
       uses: dtolnay/rust-toolchain@stable
+    - name: Run hugr_extension tests
+      run: cd ../hugr_extension && cargo test
     - name: Install hugr_validator
       if: ${{ steps.cached_validator.outputs.out != 'true' }}
       run: cargo install --path ../hugr_validator

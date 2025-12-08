@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::ctor::BratCtor;
+use crate::{closure_type, ctor::BratCtor};
 use enum_iterator::Sequence;
 use hugr::{
     extension::{
@@ -13,6 +13,7 @@ use hugr::{
     std_extensions::collections::list_type,
     types::{
         type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Type, TypeArg, TypeBound, TypeEnum,
+        TypeRV,
     },
 };
 
@@ -33,6 +34,8 @@ lazy_static! {
 pub enum BratOpDef {
     Hole,
     Substitute,
+    MakeClosure,
+    ClosureCall,
     Partial,
     Panic,
     Ctor(BratCtor),
@@ -47,6 +50,8 @@ impl NamedOp for BratOpDef {
         match self {
             Hole => "Hole".into(),
             Substitute => "Substitute".into(),
+            MakeClosure => "MakeClosure".into(),
+            ClosureCall => "ClosureCall".into(),
             Partial => "Partial".into(),
             Panic => "Panic".into(),
             Ctor(ctor) => format_smolstr!("Ctor::{}", ctor.name()),
@@ -65,6 +70,8 @@ impl FromStr for BratOpDef {
         match v.as_slice() {
             ["Hole"] => Ok(BratOpDef::Hole),
             ["Substitute"] => Ok(BratOpDef::Substitute),
+            ["MakeClosure"] => Ok(BratOpDef::MakeClosure),
+            ["ClosureCall"] => Ok(BratOpDef::ClosureCall),
             ["Partial"] => Ok(BratOpDef::Partial),
             ["Panic"] => Ok(BratOpDef::Panic),
             ["Ctor", ctor] => Ok(BratOpDef::Ctor(BratCtor::from_str(ctor)?)),
@@ -86,6 +93,40 @@ impl MakeOpDef for BratOpDef {
         match self {
             Hole => SignatureFunc::CustomFunc(Box::new(HoleSigFun())),
             Substitute => SignatureFunc::CustomFunc(Box::new(SubstituteSigFun())),
+            MakeClosure => {
+                // (*S -> *T) -> Closure<S, T>
+                let func_ty = Type::new_function(FuncValueType::new(
+                    vec![TypeRV::new_row_var_use(0, TypeBound::Any)],
+                    vec![TypeRV::new_row_var_use(1, TypeBound::Any)],
+                ));
+                let closure_ty = closure_type(
+                    vec![TypeRV::new_row_var_use(0, TypeBound::Any)],
+                    vec![TypeRV::new_row_var_use(1, TypeBound::Any)],
+                );
+                PolyFuncTypeRV::new(
+                    vec![list_of_type(), list_of_type()],
+                    FuncValueType::new(vec![func_ty], vec![closure_ty]),
+                )
+                .into()
+            }
+            ClosureCall => {
+                // Closure<S, T>, *S -> *T
+                let closure_ty = closure_type(
+                    vec![TypeRV::new_row_var_use(0, TypeBound::Any)],
+                    vec![TypeRV::new_row_var_use(1, TypeBound::Any)],
+                );
+                PolyFuncTypeRV::new(
+                    vec![list_of_type(), list_of_type()],
+                    FuncValueType::new(
+                        vec![
+                            closure_ty.into(),
+                            TypeRV::new_row_var_use(0, TypeBound::Any),
+                        ],
+                        vec![TypeRV::new_row_var_use(1, TypeBound::Any)],
+                    ),
+                )
+                .into()
+            }
             Partial => SignatureFunc::CustomFunc(Box::new(PartialSigFun())),
             Panic => SignatureFunc::CustomFunc(Box::new(PanicSigFun())),
             Ctor(ctor) => ctor.signature().into(),
@@ -190,12 +231,12 @@ impl SignatureFromArgs for PartialSigFun {
                 let partial_inputs = row_from_arg(partial_inputs)?;
                 let other_inputs = row_from_arg(other_inputs)?;
                 let outputs = row_from_arg(outputs)?;
-                let res_func =
-                    Type::new_function(FuncValueType::new(other_inputs.clone(), outputs.clone()));
-                let mut inputs = vec![Type::new_function(FuncValueType::new(
-                    [partial_inputs.clone(), other_inputs].concat(),
-                    outputs,
-                ))];
+                let res_func = closure_type(other_inputs.clone(), outputs.clone());
+                let mut inputs =
+                    vec![
+                        closure_type([partial_inputs.clone(), other_inputs].concat(), outputs)
+                            .into(),
+                    ];
                 inputs.extend(partial_inputs);
                 Ok(FuncValueType::new(inputs, vec![res_func]).into())
             }
@@ -239,12 +280,12 @@ impl SignatureFromArgs for PanicSigFun {
     }
 }
 
-fn row_from_arg(arg: &TypeArg) -> Result<Vec<Type>, SignatureError> {
+fn row_from_arg(arg: &TypeArg) -> Result<Vec<TypeRV>, SignatureError> {
     match arg {
         TypeArg::Sequence { elems } => elems
             .iter()
             .map(|arg| match arg {
-                TypeArg::Type { ty } => Ok(ty.clone()),
+                TypeArg::Type { ty } => Ok(ty.clone().into()),
                 _ => Err(SignatureError::InvalidTypeArgs),
             })
             .collect(),
