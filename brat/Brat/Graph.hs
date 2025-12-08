@@ -59,7 +59,10 @@ deriving instance Show (NodeType a)
 -- tag 0 with the function's inputs returned as they were
 -- tag 1 with the environment of pattern variables from a successful
 data TestMatchData (m :: Mode) where
-  TestMatchData :: Show (BinderType m) => Modey m -> MatchSequence (BinderType m) -> TestMatchData m
+  TestMatchData :: Show (BinderType m)
+                => Modey m
+                -> MatchSequence (BinderType m)
+                -> TestMatchData m
 
 deriving instance Show (TestMatchData a)
 
@@ -67,11 +70,11 @@ deriving instance Show (TestMatchData a)
 -- Invariants:
 --    1. Each src in `matchTests` has been mentioned earlier (either in `matchInputs`
 --       or in the srcs outputted by a previous `PrimCtorTest`
---    2. The same goes for the sources in `matchOutputs`
+--    2. The same goes for the sources in `rhsInputs`
 data MatchSequence ty = MatchSequence
   { matchInputs :: [(Src, ty)]
   , matchTests :: [(Src, PrimTest ty)]
-  , matchOutputs ::[(Src, ty)]
+  , rhsInputs ::[(Src, ty)]
   } deriving (Foldable, Functor, Traversable)
 deriving instance Show ty => Show (MatchSequence ty)
 

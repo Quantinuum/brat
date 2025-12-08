@@ -6,7 +6,7 @@ Nodes:
 (check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs/in_1,BratNode Source [] [("n",Int)])
 (check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs/out_2,BratNode Target [("out",Int)] [])
 (check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3,BratNode (Box check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs/in_1 check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs/out_2) [] [("thunk",{ (n :: Int) -> (out :: Int) })])
-(check_defs_1_addN_LambdaChk_9_lambda,BratNode (PatternMatch ((TestMatchData Braty (MatchSequence {matchInputs = [(NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)], matchTests = [], matchOutputs = [(NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)]}),check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("inp",Int)] [("out",Int)])
+(check_defs_1_addN_LambdaChk_9_lambda,BratNode (PatternMatch ((TestMatchData Braty (MatchSequence {matchInputs = [(NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)], matchTests = [], rhsInputs = [(NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)]}),check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("inp",Int)] [("out",Int)])
 (check_defs_1_addN_addN.box/in,BratNode Source [] [("inp",Int)])
 (check_defs_1_addN_addN.box/out_1,BratNode Target [("out",Int)] [])
 (check_defs_1_addN_addN.box_thunk_2,BratNode (Box check_defs_1_addN_addN.box/in check_defs_1_addN_addN.box/out_1) [] [("thunk",{ (inp :: Int) -> (out :: Int) })])
