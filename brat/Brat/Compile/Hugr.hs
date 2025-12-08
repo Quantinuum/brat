@@ -730,7 +730,7 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     [] -> do
       -- Reorder into `rhsInputs` order
       trackM $  "PortTbl:\n" ++ intercalate "\n" (show <$> portTable)
-      trackM $ unlines ["parent: " ++ show parent, "matchInputs: " ++ printTy (snd <$> matchInputs), "matchOutputs: " ++ printTy (snd <$> matchOutputs)]
+      trackM $ unlines ["parent: " ++ show parent, "matchInputs: " ++ printTy (snd <$> matchInputs), "rhsInputs: " ++ printTy (snd <$> rhsInputs)]
       rhsInputsRefinedFromUnification <- for rhsInputs $ \input@(src, hugrTy) -> compileWithInputs parent (endName (toEnd src)) >>= \case
         Nothing -> error $ "Failed to compile rhsInput: " ++ show input
         Just nodeId -> pure (src, (Port nodeId 0, hugrTy))
