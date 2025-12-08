@@ -311,9 +311,10 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
 
   -- Compile the match: testResult is the port holding the dynamic match result
   -- with the type `sumTy`
-  let TestMatchData my matchSeq extraInps = matchData
+  let TestMatchData my matchSeq = matchData
   matchSeq <- compileGraphTypes (fmap (binderToValue my) matchSeq)
 
+{-
   -- Dilemma: we want to compile this extra stuff *if we use it* and put it in
   -- the port table. Otherwise it causes problems *because* the stuff isn't used.
   extraStuff <- for extraInps $ \(src@(NamedPort out@(Ex bratNode port) _), ty) -> do
@@ -323,6 +324,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
        -- TODO: This probably isn't working hard enough - might the type have deps?
        let hugrTy = compileType (binderToValue my ty)
        pure (src, (hugrNode, hugrTy))
+-}
 
 {-
        case [ bang "wee" ns tgtEnd | (src', _, In tgtEnd _) <- es, out == src'] of
@@ -346,14 +348,13 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
           pure [(src, (hugrNode, hugrTy))])
 -}
 
-  trackM ("Extra stuff: " ++ show extraStuff)
-  let portTbl = (zipStrict (fst <$> matchInputs matchSeq) ins) ++ extraStuff
+  let portTbl = (zipStrict (fst <$> matchInputs matchSeq) ins)
   testResult <- compileMatchSequence parent portTbl matchSeq
 
   -- Feed the test result into a conditional
-  makeConditional ("clause of " ++ show rhs) parent testResult [] [("didntMatch", didntMatch outTys)
-                                                                  ,("didMatch", didMatch outTys)
-                                                                  ]
+  makeConditional ("clause of " ++ show rhs) parent testResult [("didntMatch", didntMatch outTys)
+                                                               ,("didMatch", didMatch outTys)
+                                                               ]
  where
   didntMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didntMatch outTys parent ins = case nonEmpty clauses of
@@ -692,7 +693,7 @@ printTy = intercalate ", " . fmap aux
 -- Return a sum whose first component is the types we started with in the order
 -- specified by the portTable argument.
 --
--- In the happy path we return wires in the order of `matchOutputs`
+-- In the happy path we return wires in the order of `rhsInputs`
 -- otherwise, the order is the same as how they came in via the portTable
 compileMatchSequence :: NodeId -- The parent node
                      -> [(Src  -- Things we've matched or passed through, coming from an Input node
@@ -701,40 +702,39 @@ compileMatchSequence :: NodeId -- The parent node
                      -> Compile TypedPort
 compileMatchSequence _ _ (MatchSequence { .. }) | track ("compileMatchSequence: " ++ show (snd <$> matchTests)) False = undefined
 compileMatchSequence parent portTable (MatchSequence {..}) = do
-{-
-  unless
-    ((second snd <$> portTable) == matchInputs)
-    (error "compileMatchSequence assert failed")
--}
-  let sumTy = SoR [snd <$> matchInputs, snd <$> matchOutputs]
+  let sumTy = SoR [snd <$> matchInputs, snd <$> rhsInputs]
   case matchTests of
     (src, primTest):tests -> do
       -- Pick the port corresponding to the source we want to test
-      let ((_, typedPort), (left, right)) = head $ filter ((src ==) . fst . fst) (foci portTable)
+      let (scrutinee@(_, typedPort), (left, right)) = head $ filter ((src ==) . fst . fst) (foci portTable)
       let others = left <>> right
       -- Compile the primitive test, giving us a single `testResult` port with a
       -- sum type (either the thing we looked at or it's pieces) and a bunch of
       -- other inputs
       testResult <- compilePrimTest parent typedPort primTest
       let testIx = length left
-      let remainingMatchTests = MatchSequence (primTestOuts primTest ++ (second snd <$> others)) tests matchOutputs
-      trackM $ "test: " ++ show (src, primTest)
-      trackM $ "matchInputs: " ++ printTy (snd <$> matchInputs)
-      trackM $ "matchOutputs: " ++ printTy (snd <$> matchOutputs)
-      trackM $ unlines ("others:":(("  " ++) . show <$> others))
-      trackM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
-      ports <- makeConditional ("matching " ++ show (src, primTest)) parent testResult (snd <$> others)
-               [("didNotMatch", didNotMatchCase testIx sumTy)
+      let remainingMatchTests = MatchSequence (primTestOuts primTest ++ (second snd <$> others)) tests rhsInputs
+      traceM $ "test: " ++ show (src, primTest)
+      traceM $ "matchInputs: " ++ show matchInputs
+      traceM $ "rhsInputs: " ++ show rhsInputs
+      traceM $ "scrutinee: " ++ show scrutinee
+      traceM $ unlines ("others:":(("  " ++) . show <$> others));
+      traceM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
+      ports <- makeConditional ("matching " ++ show (src, primTest)) parent testResult
+               [("didNotMatch", \parent _ -> makeRowTag "DidNotMatch" parent 0 sumTy (reorderPortTbl portTable (fst <$> matchInputs)))
                ,("didMatch",    didMatchCase testIx (primTest, snd typedPort) remainingMatchTests sumTy)]
       case ports of
         (port:_) -> pure port
         _ -> error $ "Expected at least one output port from makeConditional: got\n  " ++ show ports
 
     [] -> do
-      -- Reorder into `matchOutputs` order
+      -- Reorder into `rhsInputs` order
       trackM $  "PortTbl:\n" ++ intercalate "\n" (show <$> portTable)
       trackM $ unlines ["parent: " ++ show parent, "matchInputs: " ++ printTy (snd <$> matchInputs), "matchOutputs: " ++ printTy (snd <$> matchOutputs)]
-      let ins = reorderPortTbl portTable (fst <$> matchOutputs)
+      rhsInputsRefinedFromUnification <- for rhsInputs $ \input@(src, hugrTy) -> compileWithInputs parent (endName (toEnd src)) >>= \case
+        Nothing -> error $ "Failed to compile rhsInput: " ++ show input
+        Just nodeId -> pure (src, (Port nodeId 0, hugrTy))
+      let ins = reorderPortTbl (portTable <> rhsInputsRefinedFromUnification) (fst <$> rhsInputs)
       -- Need to pack inputs into a tuple before feeding them into a tag node
       trackM $ "New PortTbl: \n" ++ intercalate "\n" (show <$> portTable)
       trackM $ unlines ["Bleep bloop",show sumTy,show ins]
@@ -782,7 +782,7 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
          -> Compile [TypedPort]
 --    undo _ ins | trace ("undo ins: " ++ show ins) False = undefined
     undo parent ins = do
---      -- Test results, and the rest of the inputs
+      -- Test results, and the rest of the inputs
       -- This is wrong because the outs from the prim test for some reason
       -- includes the unification inputs!
       let (refined, others) = splitAt (length (primTestOuts prevTest)) ins
@@ -855,21 +855,19 @@ addNodeWithInputs name op inWires outTys = do
 makeConditional :: String    -- Label
                 -> NodeId    -- Parent node id
                 -> TypedPort -- The discriminator
-                -> [TypedPort] -- Other inputs
                 -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
-makeConditional lbl _ discrim otherInputs cases | track ("makeConditional(" ++ show lbl ++ ")\n  " ++ unlines (fst <$> cases) ++ "\n  " ++ show (snd discrim) ++ "\n  " ++ show otherInputs) False = undefined
-makeConditional lbl parent discrim otherInputs cases = do
+makeConditional lbl _ discrim cases | track ("makeConditional(" ++ show lbl ++ ")\n  " ++ unlines (fst <$> cases) ++ "\n  " ++ show (snd discrim)) False = undefined
+makeConditional lbl parent discrim cases = do
   condId <- freshNode "Conditional"
   let rows = getSumVariants (snd discrim)
-  outTyss <- for (zipStrict (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  outTyss <- for (zipStrict (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix row f)
   unless
     (allRowsEqual outTyss)
     (error "Conditional output types didn't match")
-  let condOp = OpConditional (Conditional parent rows (snd <$> otherInputs) (head outTyss) [("label", lbl)])
+  let condOp = OpConditional (Conditional parent rows [] (head outTyss) [("label", lbl)])
   addOp condOp condId
   addEdge (fst discrim, Port condId 0)
-  traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
   pure $ zip (Port condId <$> [0..]) (head outTyss)
  where
   makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
@@ -894,6 +892,8 @@ compilePrimTest :: NodeId
                 -> PrimTest HugrType -- The test to run
                 -> Compile TypedPort
 compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) = do
+  -- PrimCtorTest returns the `outputs` specified in the happy case, else the
+  -- thing that was originally being tested, unchanged.
   let sumOut = HTSum (SG (GeneralSum [[ty], snd <$> outputs]))
   let sig = FunctionType [ty] [sumOut] ["BRAT"]
   testId <- addNode ("PrimCtorTest " ++ show c)
@@ -911,7 +911,8 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
   constId <- addNode "LitConst" (OpConst (ConstOp parent (valFromSimple tm)))
   loadPort <- head <$> addNodeWithInputs "LitLoad" (OpLoadConstant (LoadConstantOp parent ty))
                        [(Port constId 0, ty)] [ty]
-  -- Connect to a test node
+  -- PrimLitTest returns an empty sum in the happy case (no extra info), else
+  -- the thing that was originally being tested, unchanged.
   let sumOut = HTSum (SG (GeneralSum [[ty], []]))
   let sig = FunctionType [ty, ty] [sumOut] ["BRAT"]
   head <$> addNodeWithInputs ("PrimLitTest " ++ show tm)
@@ -922,6 +923,12 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
 constructorOp :: NodeId -> QualName -> QualName -> FunctionType -> HugrOp NodeId
 constructorOp parent tycon c sig = OpCustom (CustomOp parent "BRAT" ("Ctor::" ++ show tycon ++ "::" ++ show c) sig [])
 
+-- undoPrimTest, reconstructs the scrutinee of a test after the test has been run.
+-- For literal tests, the literal is recorded in the test, so we can just put it
+-- in a const node.
+-- For constructor tests, we assume that the outputs of the test are the
+-- arguments of the constructor, so we can apply them to the constructor in the
+-- same order to reproduce the scrutinee.
 undoPrimTest :: NodeId
              -> [TypedPort] -- The inputs we have to put back together
              -> HugrType -- The type of the thing we're making

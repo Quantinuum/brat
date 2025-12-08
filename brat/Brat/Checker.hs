@@ -761,15 +761,8 @@ checkClause my fnName cty clause = modily my $ do
       -- Also make a row for the refined outputs (shifted by the pattern environment)
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
-          trackM ("patEz: " ++ show patEz)
-          let extraInputs = [srcTy | (name@('$':_), srcTy) <- sol]
-          trackM ("sol(testOuts): " ++ show sol)
           let testOuts = snd <$> sol
---          let testOuts = [ if x == '$' then (Implicit, src, ty) else (Explicit, src, ty) | (x:_,(src, ty)) <- sol ]
-          --let testOuts = [ ty | (x:_, ty) <- sol, x /= '$' ]
-          --let testOuts = snd <$> sol
-          trackM ("extra: " ++ show extraInputs)
-          let match = TestMatchData my (MatchSequence overs tests testOuts) extraInputs
+          let match = TestMatchData my (MatchSequence overs tests testOuts)
           trackM $ "[[[[[[TestMatchData\n" ++ show match ++ "\n]]]]]]"
           trackM $ "Sig:\n  " ++ show patRo ++ "\n  ->\n  " ++ show outRo
           pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)

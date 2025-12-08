@@ -66,7 +66,6 @@ data TestMatchData (m :: Mode) where
   TestMatchData :: Show (BinderType m)
                 => Modey m
                 -> MatchSequence (BinderType m)
-                -> [(Src, BinderType m)] -- Extra inputs from unification
                 -> TestMatchData m
 
 deriving instance Show (TestMatchData a)
@@ -75,18 +74,18 @@ deriving instance Show (TestMatchData a)
 -- Invariants:
 --    1. Each src in `matchTests` has been mentioned earlier (either in `matchInputs`
 --       or in the srcs outputted by a previous `PrimCtorTest`
---    2. The same goes for the sources in `matchOutputs`
+--    2. The same goes for the sources in `rhsInputs`
 data MatchSequence ty = MatchSequence
   { matchInputs :: [(Src, ty)]
   , matchTests :: [(Src, PrimTest ty)]
-  , matchOutputs ::[(Src, ty)]
+  , rhsInputs ::[(Src, ty)]
   } deriving (Foldable, Functor, Traversable)
 --deriving instance Show ty => Show (MatchSequence ty)
 
 instance Show ty => Show (MatchSequence ty) where
   show (MatchSequence { .. }) = unlines ["matchInputs:\n  " ++ intercalate "\n  " (show <$> matchInputs)
                                         ,"matchTests:\n  " ++ intercalate "\n  " (show <$> matchTests)
-                                        ,"matchOutputs:\n  " ++ intercalate "\n  " (show <$> matchOutputs)
+                                        ,"rhsInputs:\n  " ++ intercalate "\n  " (show <$> rhsInputs)
                                         ]
 
 data PrimTest ty
