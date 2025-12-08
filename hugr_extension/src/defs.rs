@@ -12,8 +12,8 @@ use hugr::{
     std_extensions::arithmetic::int_types::INT_TYPES,
     std_extensions::collections::list_type,
     types::{
-        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Type, TypeArg, TypeBound, TypeEnum,
-        TypeRV,
+        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Signature, Type,
+        TypeArg, TypeBound, TypeEnum, TypeRV,
     },
 };
 
@@ -56,7 +56,7 @@ impl NamedOp for BratOpDef {
             Panic => "Panic".into(),
             Ctor(ctor) => format_smolstr!("Ctor::{}", ctor.name()),
             PrimCtorTest(ctor) => format_smolstr!("PrimCtorTest::{}", ctor.name()),
-            Lluf => "Lluf".into()
+            Lluf => "Lluf".into(),
             Replicate => "Replicate".into(),
         }
     }
@@ -140,7 +140,7 @@ impl MakeOpDef for BratOpDef {
                 )
                 .into()
             }
-            Lluf => FunctionType::new(vec![U64.clone()], vec![U64.clone()]).into(),
+            Lluf => Signature::new(vec![U64.clone()], vec![U64.clone()]).into(),
             Replicate => PolyFuncTypeRV::new(
                 [TypeParam::Type {
                     b: TypeBound::Copyable,
