@@ -632,3 +632,34 @@ numVars nv = [e | VPar e <- vvars nv]
  where
   vvars :: NumVal a -> [a]
   vvars = foldMap pure
+
+class DepEnds t where
+  depEnds :: t -> [End]
+
+instance DepEnds (NumVal (VVar n)) where
+  depEnds nv = [e | VPar e <- vvars nv]
+   where
+    vvars :: NumVal a -> [a]
+    vvars = foldMap pure
+
+instance DepEnds (Val n) where
+  depEnds (VNum nv) = depEnds nv
+  depEnds (VCon _ args) = depEnds args
+  depEnds (VLam body) = depEnds body
+  depEnds (VFun _ cty) = depEnds cty
+  depEnds (VApp (VPar e) args) = e : depEnds args
+  depEnds x = error ("depEnds " ++ show x)
+
+instance DepEnds t => DepEnds [t] where
+  depEnds = concatMap depEnds
+
+instance DepEnds t => DepEnds (Bwd t) where
+  depEnds = foldMap depEnds
+
+instance DepEnds (Ro m i j) where
+  depEnds R0 = []
+  depEnds (RPr (_, ty) ro) = depEnds ty ++ depEnds ro
+  depEnds (REx _ ro) = depEnds ro
+
+instance DepEnds (CTy m n) where
+  depEnds (ss :->> ts) = depEnds ss ++ depEnds ts

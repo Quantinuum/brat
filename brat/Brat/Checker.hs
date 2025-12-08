@@ -22,6 +22,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
+import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..))
 import Prelude hiding (filter)
 
@@ -29,7 +30,7 @@ import Brat.Checker.Helpers
 import Brat.Checker.Monad
 import Brat.Checker.Quantity
 import Brat.Checker.SolveHoles (typeEq)
-import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve)
+import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd)
 import Brat.Checker.Types
 import Brat.Constructors
 import Brat.Error
@@ -742,20 +743,27 @@ checkClause my fnName cty clause = modily my $ do
 
   -- First, we check the patterns on the LHS. This requires some overs,
   -- so we make a box, however this box will be skipped during compilation.
-  (sol, match, rhsCty) <- suppressHoles . fmap snd $
+  (sol, match, rhsCty, defs) <- suppressHoles . fmap snd $
        let ?my = my in ("$lhs" -!) $ makeBox (clauseName ++ "_setup") cty $
                      \(overs, unders) -> do
     -- Make a problem to solve based on the lhs and the overs
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
+    (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
+      Braty -> postProcessSolAndOuts sol unders
+      Kerny -> pure (sol, [])
     -- The solution gives us the variables bound by the patterns.
     -- We turn them into a row
     mkArgRo my S0 ((\(n, (src, ty)) -> (NamedPort (toEnd src) n, ty)) <$> sol) >>= \case
       -- Also make a row for the refined outputs (shifted by the pattern environment)
       Some (patEz :* patRo) -> mkArgRo my patEz (first (fmap toEnd) <$> unders) >>= \case
         Some (_ :* outRo) -> do
-          let match = TestMatchData my $ MatchSequence overs tests (snd <$> sol)
-          pure (sol, match, patRo :->> outRo)
+          let testOuts = snd <$> sol
+          let match = TestMatchData my (MatchSequence overs tests testOuts)
+          trackM $ "[[[[[[TestMatchData\n" ++ show match ++ "\n]]]]]]"
+          pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
+
+  for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
@@ -770,6 +778,59 @@ checkClause my fnName cty clause = modily my $ do
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
+  -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
+  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts sol outputs = worker B0 sol
+   where
+    worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+    worker zx [] = (, []) <$> outputDeps zx [] outputs
+    worker zx (entry@(patVar, (src, Left k)):sol) = let vsrc = VApp (VPar (toEnd src)) B0 in do
+      trackM ("processSol (kinded): " ++ show entry)
+      def <- eval S0 vsrc
+      if def == vsrc
+      then worker (zx :< entry) sol
+      else do
+         outPorts <- depOutPorts def
+         srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+         zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+         (sol, defs) <- worker (zx {-:< entry-}) sol
+         pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
+    -- Pat vars beginning with '_' aren't in scope, we can ignore them
+    -- (but if they're kinded they might come up later as the dependency of something else)
+    worker zx (('_':_, (src, ty)):sol) = worker zx sol
+    worker zx (entry@(patVar, (src, Right ty)):sol) = do
+      trackM ("processSol (typed): " ++ show entry)
+      ty <- eval S0 ty
+      outPorts <- depOutPorts ty
+      srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+      zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+      worker (zx :< entry) sol
+
+    insert :: (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat))
+    insert entry@(_, (src, _)) entryz
+     | any (\(_, (src', _f)) -> src == src') entryz = entryz
+     | otherwise = track ("insert: " ++ show entry) $ entryz :< entry
+
+    outputDeps :: Bwd (String, (Src, BinderType Brat)) -- The solution for inputs, so we can make sure we don't duplicate anything
+               -> [Tgt] -- Kinded outputs that we're aware of and want to leave out of the solution
+               -> [(Tgt, BinderType Brat)] -- Outputs we're searching for dependencies
+               -> Checking [(String, (Src, BinderType Brat))]
+    outputDeps sol _ [] = pure (sol <>> [])
+    outputDeps sol ignoredTgts ((tgt, Left k):rest) = outputDeps sol (tgt:ignoredTgts) rest
+    outputDeps sol ignoredTgts ((tgt, Right ty):rest) = do
+      ty <- eval S0 ty
+      let deps = [ outport | ExEnd outport <- depEnds ty]
+      depsWithTys <- for deps (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+      sol <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) sol depsWithTys
+      outputDeps sol ignoredTgts rest
+
+    -- We could use some checks around the locality of these things. Are they
+    -- all defined in terms of things which are generated by pattern tests?
+    depOutPorts :: (Show t, DepEnds t) => t -> Checking [OutPort]
+    depOutPorts x = for (depEnds x) $ \case
+      ExEnd outport -> pure outport
+      InEnd inport -> err . TypeErr $ "Type dependency of " ++ show x ++ " (" ++ show inport ++ ") had an ambiguous type."
+
   mkEnv :: (?my :: Modey m) => [String] -> [(Src, BinderType m)] -> Checking (Env (EnvData m))
   mkEnv (x:xs) (src:srcs) = do
     e1 <- singletonEnv x src
