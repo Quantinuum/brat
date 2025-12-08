@@ -707,11 +707,10 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     (_, [(hungry, _)], [(dangling, _)], _) <- anext ("$!" ++ ident) Id (S0, Some (Zy :* S0))
                                               (REx ("hope", k) R0) (REx ("hope", k) R0)
     fc <- req AskFC
-    req (ANewDynamic (toEnd bang) fc)
     wire (dangling, kindType k, NamedPort bang "")
     defineTgt' "check hope (tgt)" tgt (endVal k (toEnd hungry))
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
-    req (ANewDynamic (toEnd hungry) fc)
+    req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
@@ -1272,6 +1271,6 @@ run ve initStore ns m = do
     -- show multiple error locations
     hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
  where
-  isNatKinded tyMap e = case tyMap M.! e of
+  isNatKinded tyMap e = case tyMap M.! (InEnd e) of
     (EndType Braty (Left Nat), _) -> True
     _ -> False

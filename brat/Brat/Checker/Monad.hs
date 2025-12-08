@@ -75,7 +75,7 @@ data Context = Ctx { globalVEnv :: VEnv
                    -- On the chopping block
                    , hopes :: Hopes
                    -- Ends which need to be solved because they affect runtime behaviour
-                   , dynamicSet :: M.Map End FC
+                   , dynamicSet :: M.Map InPort FC
                    , captureSets :: CaptureSets
                    }
 
@@ -117,8 +117,8 @@ data CheckingSig ty where
   KDone   :: CheckingSig ()
   AskVEnv :: CheckingSig CtxEnv
   Declare :: End -> Modey m -> BinderType m -> IsSkolem -> CheckingSig ()
-  ANewDynamic :: End -> FC -> CheckingSig ()
-  AskDynamics :: CheckingSig (M.Map End FC)
+  ANewDynamic :: InPort -> FC -> CheckingSig ()
+  AskDynamics :: CheckingSig (M.Map InPort FC)
   AddCapture :: Name -> (QualName, [(Src, BinderType Brat)]) -> CheckingSig ()
 
 wrapper :: (forall a. CheckingSig a -> Checking (Maybe a)) -> Checking v -> Checking v
@@ -334,16 +334,18 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
         -- to just "have another go".
         Just _ -> let news = News (M.singleton end Unstuck)
                       newDynamics = case v of
-                        VNum nv -> numVars nv
+                        VNum nv -> [ inport | InEnd inport <- depEnds nv ]
                         _ -> []
                   in handler (k news)
                      (ctx { store = st { valueMap = M.insert end v vm },
-                                    dynamicSet = case M.lookup end (dynamicSet ctx) of
-                                      Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
+                                    dynamicSet = case end of
+                                      ExEnd _ -> dynamicSet ctx
+                                      InEnd inport -> case M.lookup inport (dynamicSet ctx) of
+                                        Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
                                                  M.union
                                                  (M.fromList (zip newDynamics (repeat fc)))
-                                                 (M.delete end (dynamicSet ctx))
-                                      Nothing -> dynamicSet ctx
+                                                 (M.delete inport (dynamicSet ctx))
+                                        Nothing -> dynamicSet ctx
                           }) g
 handler (Yield Unstuck k) ctx g = handler (k mempty) ctx g
 handler (Yield (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ TypeErr $ unlines $
