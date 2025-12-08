@@ -173,7 +173,7 @@ checkOutputs :: forall m k . (CheckConstraints m k, ?my :: Modey m)
              -> [(Tgt, BinderType m)] -- Expected
              -> [(Src, BinderType m)] -- Actual
              -> Checking [(Tgt, BinderType m)]
-checkOutputs tm unders overs | track ("checkOutputs\n  " ++ show unders ++ "\n  " ++ show overs) False = undefined
+checkOutputs _ unders overs | track ("checkOutputs\n  " ++ show unders ++ "\n  " ++ show overs) False = undefined
 checkOutputs tm unders overs = checkIO tm unders overs (flip $ checkWire ?my tm True) "No unders but overs: "
 
 check :: (CheckConstraints m k
@@ -473,7 +473,7 @@ check' (VHole (mnemonic, name)) connectors = do
   pure (((), ()), ([], []))
 -- TODO: Better error message
 check' tm@(Con _ _) ((), []) = typeErr $ "No type to check " ++ show tm ++ " against"
-check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
+check' (Con vcon vargs) ((), (hungry, ty):unders) = do
   trackM ("check' Con vcon=" ++ show vcon ++ "  vargs=" ++ show vargs)
   mkFork "check'Con" $ case (?my, ty) of
       (Braty, Left k) -> do
@@ -759,7 +759,6 @@ checkClause my fnName cty clause = modily my $ do
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
-    let abstractor = foldr ((:||:) . APat . Bind) AEmpty vars
     let ?my = my in do
       env <- mkEnv vars rhsOvers
       localEnv env $ "$rhs" -! check @m (rhs clause) ((), rhsUnders)

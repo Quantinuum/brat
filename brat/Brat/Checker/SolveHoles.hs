@@ -1,9 +1,9 @@
 module Brat.Checker.SolveHoles (typeEq, typesEq) where
 
-import Brat.Checker.Helpers (buildNatVal, buildConst, mineToSolve, solveSem)
+import Brat.Checker.Helpers (mineToSolve, solveSem)
 import Brat.Checker.Monad
 import Brat.Checker.SolveNumbers
-import Brat.Checker.Types (kindForMode, IsSkolem(..))
+import Brat.Checker.Types (kindForMode)
 import Brat.Error (ErrorMsg(..))
 import Brat.Eval
 import Brat.Naming (FreshMonad(..))
@@ -15,12 +15,10 @@ import Bwd
 import Hasochism
 -- import Brat.Syntax.Port (toEnd)
 
-import Control.Monad (unless, when, filterM, (>=>))
+import Control.Monad (unless)
 import Data.Bifunctor (second)
 import Data.Foldable (sequenceA_)
 import Data.Functor
-import Data.Maybe (mapMaybe)
-import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
@@ -96,10 +94,6 @@ typeEqEta tm stuff@(ny :* _ks :* _sems) _ k exp act = do
     [] -> typeEqRigid tm stuff k exp act -- easyish, both rigid i.e. already defined
     -- tricky: must wait for one or other to become more defined
     es -> mkYield "typeEqEta" (S.fromList es) >> typeEq' tm stuff k exp act
- where
-  getEnd (VApp (VPar e) _) = Just e
-  getEnd (VNum n) = getNumVar n
-  getEnd _ = Nothing
 
 typeEqs :: String -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n -> [TypeKind] -> [Val n] -> [Val n] -> Checking ()
 typeEqs _ _ [] [] [] = pure ()

@@ -2,7 +2,7 @@
 
 module Brat.Checker.Helpers where
 
-import Brat.Checker.Monad (Checking, CheckingSig(..), HopeData(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
+import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
 import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur)
@@ -26,7 +26,6 @@ import Data.Foldable (foldrM)
 import Data.List (partition)
 import Data.Maybe (isJust)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
-import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding (last)
 
@@ -117,7 +116,7 @@ pullPortsSig :: Show ty
              -> Checking [(PortName, ty)]
 pullPortsSig = pullPorts fst showSig
 
-pullPorts :: forall a ty
+pullPorts :: forall a
            . (a -> PortName) -- A way to get a port name for each element
           -> ([a] -> String) -- A way to print the list
           -> [PortName] -- Things to pull to the front
@@ -261,7 +260,7 @@ getThunks :: Modey m
                       ,Overs m UVerb
                       )
 getThunks _ [] = pure ([], [], [])
-getThunks Braty row@((src, Right ty):rest) = do
+getThunks Braty ((src, Right ty):rest) = do
   ty <- awaitTypeDefinition ty
   (src, ss :->> ts) <- vectorise Braty (src, ty)
   (node, unders, overs, _) <- let ?my = Braty in
@@ -627,7 +626,7 @@ invertNatVal (NumValue up gro) = case up of
 -- The Sem is closed, for now.
 solveVal :: TypeKind -> End -> Val Z -> Checking ()
 solveVal _ it (VApp (VPar e) B0) | it == e = pure ()
-solveVal k it v | Left msg <- doesntOccur it v =
+solveVal _ it v | Left msg <- doesntOccur it v =
     -- TODO: Not all occurrences are toxic. The end could be in an argument
     -- to a hoping variable which isn't used.
     -- E.g. h1 = h2 h1 - this is valid if h2 is the identity, or ignores h1.
@@ -684,12 +683,12 @@ valPats2Val _ _ = err $ InternalError "Type args didn't match expected - kindChe
 
 traceChecking :: (Show a, Show b) => String -> (a -> Checking b) -> (a -> Checking b)
 traceChecking lbl m a = do
-  --traceM ("Enter " ++ lbl ++ ": " ++ show a)
+  traceM ("Enter " ++ lbl ++ ": " ++ show a)
   b <- m a
-  --traceM ("Exit  " ++ lbl ++ ": " ++ show b)
+  traceM ("Exit  " ++ lbl ++ ": " ++ show b)
   pure b
 
--- traceChecking = const id
+--traceChecking = const id
 
 dollarAndItsPrefix :: Bwd (String, Int) -> Maybe (Bwd (String, Int), String)
 dollarAndItsPrefix B0 = Nothing
@@ -720,10 +719,6 @@ allowedToSolve me it =
           $ Just "gen"
         _ -> trackPermission ("Forbidden to solve:\n  " ++ show me ++ " / " ++ show it)
           Nothing
- where
-  lastDollar B0 = Nothing
-  lastDollar (zx :< ('$':str, _)) = Just str
-  lastDollar (zx :< x) = lastDollar zx
 
 mineToSolve :: Checking (End -> Maybe String)
 mineToSolve = allowedToSolve <$> whoAmI

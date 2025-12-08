@@ -22,7 +22,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Debug.Trace
+-- import Debug.Trace
 
 -- Used for messages about thread forking / spawning
 thTrace = const id

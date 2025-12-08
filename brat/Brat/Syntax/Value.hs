@@ -628,7 +628,7 @@ flexes (VNum (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar e)))))) = [e
 flexes _ = []
 
 numVars :: NumVal (VVar Z) -> [End]
-numVars nv = [e | v@(VPar e) <- vvars nv]
+numVars nv = [e | VPar e <- vvars nv]
  where
   vvars :: NumVal a -> [a]
   vvars = foldMap pure

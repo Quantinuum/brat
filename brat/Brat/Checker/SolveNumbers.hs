@@ -12,8 +12,7 @@ import Brat.Naming
 import Hasochism
 import Control.Monad.Freer
 
-import Debug.Trace
-import qualified Data.Map as M
+-- import Debug.Trace
 import qualified Data.Set as S
 
 trailM :: Applicative f => String -> f ()
@@ -78,7 +77,7 @@ unifyNum mine nv0 nv1 = do
 -- ...But we don't need to do any wiring here, right?
 unifyNum' :: (End -> Maybe String) -> NumVal (VVar Z) -> NumVal (VVar Z) -> Checking ()
 unifyNum' _ a b | trail ("unifyNum'\n  " ++ show a ++ "\n  " ++ show b) False = undefined
-unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
+unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
   | lup <= rup = lhsFun00 lgro (NumValue (rup - lup) rgro)
   | otherwise  = lhsFun00 rgro (NumValue (lup - rup) lgro)
  where
@@ -137,7 +136,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
   lhsMono m@(Full _) (NumValue 0 gro) = trail "lhsMono swaps" $ lhsFun00 gro (NumValue 0 (StrictMonoFun (StrictMono 0 m)))
   lhsMono (Full sm) (NumValue up gro) = do
     smPred <- traceChecking "lhsMono demandSucc" demandSucc (NumValue 0 (StrictMonoFun sm))
-    sm <- numEval S0 sm
+    _ <- numEval S0 sm
     -- trailM $ "succ now " ++ show (quoteNum Zy sm)
     unifyNum mine (n2PowTimes 1 (nFull smPred)) (NumValue (up - 1) gro)
 
@@ -175,7 +174,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
       demandSucc nv
 
   -- if it's not "mine" should we wait?
-  demandSucc (NumValue 0 (StrictMonoFun x@(StrictMono k (Full nPlus1)))) = do
+  demandSucc (NumValue 0 (StrictMonoFun (StrictMono k (Full nPlus1)))) = do
     n <- traceChecking "demandSucc" demandSucc (NumValue 0 (StrictMonoFun nPlus1))
     -- foo <- numEval S0 x
     -- trailM $ "ds: " ++ show x ++ " -> " ++ show (quoteNum Zy foo)
@@ -184,7 +183,7 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
 
   -- Complain if a number isn't even, otherwise return half
   demandEven :: NumVal (VVar Z) -> Checking (NumVal (VVar Z))
-  demandEven n@(NumValue up gro) = case up `divMod` 2 of
+  demandEven (NumValue up gro) = case up `divMod` 2 of
     (up, 0) -> nPlus up <$> traceChecking "evenGro" evenGro gro
     (up, 1) -> nPlus (up + 1) <$> traceChecking "oddGro" oddGro (NumValue 0 gro)
    where
