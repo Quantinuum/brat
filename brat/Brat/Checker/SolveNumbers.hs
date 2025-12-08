@@ -197,9 +197,9 @@ unifyNum' mine nvl@(NumValue lup lgro) nvr@(NumValue rup rgro)
           half <- traceChecking "makeHalf" makeHalf e
           pure (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar half)))))
         | otherwise -> do
-	  mkYield "evenGro" (S.singleton e)
-	  nv <- quoteNum Zy <$> numEval S0 mono
-	  demandEven nv
+          mkYield "evenGro" (S.singleton e)
+          nv <- quoteNum Zy <$> numEval S0 mono
+          demandEven nv
       Full sm -> nConstant 0 <$ demand0 (NumValue 0 (StrictMonoFun sm))
     evenGro (StrictMonoFun (StrictMono n mono)) = pure (NumValue 0 (StrictMonoFun (StrictMono (n - 1) mono)))
 

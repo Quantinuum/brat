@@ -18,9 +18,9 @@ module Brat.Eval (EvMode(..)
                  ,kindType
                  ,numVal
                  ,quote
-		 ,quoteNum
+                 ,quoteNum
                  ,getNumVar
-		 ,instantiateMeta
+                 ,instantiateMeta
                  ) where
 
 import Brat.Checker.Monad
