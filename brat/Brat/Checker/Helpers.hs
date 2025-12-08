@@ -42,6 +42,7 @@ simpleCheck my ty tm = case (my, ty) of
         Text _ -> defineEnd "simpleCheck" e TText
         Num n | n < 0 -> defineEnd "simpleCheck" e TInt
         Num _ -> typeErr $ "Can't determine whether Int or Nat: " ++ show tm
+        _ -> typeErr $ "Unimplemented: checking literal: " ++ show tm
     else isSkolem e >>= \case
       SkolemConst -> throwLeft $ helper Braty ty tm
       Definable -> do

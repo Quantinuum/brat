@@ -770,7 +770,6 @@ checkClause my fnName cty clause = modily my $ do
     -- Here we're relying too much on the implementation of typeEq, counting on
     -- the fact that it'll define the first argument in the flex-flex case that
     -- would arise if we've not yet defined the outer src
-
     let vars = fst <$> sol
     let ?my = my in do
       env <- mkEnv vars rhsOvers
@@ -797,8 +796,8 @@ checkClause my fnName cty clause = modily my $ do
          pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
     -- Pat vars beginning with '_' aren't in scope, we can ignore them
     -- (but if they're kinded they might come up later as the dependency of something else)
-    worker zx (('_':_, (src, ty)):sol) = worker zx sol
-    worker zx (entry@(patVar, (src, Right ty)):sol) = do
+    worker zx (('_':_, _):sol) = worker zx sol
+    worker zx (entry@(_patVar, (_src, Right ty)):sol) = do
       trackM ("processSol (typed): " ++ show entry)
       ty <- eval S0 ty
       outPorts <- depOutPorts ty
@@ -816,8 +815,8 @@ checkClause my fnName cty clause = modily my $ do
                -> [(Tgt, BinderType Brat)] -- Outputs we're searching for dependencies
                -> Checking [(String, (Src, BinderType Brat))]
     outputDeps sol _ [] = pure (sol <>> [])
-    outputDeps sol ignoredTgts ((tgt, Left k):rest) = outputDeps sol (tgt:ignoredTgts) rest
-    outputDeps sol ignoredTgts ((tgt, Right ty):rest) = do
+    outputDeps sol ignoredTgts ((tgt, Left _):rest) = outputDeps sol (tgt:ignoredTgts) rest
+    outputDeps sol ignoredTgts ((_tgt, Right ty):rest) = do
       ty <- eval S0 ty
       let deps = [ outport | ExEnd outport <- depEnds ty]
       depsWithTys <- for deps (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
