@@ -803,16 +803,8 @@ checkClause my fnName cty clause = modily my $ do
    where
     worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
     worker zx [] = (, []) <$> outputDeps zx [] outputs
-    -- Pat vars beginning with '_' aren't in scope, we can ignore them
-    -- (but if they're kinded they might come up later as the dependency of something else)
-    worker zx (('_':_, (src, ty)):sol) = worker zx sol
-    worker zx (entry@(patVar, (src, Right ty)):sol) = do
-      ty <- eval S0 ty
-      outPorts <- depOutPorts ty
-      srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
-      zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
-      worker (zx :< entry) sol
     worker zx (entry@(patVar, (src, Left k)):sol) = let vsrc = VApp (VPar (toEnd src)) B0 in do
+      trackM ("processSol (kinded): " ++ show entry)
       def <- eval S0 vsrc
       if def == vsrc
       then worker (zx :< entry) sol
@@ -820,13 +812,23 @@ checkClause my fnName cty clause = modily my $ do
          outPorts <- depOutPorts def
          srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
          zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
-         (sol, defs) <- worker (zx :< entry) sol
+         (sol, defs) <- worker (zx {-:< entry-}) sol
          pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
+    -- Pat vars beginning with '_' aren't in scope, we can ignore them
+    -- (but if they're kinded they might come up later as the dependency of something else)
+    worker zx (('_':_, (src, ty)):sol) = worker zx sol
+    worker zx (entry@(patVar, (src, Right ty)):sol) = do
+      trackM ("processSol (typed): " ++ show entry)
+      ty <- eval S0 ty
+      outPorts <- depOutPorts ty
+      srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
+      zx <- pure $ foldl (\sol srcAndTy -> insert ("___" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
+      worker (zx :< entry) sol
 
     insert :: (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat)) -> Bwd (String, (Src, BinderType Brat))
     insert entry@(_, (src, _)) entryz
      | any (\(_, (src', _f)) -> src == src') entryz = entryz
-     | otherwise = entryz :< entry
+     | otherwise = track ("insert: " ++ show entry) $ entryz :< entry
 
     outputDeps :: Bwd (String, (Src, BinderType Brat)) -- The solution for inputs, so we can make sure we don't duplicate anything
                -> [Tgt] -- Kinded outputs that we're aware of and want to leave out of the solution
