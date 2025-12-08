@@ -112,15 +112,14 @@ solve my ((src, PCon c abs):p) = do
       _ -> case M.lookup c natConstructors of
         -- This `relationToInner` is very sus - it doesn't do any wiring!
         Just (Just _, relationToInner) -> do
-          (node, [(hungry, _)], kids@[(dangling, _)], _) <- next "natConstructorId" Id (S0, Some (Zy :* S0))
+          (node, [], kids@[(dangling, _)], _) <- next "natComponentHypo" Hypo (S0, Some (Zy :* S0))
+            R0
             (REx ("inner", Nat) R0)
-            (REx ("inner", Nat) R0)
-          defineSrc dangling (VApp (VPar (toEnd hungry)) B0)
           -- unifyNum should do the wiring for us
           unifyNum
            mine
            (nVar (VPar (ExEnd (end src))))
-           (relationToInner (nVar (VPar (toEnd hungry))))
+           (relationToInner (nVar (VPar (toEnd dangling))))
           p <- argProblems [dangling] (normaliseAbstractor abs) p
           (tests, sol) <- solve my p
           -- When we get @-patterns, we shouldn't drop this anymore
