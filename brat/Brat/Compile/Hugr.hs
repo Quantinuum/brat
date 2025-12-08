@@ -714,12 +714,12 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
       testResult <- compilePrimTest parent typedPort primTest
       let testIx = length left
       let remainingMatchTests = MatchSequence (primTestOuts primTest ++ (second snd <$> others)) tests rhsInputs
-      traceM $ "test: " ++ show (src, primTest)
-      traceM $ "matchInputs: " ++ show matchInputs
-      traceM $ "rhsInputs: " ++ show rhsInputs
-      traceM $ "scrutinee: " ++ show scrutinee
-      traceM $ unlines ("others:":(("  " ++) . show <$> others));
-      traceM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
+      trackM $ "test: " ++ show (src, primTest)
+      trackM $ "matchInputs: " ++ show matchInputs
+      trackM $ "rhsInputs: " ++ show rhsInputs
+      trackM $ "scrutinee: " ++ show scrutinee
+      trackM $ unlines ("others:":(("  " ++) . show <$> others));
+      trackM $ "sumTy (" ++ show parent ++ ") " ++ show sumTy
       ports <- makeConditional ("matching " ++ show (src, primTest)) parent testResult
                [("didNotMatch", \parent _ -> makeRowTag "DidNotMatch" parent 0 sumTy (reorderPortTbl portTable (fst <$> matchInputs)))
                ,("didMatch",    didMatchCase testIx (primTest, snd typedPort) remainingMatchTests sumTy)]
@@ -760,8 +760,8 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     -- Remember which port a src corresponds to
     let portTable = zipStrict (fst <$> matchInputs) ins
     didAllTestsSucceed <- compileMatchSequence parent portTable ms
-    trackM $ "allTests return " ++ show didAllTestsSucceed ++ " (" ++ show matchTests ++ ")" ++ "(" ++ show matchOutputs ++ ")"
-    makeConditional ("all matched (" ++ show ix ++ ")") parent didAllTestsSucceed []
+    trackM $ "allTests return " ++ show didAllTestsSucceed ++ " (" ++ show matchTests ++ ")" ++ "(" ++ show rhsInputs ++ ")"
+    makeConditional ("all matched (" ++ show ix ++ ")") parent didAllTestsSucceed
       [("Undo", undo)
       ,("AllMatched", allMatched)
       ]
