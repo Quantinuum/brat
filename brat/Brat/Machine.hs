@@ -65,6 +65,7 @@ run g@(nodes, wires) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p 
         let srcs = M.elems (M.fromList [(tgtPort, src) | (src, _, In _ tgtPort) <- wiresTo name g])
         in evalPorts g (fz :< PortOfNode p) B0 srcs
 run g fz (EvalNode (BratNode (Const st) _ _) []) = run g fz (Finished [evalSimpleTerm st])
+run g fz (EvalNode (BratNode (ArithNode op) _ _) ins) = run g fz (Finished [evalArith op ins])
 run g fz (EvalNode (BratNode Id _ _) ins) = run g fz (Finished ins)
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -90,6 +91,21 @@ evalSimpleTerm :: SimpleTerm -> Value
 evalSimpleTerm (Num x) = IntV x
 evalSimpleTerm (Float x) = FloatV x
 evalSimpleTerm t = error ("todo " ++ show t) 
+
+evalArith :: ArithOp -> [Value] -> Value
+evalArith op [IntV x, IntV y] = IntV $ case op of
+  Add -> x + y
+  Sub -> x - y
+  Mul -> x * y
+  Div -> div x y
+  Pow -> x ^ y
+evalArith op [FloatV x, FloatV y] = FloatV $ case op of
+  Add -> x + y
+  Sub -> x - y
+  Mul -> x * y
+  Div -> x / y
+  Pow -> x ** y
+evalArith _ _ = error "Bad arith inputs"
 
 data Value = 
     IntV Int 
