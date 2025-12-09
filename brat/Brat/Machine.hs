@@ -2,6 +2,7 @@ module Brat.Machine (runInterpreter) where
 
 import Brat.Checker.Monad (CaptureSets)
 import Brat.Compiler (compileToGraph)
+import Brat.Constructors.Patterns
 import Brat.Naming (Name, Namespace)
 import Brat.Graph (Graph, NodeType (..), Node (BratNode, KernelNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..))
 import Brat.QualName (QualName, plain)
@@ -12,10 +13,14 @@ import Brat.Syntax.Value
 
 import Hasochism
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
+import Data.List.NonEmpty hiding ((!!), zip)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Bwd
+import Util (zipSameLength)
+
+import Debug.Trace
 
 type GraphInfo = (Graph, CaptureSets)
 
@@ -39,6 +44,8 @@ data Frame where
     -- have arguments to function, waiting for the function:
     CallWith :: [Value] -> Frame
     ReturnTo :: Bwd Frame -> Frame
+    Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
+    PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
   deriving Show
 
 data Task where
@@ -47,6 +54,9 @@ data Task where
     EvalNode :: Name -> [Value] -> Task
     Use :: Value -> Task -- searches for EvalPorts
     Finished :: [Value] -> Task -- searches for HandleNodeOutputs, or final result
+    TryNextMatch :: Task
+    NoMatch :: Task
+    StuckOnNode :: Name -> Node -> Task
   deriving Show
 
 lookupOutport :: Bwd Frame -> OutPort -> Maybe Value
@@ -84,7 +94,10 @@ run g@((nodes, _), cs) fz t@(EvalNode n ins) = case nodes M.! n of
         let captureSet = fromMaybe M.empty (M.lookup n cs)
             capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
         in run g fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
-    _ -> run g fz (Suspend [] t)
+    (BratNode (PatternMatch (c:|cs)) _ _) -> run g (fz :< Alternatives (c:cs) ins) TryNextMatch
+    nw -> run g fz (StuckOnNode n nw)
+
+
 -- Tasks that unwind the stack looking for what to do with the result
 ----Suspend
 run gi (fz :< f) (Suspend fs t) = run gi fz (Suspend (f:fs) t)
@@ -102,10 +115,24 @@ run g (fz :< HandleNodeOutputs req@(Ex name offset)) (Finished outputs) =
     run g (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
 run g (B0 :< ReturnTo fz) (Finished vals) = run g fz (Finished vals)
 
+-- TryNextMatch
+run g (fz :< Alternatives [] _) TryNextMatch = run g fz NoMatch
+run g (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
+    let MatchSequence matchInputs matchTests matchOutputs = ms
+        testInputs = M.fromList (fromJust $ zipSameLength [src | (NamedPort src _,_ty) <- matchInputs] ins)
+        outEnv = doAllTests testInputs matchTests
+    in case outEnv of
+        Nothing -> run g (fz :< Alternatives cs ins) TryNextMatch
+        Just env ->
+            let vals = [env M.! src | (NamedPort src _, _) <- matchOutputs]
+            in run g (fz :< CallWith vals) (EvalPort $ Ex box 0)
+
 run g (fz :< BratValues _) t = run g fz t
 run g B0 t = t
 run g fz t = run g fz (Suspend [] t)
 
+doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
+doAllTests env [] = Just env
 
 captureEnv :: Bwd Frame -> S.Set OutPort -> EvalEnv
 captureEnv B0 _ = M.empty
