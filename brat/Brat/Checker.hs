@@ -23,7 +23,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import Data.Traversable (for)
-import Data.Type.Equality ((:~:)(..))
+import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
 
 import Brat.Checker.Helpers
@@ -766,16 +766,33 @@ checkClause my fnName cty clause = modily my $ do
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
-    -- Here we're relying too much on the implementation of typeEq, counting on
-    -- the fact that it'll define the first argument in the flex-flex case that
-    -- would arise if we've not yet defined the outer src
-    let vars = fst <$> sol
-    let ?my = my in do
-      env <- mkEnv vars rhsOvers
-      localEnv env $ "$rhs" -! (check @m (rhs clause) ((), rhsUnders))
+     defs :: Env (EnvData m) <- case my of
+       Braty -> do
+         let kindedRhsOvers = [ toEnd src | (src, Left _) <- rhsOvers ]
+         case Some S0 <><< kindedRhsOvers of
+           Some stk -> foldMap (\((name, k), Some (stk' :* val)) -> case (stkLen stk, testEquality (stkLen stk) (stkLen stk')) of
+             (ny, Just Refl) -> do
+               src <- mkGraph k (changeVar (InxToPar (AddZ ny) stk) val)
+               singletonEnv name (src, Left k)
+             (_, Nothing) -> err $ InternalError "Invariant violated: Number of deps in defs") defs
+       Kerny -> pure emptyEnv
+     case my of
+       Braty -> trackM $ "Updated defs: " ++ show defs
+       _ -> pure ()
+
+     -- Here we're relying too much on the implementation of typeEq, counting on
+     -- the fact that it'll define the first argument in the flex-flex case that
+     -- would arise if we've not yet defined the outer src
+     let vars = fst <$> sol
+     env <- mkEnv vars rhsOvers
+     (localEnv (env <> defs) $ "$rhs" -! check @m (rhs clause) ((), rhsUnders))
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
+  (<><<) :: Some (Stack Z End) -> [End] -> Some (Stack Z End)
+  (Some stk) <><< [] = Some stk
+  (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
+
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
   postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
