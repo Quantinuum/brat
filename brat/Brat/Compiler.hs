@@ -3,6 +3,7 @@ module Brat.Compiler (printAST
                      ,writeDot
                      ,compileFile
                      ,compileAndPrintFile
+                     ,compileToGraph
                      ,CompilingHoles(..)
                      ) where
 
@@ -12,7 +13,7 @@ import Brat.Dot (toDotString)
 import Brat.Elaborator
 import Brat.Error
 import Brat.Load
-import Brat.Naming (root, split)
+import Brat.Naming (Namespace, root, split)
 
 import Control.Exception (evaluate)
 import Control.Monad (when)
@@ -71,11 +72,15 @@ instance Show CompilingHoles where
   show (CompilingHoles hs) = unlines $
     "Can't compile file with remaining holes": fmap (("  " ++) . show) hs
 
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
-compileFile libDirs file = do
+compileToGraph :: [FilePath] -> String -> IO (Namespace, VMod)
+compileToGraph libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
   env <- runExceptT $ loadFilename checkRoot libDirs file
-  (venv, _, holes, defs, outerGraph, capSets) <- eitherIO env
+  (newRoot,) <$> eitherIO env
+
+compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
+compileFile libDirs file = do
+  (newRoot, (venv, _, holes, defs, outerGraph, capSets)) <- compileToGraph libDirs file
   case holes of
     [] -> Right <$> evaluate -- turns 'error' into IO 'die'
                     (compile defs newRoot outerGraph capSets venv)
