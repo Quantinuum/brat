@@ -78,6 +78,7 @@ library
                        Brat.Error,
                        Brat.Graph,
                        Brat.Load,
+                       Brat.Machine,
                        Brat.Parser,
                        Brat.Search,
                        Brat.Elaborator,

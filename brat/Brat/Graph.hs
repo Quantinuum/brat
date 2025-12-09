@@ -110,9 +110,6 @@ toGraph (ns, ws) = G.graphFromEdges adj
           )
         | (name, node) <- M.toList ns]
 
-wiresFrom :: Name -> Graph -> [Wire]
-wiresFrom src (_, ws) = [ w | w@(Ex a _, _, _) <- ws, a == src ]
-
 lookupNode :: Name -> Graph -> Maybe Node
 lookupNode name (ns, _) = M.lookup name ns
 
@@ -121,3 +118,10 @@ wireStart (Ex x _, _, _) = x
 
 wireEnd :: Wire -> Name
 wireEnd (_, _, In x _) = x
+
+-- These are horribly inefficient until we use a better structure for graph edges
+wiresFrom :: Name -> Graph -> [Wire]
+wiresFrom src (_, ws) = [ w | w@(Ex a _, _, _) <- ws, a == src ]
+
+wiresTo :: Name -> Graph -> [Wire]
+wiresTo tgt (_, ws) = [ w | w@(_, _, In a _) <- ws, a == tgt ]
