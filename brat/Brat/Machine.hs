@@ -133,6 +133,16 @@ run g fz t = run g fz (Suspend [] t)
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
 doAllTests env [] = Just env
+{-- case test of
+    PrimLitTest term -> pure $ testLiteral term input
+    PrimCtorTest ctor ty _ outSrcs -> do
+      case testCtor ty ctor input of
+        Nothing -> pure False
+        Just outputs -> do
+          evaled <- getEvaled Braty
+          putEvaled Braty $ evaled `M.union` M.fromList (zip (end . fst <$> outSrcs) outputs)
+          pure True
+-}
 
 captureEnv :: Bwd Frame -> S.Set OutPort -> EvalEnv
 captureEnv B0 _ = M.empty
@@ -158,6 +168,20 @@ evalArith op [FloatV x, FloatV y] = FloatV $ case op of
   Div -> x / y
   Pow -> x ** y
 evalArith _ _ = error "Bad arith inputs"
+
+testLiteral :: SimpleTerm -> Value -> Bool
+testLiteral (Num x) (IntV y) = x == y
+testLiteral (Float x) (FloatV y) = x == y
+testLiteral _ _ = error "Internal error: Unexpected literal test"
+
+testCtor :: QualName -> QualName -> Value -> Maybe [Value]
+testCtor CBool CTrue (BoolV True) = Just []
+testCtor CBool CFalse (BoolV False) = Just []
+testCtor CNat CZero (IntV 0) = Just []
+testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
+testCtor CVec CNil (VecV []) = Just []
+testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
+testCtor _ _ _ = Nothing
 
 data Value = 
     IntV Int 
