@@ -32,3 +32,6 @@ hoo(n, _) = n
 
 ioo :: Nat
 ioo = hoo(!, [1,2,3])
+
+joo :: Vec(Nat, 3)
+joo = [1,2,3]
