@@ -14,7 +14,7 @@ import Brat.Syntax.Value
 import Hasochism
 
 import Data.Maybe (fromMaybe, fromJust)
-import Data.List.NonEmpty hiding ((!!), zip)
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Bwd
@@ -133,16 +133,14 @@ run g fz t = run g fz (Suspend [] t)
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
 doAllTests env [] = Just env
-{-- case test of
-    PrimLitTest term -> pure $ testLiteral term input
+doAllTests env ((NamedPort outport _, test):tests) =
+  case test of
+    PrimLitTest term -> if testLiteral term (env M.! outport)
+                        then doAllTests env tests
+                        else Nothing
     PrimCtorTest ctor ty _ outSrcs -> do
-      case testCtor ty ctor input of
-        Nothing -> pure False
-        Just outputs -> do
-          evaled <- getEvaled Braty
-          putEvaled Braty $ evaled `M.union` M.fromList (zip (end . fst <$> outSrcs) outputs)
-          pure True
--}
+      outputs <- testCtor ty ctor (env M.! outport)
+      doAllTests (env `M.union` M.fromList (zip (end . fst <$> outSrcs) outputs)) tests
 
 captureEnv :: Bwd Frame -> S.Set OutPort -> EvalEnv
 captureEnv B0 _ = M.empty
@@ -152,7 +150,7 @@ captureEnv (fz :< _) keys = captureEnv fz keys
 evalSimpleTerm :: SimpleTerm -> Value
 evalSimpleTerm (Num x) = IntV x
 evalSimpleTerm (Float x) = FloatV x
-evalSimpleTerm t = error ("todo " ++ show t) 
+evalSimpleTerm t = error ("todo " ++ show t)
 
 evalArith :: ArithOp -> [Value] -> Value
 evalArith op [IntV x, IntV y] = IntV $ case op of
@@ -183,11 +181,11 @@ testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
 testCtor _ _ _ = Nothing
 
-data Value = 
-    IntV Int 
-  | FloatV Double 
-  | BoolV Bool 
-  | VecV [Value] 
+data Value =
+    IntV Int
+  | FloatV Double
+  | BoolV Bool
+  | VecV [Value]
   | ThunkV BratThunk
   | KernelV HugrKernel
 
@@ -207,4 +205,3 @@ instance Show Value where
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
 
 type EvalEnv = M.Map OutPort Value
-
