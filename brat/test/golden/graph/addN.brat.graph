@@ -9,7 +9,7 @@ Nodes:
 (check_defs_1_addN_LambdaChk_9_lambda,BratNode (PatternMatch ((TestMatchData Braty matchInputs:
   (NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)
 matchTests:
-
+  
 rhsInputs:
   (NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)
 ,check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("inp",Int)] [("out",Int)])

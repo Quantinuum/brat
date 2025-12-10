@@ -9,7 +9,7 @@ Nodes:
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "a"},Qubit)
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 1, portName = "b"},Qubit)
 matchTests:
-
+  
 rhsInputs:
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "a"},Qubit)
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 1, portName = "b"},Qubit)

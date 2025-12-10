@@ -8,7 +8,7 @@ Nodes:
 (check_defs_1_main_$rhs_check'Th_LambdaChk_6_lambda,KernelNode (PatternMatch ((TestMatchData Kerny matchInputs:
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "a"},Qubit)
 matchTests:
-
+  
 rhsInputs:
   (NamedPort {end = Ex check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "a"},Qubit)
 ,check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("a",Qubit)] [("b",Qubit)])
