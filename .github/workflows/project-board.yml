@@ -14,7 +14,7 @@ jobs:
         with:
           # You can target a project in a different organization
           # to the issue
-          project-url: https://github.com/orgs/CQCL-DEV/projects/10
+          project-url: https://github.com/orgs/quantinuum-dev/projects/10
           github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
           # Optionally, the issues can be filtered by label
           #labeled: bug, another-label
