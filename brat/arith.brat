@@ -15,3 +15,10 @@ inc(x) = x + 1
 
 foo :: Nat
 foo = inc(inc(4) + inc(7))
+
+dec(Nat) -> Nat
+dec(0) = 0
+dec(succ(n)) = n
+
+goo :: Nat
+goo = dec(foo)
