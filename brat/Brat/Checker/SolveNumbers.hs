@@ -12,14 +12,14 @@ import Brat.Naming
 import Hasochism
 import Control.Monad.Freer
 
--- import Debug.Trace
+import Debug.Trace
 import qualified Data.Set as S
 
 trailM :: Applicative f => String -> f ()
-trailM = const (pure ())
---trailM = traceM
-trail = const id
---trail = trace
+--trailM = const (pure ())
+trailM = traceM
+--trail = const id
+trail = trace
 
 -- This is currently lifted from SolvePatterns, which still imports it.
 -- It is also used in SolveHoles, where it does the right mathematics
@@ -91,15 +91,18 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
   lhsFun00 (StrictMonoFun sm) num = lhsStrictMono sm num
 
   flexFlex :: VVar Z -> VVar Z -> Checking ()
+  flexFlex v v' | trace ("flexFlex " ++ show v ++ " " ++ show v') False = undefined
   flexFlex v v' = case compare v v' of
-    GT -> flexFlex v' v
-    EQ -> pure ()
+    GT | trace "GT" False -> undefined | otherwise -> flexFlex v' v
+    EQ | trace "EQ" False -> undefined | otherwise -> pure ()
     LT -> case (v, v') of
       (VPar e@(ExEnd p), VPar e'@(ExEnd p'))
+       | trace "ExEx" False -> undefined
        | Just _ <- mine e -> defineSrc (NamedPort p "") (VNum (nVar v'))
        | Just _ <- mine e' -> defineSrc (NamedPort p' "") (VNum (nVar v))
        | otherwise -> typeErr $ "Can't force " ++ show v ++ " to be " ++ show v'
       (VPar e@(InEnd p), VPar e'@(ExEnd dangling))
+       | trace "InEx" False -> undefined
        | Just _ <- mine e -> do
           req (Wire (dangling, TNat, p))
           defineTgt' ("flex-flex In Ex") (NamedPort p "") (VNum (nVar v'))
@@ -108,6 +111,7 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
           defineSrc' ("flex-flex In Ex") (NamedPort dangling "") (VNum (nVar v))
        | otherwise -> mkYield "flexFlex" (S.singleton e) >> unifyNum mine (nVar v) (nVar v')
       (VPar e@(InEnd p), VPar e'@(InEnd p'))
+       | trace "InIn" False -> undefined
        | Just _ <- mine e -> solveInIn p p'
        | Just _ <- mine e' -> solveInIn p' p
        | otherwise -> mkYield "flexFlex" (S.fromList [e, e']) >> unifyNum mine (nVar v) (nVar v')
