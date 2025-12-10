@@ -15,7 +15,11 @@ expectedCheckingFails = map ("examples" </>) ["nested-abstractors.brat"
                                              ,"karlheinz.brat"
                                              ,"karlheinz_alias.brat"
                                              ,"hea.brat"
-                                             ,"infer2.brat" -- https://github.com/Quantinuum/brat/issues/35
+                                             -- https://github.com/Quantinuum/brat/issues/35
+                                             ,"infer2.brat"
+                                             -- https://github.com/Quantinuum/brat/issues/92
+                                             ,"repeated_app.brat"
+                                             ,"adder.brat"
                                              ]
 
 parseAndCheckXF :: [FilePath] -> [TestTree]
