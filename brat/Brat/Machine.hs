@@ -98,6 +98,7 @@ run g@((nodes, _), cs) fz t@(EvalNode n ins) = case nodes M.! n of
             capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
         in run g fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
     (BratNode (PatternMatch (c:|cs)) _ _) -> run g (fz :< Alternatives (c:cs) ins) TryNextMatch
+    (BratNode (Constructor c) _ _) -> run g fz (Finished [evalConstructor c ins])
     nw -> run g fz (StuckOnNode n nw)
 
 
@@ -133,6 +134,23 @@ run g (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
 run g (fz :< BratValues _) t = run g fz t
 run g B0 t = t
 run g fz t = run g fz (Suspend [] t)
+
+evalConstructor :: QualName -> [Value] -> Value
+evalConstructor CTrue [] = BoolV True
+evalConstructor CFalse [] = BoolV False
+evalConstructor CZero [] = IntV 0
+evalConstructor CSucc [IntV n] = IntV (n + 1)
+evalConstructor CDoub [IntV n] = IntV (2 * n)
+evalConstructor CNil [] = VecV []
+evalConstructor CCons [hd, VecV tl] = VecV (hd:tl)
+evalConstructor CSnoc [VecV tl, hd] = VecV (tl ++ [hd])
+evalConstructor CConcatEqEven [VecV ls, VecV rs] = VecV (ls ++ rs)
+evalConstructor CRiffle [VecV evens, VecV odds] = VecV (riffle evens odds)
+ where
+  riffle [] [] = []
+  riffle (e:es) (o:os) = e:o:riffle es os
+evalConstructor CConcatEqOdd [VecV ls, mid, VecV rs] = VecV (ls ++ mid:rs)
+evalConstructor _ _ = error "Internal error: Unhandled constructor"
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
 doAllTests env [] = Just env
