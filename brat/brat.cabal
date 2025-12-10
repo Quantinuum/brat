@@ -152,7 +152,7 @@ executable lsp-brat
   default-extensions:  RecordWildCards
 
 test-suite tests
-  import:              ghc-perf, haskell, warning-flags
+  import:              ghc-perf, haskell
   type:                exitcode-stdio-1.0
   default-language:    GHC2021
   ghc-options:
