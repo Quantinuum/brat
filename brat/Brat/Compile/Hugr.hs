@@ -807,20 +807,6 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
   --  allMatched parent ins = makeRowTag "AllMatched" parent 1 sumTy ins
     allMatched parent ins = makeRowTag "AllMatched" parent 1 sumTy ins
 
-  didNotMatchCase :: Int -- The index at which to put the thing we inspected in outputs
-                  -> SumOfRows
-                  -> NodeId
-                  -> [TypedPort]
-                  -> Compile [TypedPort]
-  didNotMatchCase _ _ _ [] = error "No scrutinee input in didNotMatchCase"
---  didNotMatchCase _ sor parent ins | trace ("didNotMatch sor (parent: " ++ show parent ++ "): " ++ show sor ++ "\n> ins: " ++ show ins) False = undefined
-  didNotMatchCase ix sumTy parent (scrutinee:ins) = do
-    let (as, bs) = splitAt ix ins
-    -- We need to wire inputs to a `Tag0`, but bringing the tested src back to
-    -- the original position
-    let ins = as ++ scrutinee:bs
-    makeRowTag "DidNotMatch" parent 0 sumTy ins
-
 {-
     -- This is a failure, so will be the first variant of the sum
     let SoR (thisRow:_) = sumTy
