@@ -31,7 +31,7 @@ hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
 hoo(n, _) = n
 
 ioo :: Nat
-ioo = hoo(!, [1,2,3])
+ioo = hoo(2, [1,2,3])
 
 joo :: Vec(Nat, 3)
 joo = [1,2,3]
