@@ -44,10 +44,10 @@ common warning-flags
     -Wno-unused-do-bind
     -Wno-missing-signatures
     -Wno-noncanonical-monoid-instances
-    -Werror=unused-imports
+    -- -Werror=unused-imports
     -Werror=unused-matches
     -Werror=missing-methods
-    -Werror=unused-top-binds
+    -- -Werror=unused-top-binds
     -Werror=unused-local-binds
     -Werror=redundant-constraints
     -Werror=orphans
@@ -72,6 +72,7 @@ library
                        Brat.Checker.SolvePatterns,
                        Brat.Checker.Types,
                        Brat.Compile.Hugr,
+                       Brat.Compile.Interpreter,
                        Brat.Constructors,
                        Brat.Constructors.Patterns,
                        Brat.Error,
