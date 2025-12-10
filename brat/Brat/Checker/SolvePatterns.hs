@@ -2,7 +2,6 @@ module Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve)
 
 import Brat.Checker.Monad
 import Brat.Checker.Helpers
-import Brat.Checker.Types (EndType(..))
 import Brat.Checker.SolveNumbers
 import Brat.Checker.SolveHoles
 import Brat.Constructors
@@ -16,17 +15,13 @@ import Brat.Syntax.Simple
 import Brat.Syntax.Value
 import Brat.QualName
 import Bwd
-import Control.Monad.Freer
 import Hasochism
 import Brat.Syntax.Port (toEnd)
 
 import Control.Monad (unless)
 import Data.Bifunctor (first)
-import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
-import Data.Traversable (for)
-import Data.Type.Equality ((:~:)(..), testEquality)
 
 -- Refine clauses from function definitions (and potentially future case statements)
 -- by processing each one in sequence. This will involve repeating tests for various
@@ -76,7 +71,7 @@ solve my ((src, DontCare):p) = do
         Right _ -> pure (tests, sol)
         -- Kinded things might be used to solve hopes. We pass them through so
         -- that we can do the proper wiring in this case
-        Left k -> pure (tests, ('_':portName src, (src, ty)):sol)
+        Left _ -> pure (tests, ('_':portName src, (src, ty)):sol)
 solve my ((src, Bind x):p) = do
   ty <- typeOfSrc my src
   (tests, sol) <- solve my p
@@ -143,7 +138,7 @@ solveConstructor my src (c, abs) ty p = do
   -- Create a row of hypothetical kinds which contextualise the arguments to the
   -- constructor.
   -- These need to be Tgts because we don't know how to compute them dynamically
-  (_, typeArgWires, _, stuff) <- next "type_args" Hypo (S0, Some (Zy :* S0)) patRo R0
+  (_, _typeArgWires, _, stuff) <- next "type_args" Hypo (S0, Some (Zy :* S0)) patRo R0
   (node, _, patArgWires, _) <- let ?my = my in anext "val_args" Hypo stuff R0 argRo
   trackM ("Constructor " ++ show c ++ "; type " ++ show ty)
   case snd stuff of

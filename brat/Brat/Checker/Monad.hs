@@ -21,7 +21,6 @@ import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Type.Equality ((:~:)(..), testEquality)
 
 
 -- import Debug.Trace
