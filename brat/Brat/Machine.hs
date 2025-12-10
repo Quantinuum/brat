@@ -74,11 +74,13 @@ evalPorts :: GraphInfo -> Bwd Frame -> Bwd Value -> [OutPort] -> Task
 evalPorts g fz valz (p:ps) = run g (fz :< EvalPorts valz ps) (EvalPort p)
 evalPorts g fz valz [] = run g fz (Finished (valz <>> []))
 
+getNodeInputs :: GraphInfo -> Name -> [OutPort]
+getNodeInputs (g, _, _, _) name = M.elems (M.fromList [(tgtPort, src) | (src, _, In _ tgtPort) <- wiresTo name g])
+
 evalNodeInputs :: GraphInfo -> Bwd Frame -> Name -> Task
-evalNodeInputs gi@(g,_,_,_) fz name =
+evalNodeInputs gi fz name =
     -- might be good to check M.keys == [0,1,....] here
-    let srcs = M.elems (M.fromList [(tgtPort, src) | (src, _, In _ tgtPort) <- wiresTo name g])
-    in evalPorts gi fz B0 srcs
+    evalPorts gi fz B0 (getNodeInputs gi name)
 
 updateCache (fz :< BratValues env) port_vals = fz :< (BratValues $ foldr (uncurry M.insert) env port_vals)
 updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
@@ -112,6 +114,7 @@ run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
         in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
     (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
     (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
+    (BratNode (Dummy k) _ _) -> run gi fz (Finished [DummyV])
     nw -> run gi fz (StuckOnNode n nw)
 
 
@@ -130,27 +133,38 @@ run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
 
 ---- Finished (list of values)
-run g (fz :< PortOfNode req@(Ex name offset)) (Finished inputs) =
-    run g (fz :< HandleNodeOutputs req) (EvalNode name inputs)
-run g (fz :< HandleNodeOutputs req@(Ex name offset)) (Finished outputs) =
-    run g (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
-run g (B0 :< ReturnTo fz) (Finished vals) = run g fz (Finished vals)
+run gi (fz :< PortOfNode req@(Ex name offset)) (Finished inputs) =
+    run gi (fz :< HandleNodeOutputs req) (EvalNode name inputs)
+run gi (fz :< HandleNodeOutputs req@(Ex name offset)) (Finished outputs) =
+    run gi (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
+run gi (B0 :< ReturnTo fz) (Finished vals) = run gi fz (Finished vals)
 
 -- TryNextMatch
-run g (fz :< Alternatives [] _) TryNextMatch = run g fz NoMatch
-run g (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
+run gi (fz :< Alternatives [] _) TryNextMatch = run gi fz NoMatch
+run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
     let MatchSequence matchInputs matchTests matchOutputs = ms
         testInputs = M.fromList (fromJust $ zipSameLength [src | (NamedPort src _,_ty) <- matchInputs] ins)
         outEnv = doAllTests testInputs matchTests
-    in case outEnv of
-        Nothing -> run g (fz :< Alternatives cs ins) TryNextMatch
+    in case trace ("outEnv: " ++ show outEnv ++ "\nmatchOutputs: " ++ show matchOutputs) outEnv of
+        Nothing -> run gi (fz :< Alternatives cs ins) TryNextMatch
         Just env ->
-            let vals = [env M.! src | (NamedPort src _, _) <- matchOutputs]
-            in run g (fz :< CallWith vals) (EvalPort $ Ex box 0)
+            let vals = [miniEval gi env src | (NamedPort src _, _) <- matchOutputs]
+            in run gi (fz :< CallWith vals) (EvalPort $ Ex box 0)
 
-run g (fz :< BratValues _) t = run g fz t
-run g B0 t = t
-run g fz t = run g fz (Suspend [] t)
+run gi (fz :< BratValues _) t = run gi fz t
+run gi B0 t = t
+run gi fz t = run gi fz (Suspend [] t)
+
+miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
+miniEval _ env x | Just v <- M.lookup x env = v
+miniEval gi@((nodes, _), _, _, _) env (Ex node 0) =
+  let inputs = miniEval gi env <$> getNodeInputs gi node
+  in  case nodes M.! node of
+        BratNode (ArithNode op) _ _ -> evalArith op inputs
+        BratNode (Const x) _ _ -> evalSimpleTerm x
+        BratNode (Constructor c) _ _ -> evalConstructor c inputs
+        BratNode Id _ _ | [v] <- inputs -> v
+        nw -> error $ "miniEval: " ++ show nw
 
 evalConstructor :: QualName -> [Value] -> Value
 evalConstructor CTrue [] = BoolV True
@@ -245,6 +259,7 @@ data Value =
   | VecV [Value]
   | ThunkV BratThunk
   | KernelV HG.HugrGraph
+  | DummyV
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
@@ -258,5 +273,6 @@ instance Show Value where
   show (VecV xs) = show xs
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
+  show DummyV = "Dummy"
 
 type EvalEnv = M.Map OutPort Value

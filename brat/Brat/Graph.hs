@@ -51,6 +51,8 @@ data NodeType :: Mode -> Type where
   ArithNode :: ArithOp -> NodeType Brat
   Replicate :: NodeType Brat
   MapFun :: NodeType a
+  -- The thing that gets plugged into type hopes when we solve them
+  Dummy :: TypeKind -> NodeType Brat
 
 deriving instance Show (NodeType a)
 
