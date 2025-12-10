@@ -635,7 +635,10 @@ solveVal Nat it@(InEnd inn) v@(VNum nv) = do
   dangling <- buildNatVal nv
   req (Wire (end dangling, TNat, inn))
   defineEnd "solveValNat" it v
-solveVal _ it v = defineEnd "solveVal" it v
+solveVal k@(TypeFor _ _) it@(InEnd inn) v = do
+  (_, _, [(dummySrc, _)], _) <- anext "" (Dummy k) (S0, Some (Zy :* S0)) R0 (REx ("dummy", k) R0)
+  req $ Wire (end dummySrc, kindType k, inn)
+  defineEnd "solveVal" it v
   -- Do we also need dummy wiring here?
 
 solveSem :: TypeKind -> End -> Sem -> Checking ()
