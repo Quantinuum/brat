@@ -179,6 +179,25 @@ testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
 testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
+testCtor CVec CConcatEqEven (VecV vs) = do
+  (half, 0) <- pure (length vs `divMod` 2)
+  (xs, ys) <- pure (splitAt half vs)
+  pure [VecV xs, VecV ys]
+testCtor CVec CRiffle (VecV vs) = do
+  (evens, odds) <- evenOdds vs
+  pure [VecV evens, VecV odds]
+ where
+  evenOdds :: [a] -> Maybe ([a], [a])
+  evenOdds [] = pure ([], [])
+  evenOdds [x] = Nothing
+  evenOdds (x:y:xs) = do
+    (evens, odds) <- evenOdds xs
+    pure (x:evens, y:odds)
+
+testCtor CVec CConcatEqOdd (VecV vs) = do
+  (half, 1) <- pure (length vs `divMod` 2)
+  (xs, y:zs) <- pure (splitAt half vs)
+  pure [VecV xs, y, VecV zs]
 testCtor _ _ _ = Nothing
 
 data Value =
