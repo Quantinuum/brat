@@ -23,7 +23,7 @@ invalidExamples = map ((++ ".brat") . ("examples" </>))
   ,"app"
   ,"dollar_kind"
   ,"portpulling"
-  ,"repeated_app" -- missing coercions, https://github.com/CQCL-DEV/brat/issues/413
+  ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ,"thunks"]
 
 -- examples that we expect not to compile.
