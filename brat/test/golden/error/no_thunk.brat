@@ -1,7 +1,7 @@
 ext "tket.X" X :: { Qubit -o Qubit }
 ext "tket.Rz" Rz(Float) -> { Qubit -o Qubit }
 
--- Prior to https://github.com/CQCL-DEV/brat/pull/313,
+-- Prior to https://github.com/quantinuum-dev/brat/pull/313,
 -- the error message was that X didn't produce any (Braty) thunks
 seq(n :: Nat) -> {Qubit -o Qubit}
 seq(n) = {
