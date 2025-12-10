@@ -53,6 +53,7 @@ data NodeType :: Mode -> Type where
   MapFun :: NodeType a
   -- The thing that gets plugged into type hopes when we solve them
   Dummy :: TypeKind -> NodeType Brat
+  Copy :: NodeType Brat
 
 deriving instance Show (NodeType a)
 

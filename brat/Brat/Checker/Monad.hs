@@ -120,6 +120,7 @@ data CheckingSig ty where
   ANewDynamic :: InPort -> FC -> CheckingSig ()
   AskDynamics :: CheckingSig (M.Map InPort FC)
   AddCapture :: Name -> (QualName, [(Src, BinderType Brat)]) -> CheckingSig ()
+  WiresIn :: Name -> CheckingSig [Wire]
 
 wrapper :: (forall a. CheckingSig a -> Checking (Maybe a)) -> Checking v -> Checking v
 wrapper _ (Ret v) = Ret v
@@ -318,6 +319,8 @@ handler (Req s k) ctx g
 
       AddCapture n (var, ends) ->
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
+
+      WiresIn n -> handler (k (wiresTo n g)) ctx g
 
 handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
   case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
