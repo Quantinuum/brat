@@ -32,7 +32,7 @@ import Control.Monad (unless)
 import Data.Aeson
 import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Lazy as BS
-import Data.Foldable (traverse_, for_)
+import Data.Foldable (for_)
 import Data.Functor ((<&>), ($>))
 import Data.List (intercalate, partition, sort, sortBy)
 import qualified Data.Map as M
@@ -303,7 +303,7 @@ dumpJSON = do
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
-  (ns, es) <- gets bratGraph
+  (ns, _) <- gets bratGraph
   -- RHS has to be a box, so it must have a function type
   outTys <- case nodeOuts (bang "compileClauses rhsNode" ns rhs) of
     [(_, VFun my cty)] -> compileSig my cty >>= (\(_, outs) -> pure outs)

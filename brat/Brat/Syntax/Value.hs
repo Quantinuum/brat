@@ -631,7 +631,7 @@ class DepEnds t where
   depEnds :: t -> [End]
 
 instance DepEnds (NumVal (VVar n)) where
-  depEnds nv = [e | v@(VPar e) <- vvars nv]
+  depEnds nv = [e | VPar e <- vvars nv]
    where
     vvars :: NumVal a -> [a]
     vvars = foldMap pure
@@ -640,7 +640,7 @@ instance DepEnds (Val n) where
   depEnds (VNum nv) = depEnds nv
   depEnds (VCon _ args) = depEnds args
   depEnds (VLam body) = depEnds body
-  depEnds (VFun m cty) = depEnds cty
+  depEnds (VFun _ cty) = depEnds cty
   depEnds (VApp (VPar e) args) = e : depEnds args
   depEnds (VApp _ args) = depEnds args
 
