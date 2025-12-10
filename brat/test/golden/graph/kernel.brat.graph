@@ -29,11 +29,11 @@ Nodes:
   (NamedPort {end = Ex check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 2, portName = "c1"},Qubit)
 matchTests:
   
-matchOutputs:
+rhsInputs:
   (NamedPort {end = Ex check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "a1"},Qubit)
   (NamedPort {end = Ex check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 1, portName = "b1"},Qubit)
   (NamedPort {end = Ex check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_$lhs_lambda.0_setup/in 2, portName = "c1"},Qubit)
- [],check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("a1",Qubit),("b1",Qubit),("c1",Qubit)] [("a1",Vec(Qubit, 3))])
+,check_defs_1_id3_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("a1",Qubit),("b1",Qubit),("c1",Qubit)] [("a1",Vec(Qubit, 3))])
 (check_defs_1_id3_$rhs_check'Th_thunk/in,KernelNode Source [] [("a1",Qubit),("b1",Qubit),("c1",Qubit)])
 (check_defs_1_id3_$rhs_check'Th_thunk/out_1,KernelNode Target [("a1",Vec(Qubit, 3))] [])
 (check_defs_1_id3_$rhs_check'Th_thunk_thunk_2,BratNode (Box check_defs_1_id3_$rhs_check'Th_thunk/in check_defs_1_id3_$rhs_check'Th_thunk/out_1) [] [("thunk",{ (a1 :: Qubit), (b1 :: Qubit), (c1 :: Qubit) -o (a1 :: Vec(Qubit, 3)) })])

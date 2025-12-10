@@ -10,9 +10,9 @@ Nodes:
   (NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)
 matchTests:
 
-matchOutputs:
+rhsInputs:
   (NamedPort {end = Ex check_defs_1_addN_LambdaChk_9_checkClauses_1_$lhs_lambda.0_setup/in 0, portName = "inp"},Int)
- [],check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("inp",Int)] [("out",Int)])
+,check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs_thunk_3) :| [])) [("inp",Int)] [("out",Int)])
 (check_defs_1_addN_addN.box/in,BratNode Source [] [("inp",Int)])
 (check_defs_1_addN_addN.box/out_1,BratNode Target [("out",Int)] [])
 (check_defs_1_addN_addN.box_thunk_2,BratNode (Box check_defs_1_addN_addN.box/in check_defs_1_addN_addN.box/out_1) [] [("thunk",{ (inp :: Int) -> (out :: Int) })])
