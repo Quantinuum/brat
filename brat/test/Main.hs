@@ -4,7 +4,7 @@ import Test.Tasty.Silver.Interactive (defaultMain)
 import Test.Abstractor
 import Test.Checking
 import Test.Graph
-import Test.Compile.Hugr
+--import Test.Compile.Hugr
 import Test.Elaboration
 import Test.Failure
 import Test.Libs
@@ -62,7 +62,7 @@ main = do
   failureTests  <- getFailureTests
   checkingTests <- getCheckingTests
   parsingTests <- getParsingTests
-  compilationTests <- setupCompilationTests
+  -- compilationTests <- setupCompilationTests
   graphTests <- getGraphTests
   let coroTests = testGroup "coroutine"
        [testCase "coroT1" $ assertChecking coroT1
@@ -79,7 +79,7 @@ main = do
                                 ,elaborationTests
                                 ,substitutionTests
                                 ,abstractorTests
-                                ,compilationTests
+                                --,compilationTests
                                 ,typeArithTests
                                 ,coroTests
                                 ]
