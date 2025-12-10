@@ -708,10 +708,10 @@ allowedToSolve me it =
   in  case (it, dollarAndItsPrefix me, dollarAndItsPrefix itBwd) of
         -- Solving a hope
         (InEnd _, Just (region, "rhs"), Just (maker, '!':_))
-	  | Just region == prefixLeftOf maker "$rhs"
-	   ->
-	  trackPermission ("Allowed to solve:\n  " ++ show me ++ " / " ++ show it)
-	  $ Just "$!"
+          | Just region == prefixLeftOf maker "$rhs"
+           ->
+          trackPermission ("Allowed to solve:\n  " ++ show me ++ " / " ++ show it)
+          $ Just "$!"
         -- We can only solve dangling wires when doing pattern matching in `solve`
         (_, Just (region, "lhs"), Just (region', "lhs"))
           | region == region'
