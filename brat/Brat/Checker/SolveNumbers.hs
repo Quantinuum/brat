@@ -108,9 +108,34 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
           defineSrc' ("flex-flex In Ex") (NamedPort dangling "") (VNum (nVar v))
        | otherwise -> mkYield "flexFlex" (S.singleton e) >> unifyNum mine (nVar v) (nVar v')
       (VPar e@(InEnd p), VPar e'@(InEnd p'))
-       | Just _ <- mine e -> defineTgt' "flex-flex In In1" (NamedPort p "") (VNum (nVar v'))
-       | Just _ <- mine e' -> defineTgt' "flex-flex In In0"(NamedPort p' "") (VNum (nVar v))
+       | Just _ <- mine e -> solveInIn p p'
+       | Just _ <- mine e' -> solveInIn p' p
        | otherwise -> mkYield "flexFlex" (S.fromList [e, e']) >> unifyNum mine (nVar v) (nVar v')
+
+  -- INVARIANT: The first argument is ours to solve
+  solveInIn :: InPort -> InPort -> Checking ()
+  solveInIn e0@(In node0 _) e1@(In node1  _) = do
+    ws0 <- req $ WiresIn node0
+    ws1 <- req $ WiresIn node1
+    mine <- mineToSolve
+    me <- whoAmI
+    case (ws0, ws1) of
+      ([], [(dangling, ty, _)]) -> do
+        req $ Wire (dangling, ty, e0)
+        defineTgt' "solveInIn" (NamedPort e0 "") (VNum (nVar (VPar (toEnd e1))))
+      ([], [])
+       | Just _ <- mine (InEnd e1) -> do
+        (_, [(tgt,_)], [(src0, _), (src1, _)], _) <- anext "copyInIn" Copy (S0, Some (Zy :* S0)) (REx ("clonee", Nat) R0) (REx ("clone0", Nat) (REx ("clone1", Nat) R0))
+        defineTgt' "solveInInCopy" (NamedPort e0 "") (VNum (nVar (VPar (toEnd tgt))))
+        defineTgt' "solveInInCopy" (NamedPort e1 "") (VNum (nVar (VPar (toEnd tgt))))
+        req $ Wire (end src0, TNat, e0)
+        req $ Wire (end src1, TNat, e1)
+       | otherwise -> error $ "solveInIn: rhs not ours to solve: " ++ show e1 ++ "\n we are " ++ show me
+      (_, []) -> err (Unimplemented  "solveInIn: ours defined; other not" [])
+      -- Both things already wired up; just do the statics
+      _ -> defineTgt' "solveInInStatic" (NamedPort e0 "") (VNum (nVar (VPar (toEnd e1))))
+
+
 
   lhsStrictMono :: StrictMono (VVar Z) -> NumVal (VVar Z) -> Checking ()
   lhsStrictMono (StrictMono 0 mono) num = lhsMono mono num
