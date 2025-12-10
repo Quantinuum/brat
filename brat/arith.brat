@@ -22,3 +22,13 @@ dec(succ(n)) = n
 
 goo :: Nat
 goo = dec(foo)
+
+length(X :: *, n :: #, Vec(X, n)) -> Nat
+length(_, n, _) = n
+
+hoo(n :: #, Vec(Nat, n + 1)) -> Nat
+hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
+hoo(n, _) = n
+
+ioo :: Nat
+ioo = hoo(!, [1,2,3])
