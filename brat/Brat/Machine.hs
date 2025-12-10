@@ -81,11 +81,14 @@ updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
 run :: GraphInfo -> Bwd Frame -> Task -> Task
+run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
+
 -- Tasks that push new frames onto the stack to do things
 run gi@(g@(nodes, wires), _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
     Nothing -> evalNodeInputs gi (fz :< PortOfNode p) name
 run g@((nodes, _), cs) fz t@(EvalNode n ins) = case nodes M.! n of
+    nw | trace ("EVALNODE " ++ show nw) False -> undefined
     (BratNode (Const st) _ _) -> run g fz (Finished [evalSimpleTerm st])
     (BratNode (ArithNode op) _ _) -> run g fz (Finished [evalArith op ins])
     (BratNode Id _ _) -> run g fz (Finished ins)
