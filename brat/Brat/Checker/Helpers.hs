@@ -30,8 +30,6 @@ import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import qualified Data.Set as S
 import Prelude hiding (last)
 
-import Debug.Trace
-
 trackPermission = const id
 --trackPermission = trace
 
@@ -683,11 +681,11 @@ valPats2Val (k:ks) (v:vs) = do
 valPats2Val [] [] = pure (B0, [])
 valPats2Val _ _ = err $ InternalError "Type args didn't match expected - kindCheck should've sorted it"
 
-traceChecking :: (Show a, Show b) => String -> (a -> Checking b) -> (a -> Checking b)
-traceChecking lbl m a = do
-  traceM ("Enter " ++ lbl ++ ": " ++ show a)
+traceChecking :: String -> (a -> Checking b) -> (a -> Checking b)
+traceChecking _lbl m a = do
+  --traceM ("Enter " ++ lbl ++ ": " ++ show a)
   b <- m a
-  traceM ("Exit  " ++ lbl ++ ": " ++ show b)
+  --traceM ("Exit  " ++ lbl ++ ": " ++ show b)
   pure b
 
 --traceChecking = const id
