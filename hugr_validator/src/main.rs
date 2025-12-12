@@ -1,18 +1,31 @@
 use brat_extension;
+use clap::Parser;
+use clio::Input;
 use hugr::extension::{ExtensionRegistry, PRELUDE};
 use hugr::std_extensions::arithmetic::{float_ops, float_types, int_ops, int_types};
 use hugr::std_extensions::{collections, logic};
+use hugr::HugrView;
 use hugr::{hugr::ValidationError, Hugr};
 use serde_json;
-use std::io::{stdin, Read};
+use std::io::{stdin, stdout, Read, Write};
 use std::process::exit;
 
-fn parse_and_validate() -> Result<(), ValidationError> {
-    let mut buffer = String::new();
-    let mut stdin = stdin();
-    stdin.read_to_string(&mut buffer).unwrap();
-    let hugr: Hugr = serde_json::from_str(&buffer).unwrap();
+#[derive(Parser, Debug)]
+#[command(version, about)]
+pub struct CliArgs {
+    #[arg(default_value = "-", help = "Input hugr")]
+    input_file: Input,
 
+    // Vizualise the hugr instead of validating it
+    #[arg(long, default_value_t = false)]
+    viz: bool,
+}
+
+fn parse_hugr(contents: impl std::io::Read) -> Hugr {
+    serde_json::from_reader(contents).expect("Couldn't parse hugr")
+}
+
+fn validate(hugr: &Hugr) -> Result<(), ValidationError> {
     let registry = ExtensionRegistry::try_new([
         PRELUDE.to_owned(),
         logic::EXTENSION.to_owned(),
@@ -30,12 +43,20 @@ fn parse_and_validate() -> Result<(), ValidationError> {
     Ok(())
 }
 
-fn main() {
-    match parse_and_validate() {
-        Ok(()) => (),
-        Err(err) => {
-            println!("{}", err);
-            exit(1);
+fn main() -> Result<(), ValidationError> {
+    let args = CliArgs::parse();
+    let hugr = parse_hugr(args.input_file);
+    if args.viz {
+        let mermaid = hugr.mermaid_string();
+        println!("{mermaid}");
+        Ok(())
+    } else {
+        match validate(&hugr) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                println!("{}", err);
+                exit(1);
+            }
         }
     }
 }

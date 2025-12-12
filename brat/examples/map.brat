@@ -1,0 +1,3 @@
+map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
+map(_, _, _, []) = []
+map(_, _, f, x ,- xs) = f(x) ,- map(!, !, f, xs)

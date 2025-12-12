@@ -38,7 +38,7 @@ unelab _ _ (Con c args) = FCon c (unelab Chky Nouny <$> args)
 unelab _ _ (C (ss :-> ts)) = FFn (toRawRo ss :-> toRawRo ts)
 unelab _ _ (K cty) = FKernel $ fmap (\(p, ty) -> Named p (toRaw ty)) cty
 unelab _ _ Identity = FIdentity
-unelab _ _ Hope = FHope
+unelab _ _ (Hope ident) = FHope ident
 unelab _ _ FanIn = FFanIn
 unelab _ _ FanOut = FFanOut
 
@@ -68,7 +68,7 @@ toRaw (Con c args) = RCon c (toRaw <$> args)
 toRaw (C (ss :-> ts)) = RFn (toRawRo ss :-> toRawRo ts)
 toRaw (K cty) = RKernel $ (\(p, ty) -> Named p (toRaw ty)) <$> cty
 toRaw Identity = RIdentity
-toRaw Hope = RHope
+toRaw (Hope ident) = RHope ident
 toRaw FanIn = RFanIn
 toRaw FanOut = RFanOut
 

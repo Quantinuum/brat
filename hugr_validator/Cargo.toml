@@ -7,3 +7,5 @@ edition = "2021"
 hugr = "0.9.0"
 serde_json = "*"
 brat_extension = { path = "../hugr_extension" }
+clap = { version = "4.5", features = ["derive"] }
+clio = { version = "0.3.5", features = ["clap-parse"] }

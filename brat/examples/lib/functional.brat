@@ -1,6 +1,6 @@
 -- TODO: Fill this with holes once we can guess them
 map(X :: $,  Y :: $, n :: #, f :: { X -o Y }) -> { Vec(X, n) -o Vec(Y, n) }
-map(_, _, _, _) = { [] => [] }
+map(_, _, 0, _) = { [] => [] }
 map(X, Y, succ(n), f) = { cons(x,xs) => cons(f(x), map(X, Y, n, f)(xs)) }
 
 fold(X :: $

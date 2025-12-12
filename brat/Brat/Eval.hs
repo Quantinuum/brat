@@ -2,6 +2,7 @@
 
 module Brat.Eval (EvMode(..)
                  ,ValPat(..)
+                 ,NumEval(..)
                  ,NumPat(..)
                  ,apply
                  ,applySem
@@ -17,7 +18,9 @@ module Brat.Eval (EvMode(..)
                  ,kindType
                  ,numVal
                  ,quote
+                 ,quoteNum
                  ,getNumVar
+                 ,instantiateMeta
                  ) where
 
 import Brat.Checker.Monad
@@ -117,7 +120,7 @@ semLvl lvy = SApp (SLvl $ ny2int lvy) B0
 
 -- note that typeEq is a kind of quote but that also does eta-expansion
 quote :: Ny lv -> Sem -> Checking (Val lv)
-quote lvy (SNum num) = pure $ VNum (fmap (quoteVar lvy) num)
+quote lvy (SNum num) = pure $ VNum (quoteNum lvy num)
 quote lvy (SCon nm args) = VCon nm <$> traverse (quote lvy) args
 quote lvy (SLam stk body) = do
   body <- sem (stk :<< semLvl lvy) body
@@ -129,6 +132,9 @@ quoteCTy :: Ny lv -> Modey m -> Stack Z Sem n -> CTy m n -> Checking (CTy m lv)
 quoteCTy lvy my ga (ins :->> outs) = quoteRo my ga ins lvy >>= \case
   (ga', Some (ins' :* lvy')) -> quoteRo my ga' outs lvy' >>= \case
     (_, Some (outs' :* _)) -> pure (ins' :->> outs')
+
+quoteNum ::  Ny lv -> NumVal SVar -> NumVal (VVar lv)
+quoteNum lvy num = fmap (quoteVar lvy) num
 
 -- first number is next Lvl to use in Value
 --         require every Lvl in Sem is < n (converted by n - 1 - lvl), else must fail at runtime
@@ -186,7 +192,7 @@ kindEq (TypeFor m xs) (TypeFor m' ys) | m == m' = kindListEq xs ys
 kindEq k k' = Left . TypeErr $ "Unequal kinds " ++ show k ++ " and " ++ show k'
 
 kindOf :: VVar Z -> Checking TypeKind
-kindOf (VPar e) = req (TypeOf e) >>= \case
+kindOf (VPar e) = (req (TypeOf e) <&> fst) >>= \case
   EndType Braty (Left k) -> pure k
   EndType my ty -> typeErr $ "End " ++ show e ++ " isn't a kind, it's type is " ++ case my of
     Braty -> show ty
@@ -306,6 +312,7 @@ getNumVar _ = Nothing
 -- We can have bogus failures here because we're not normalising under lambdas
 -- N.B. the value argument is normalised.
 doesntOccur :: End -> Val n -> Either ErrorMsg ()
+-- ALAN merge could have been: doesntOccur e (VNum nv) = for_ (getNumVar nv) (collision e)
 doesntOccur e (VNum nv) = traverse_ (collision e) (getNumVar nv)
 doesntOccur e (VApp var args) = case var of
   VPar e' -> collision e e' *> traverse_ (doesntOccur e) args
@@ -315,6 +322,12 @@ doesntOccur e (VLam body) = doesntOccur e body
 doesntOccur e (VFun my (ins :->> outs)) = case my of
   Braty -> doesntOccurRo my e ins *> doesntOccurRo my e outs
   Kerny -> doesntOccurRo my e ins *> doesntOccurRo my e outs
+
+-- This should only be called after checking we have the right to solve the end
+instantiateMeta :: String -> End -> Val Z -> Checking ()
+instantiateMeta lbl e val = do
+  throwLeft (doesntOccur e val)
+  defineEnd (lbl ++ "->instantiateMeta") e val
 
 collision :: End -> End -> Either ErrorMsg ()
 collision e v | e == v = Left . UnificationError $
