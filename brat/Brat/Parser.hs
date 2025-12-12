@@ -413,8 +413,14 @@ atomExpr = simpleExpr <|> inBracketsFC Paren (unWC <$> expr)
             <|> var
             <|> fmap (const FUnderscore) <$> matchFC Underscore
             <|> fmap (const FIdentity) <$> matchFC Pipe
-            <|> fmap (const FHope) <$> matchFC Bang
+            <|> pHope
 
+
+pHope :: Parser (WC Flat)
+pHope = do
+  WC bangFC () <- matchFC Bang
+  maybeWCName <- optional simpleName
+  pure (maybe (WC bangFC (FHope "")) (\(WC identFC ident) -> WC (spanFC bangFC identFC) (FHope ident)) maybeWCName)
 
 {- Infix operator precedence table (See Brat.Syntax.Common.Precedence)
 (loosest to tightest binding):

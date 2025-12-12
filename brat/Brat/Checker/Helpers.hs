@@ -1,56 +1,62 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module Brat.Checker.Helpers {-(pullPortsRow, pullPortsSig
-                            ,simpleCheck
-                            ,combineDisjointEnvs
-                            ,ensureEmpty, noUnders
-                            ,rowToSig
-                            ,showMode, getVec
-                            ,mkThunkTy
-                            ,wire
-                            ,next, knext, anext
-                            ,kindType, getThunks
-                            ,binderToValue, valueToBinder
-                            ,kConFields
-                            ,defineSrc, defineTgt
-                            ,declareSrc, declareTgt
-                            ,makeBox
-                            ,uncons
-                            ,evalBinder
-                            ,evalSrcRow, evalTgtRow
-                            )-} where
+module Brat.Checker.Helpers where
 
-import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd)
+import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
-import Brat.Eval (eval, EvMode(..), kindType)
+import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
-import Brat.Naming (Name, FreshMonad(..))
+import Brat.Naming (FreshMonad(..), Name(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Core (Term(..))
 import Brat.Syntax.Simple
-import Brat.Syntax.Port (ToEnd(..))
+import Brat.Syntax.Port (ToEnd(..), endName)
 import Brat.Syntax.Value
 import Bwd
 import Hasochism
 import Util (log2)
 
+import Control.Monad ((>=>))
+import Control.Monad.Freer
 import Control.Monad.State.Lazy (StateT(..), runStateT)
-import Control.Monad.Freer (req)
 import Data.Bifunctor
 import Data.Foldable (foldrM)
+import Data.Functor ((<&>))
 import Data.List (partition)
+import Data.Maybe (isJust)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
-import qualified Data.Map as M
+import qualified Data.Set as S
 import Prelude hiding (last)
 
-simpleCheck :: Modey m -> Val Z -> SimpleTerm -> Either ErrorMsg ()
-simpleCheck Braty TNat (Num n) | n >= 0 = pure ()
-simpleCheck Braty TInt (Num _) = pure ()
-simpleCheck Braty TFloat (Float _) = pure ()
-simpleCheck Braty TText (Text _) = pure ()
-simpleCheck _ ty tm = Left $ TypeErr $ unwords
+trackPermission = const id
+--trackPermission = trace
+
+simpleCheck :: Modey m -> Val Z -> SimpleTerm -> Checking ()
+simpleCheck my ty tm = case (my, ty) of
+  (Braty, VApp (VPar e) _) -> do
+    mine <- mineToSolve
+    if isJust (mine e) then
+      case tm of
+        Float _ -> defineEnd "simpleCheck" e TFloat
+        Text _ -> defineEnd "simpleCheck" e TText
+        Num n | n < 0 -> defineEnd "simpleCheck" e TInt
+        Num _ -> typeErr $ "Can't determine whether Int or Nat: " ++ show tm
+    else isSkolem e >>= \case
+      SkolemConst -> throwLeft $ helper Braty ty tm
+      Definable -> do
+        mkYield "simpleCheck" (S.singleton e)
+        ty <- eval S0 ty
+        simpleCheck Braty ty tm
+  _ -> throwLeft $ helper my ty tm
+ where
+  helper :: Modey m -> Val Z -> SimpleTerm -> Either ErrorMsg ()
+  helper Braty TNat (Num n) | n >= 0 = pure ()
+  helper Braty TInt (Num _) = pure ()
+  helper Braty TFloat (Float _) = pure ()
+  helper Braty TText (Text _) = pure ()
+  helper _ ty tm = Left $ TypeErr $ unwords
                       ["Expected something of type"
                       ,"`" ++ show ty ++ "`"
                       ,"but got"
@@ -109,7 +115,7 @@ pullPortsSig :: Show ty
              -> Checking [(PortName, ty)]
 pullPortsSig = pullPorts fst showSig
 
-pullPorts :: forall a ty
+pullPorts :: forall a
            . (a -> PortName) -- A way to get a port name for each element
           -> ([a] -> String) -- A way to print the list
           -> [PortName] -- Things to pull to the front
@@ -128,11 +134,6 @@ pullPorts toPort showFn to_pull types =
 ensureEmpty :: Show ty => String -> [(NamedPort e, ty)] -> Checking ()
 ensureEmpty _ [] = pure ()
 ensureEmpty str xs = err $ InternalError $ "Expected empty " ++ str ++ ", got:\n  " ++ showSig (rowToSig xs)
-
-noUnders m = do
-  ((outs, ()), (overs, unders)) <- m
-  ensureEmpty "unders" unders
-  pure (outs, overs)
 
 rowToSig :: Traversable t => t (NamedPort e, ty) -> t (PortName, ty)
 rowToSig = fmap $ first portName
@@ -166,26 +167,40 @@ anext :: forall m i j k
       -> Ro m i j -- Inputs and Outputs use de Bruijn indices
       -> Ro m j k
       -> Checking (Name, Unders m Chk, Overs m UVerb, (Semz k, Some Endz))
-anext str th vals0 ins outs = do
+anext str th vals0 ins outs = anext' str th vals0 ins outs $ case th of
+  Source -> SkolemConst
+  _ -> Definable
+
+anext' :: forall m i j k
+       . EvMode m
+      => String
+      -> NodeType m
+      -> (Semz i, Some Endz)
+      -> Ro m i j -- Inputs and Outputs use de Bruijn indices
+      -> Ro m j k
+      -> IsSkolem -- inports are always Definable
+      -> Checking (Name, Unders m Chk, Overs m UVerb, (Semz k, Some Endz))
+anext' str th vals0 ins outs skol = do
   node <- req (Fresh str) -- Pick a name for the thunk
   -- Use the new name to generate Ends with which to instantiate types
   (unders, vals1) <- endPorts node InEnd In 0 vals0 ins
   (overs, vals2)  <- endPorts node ExEnd Ex 0 vals1 outs
   () <- sequence_ $
         [ declareTgt tgt (modey @m) ty | (tgt, ty) <- unders ] ++
-        [ declareSrc src (modey @m) ty | (src, ty) <- overs ]
+        [ req (Declare (ExEnd (end src)) (modey @m) ty skol) | (src, ty) <- overs ]
+
   let inputs  = [ (portName p, biType @m ty) | (p, ty) <- unders ]
   let outputs = [ (portName p, biType @m ty) | (p, ty) <- overs  ]
 
   () <- req (AddNode node (mkNode (modey @m) th inputs outputs))
   pure (node, unders, overs, vals2)
- where
-  mkNode :: forall m. Modey m -> NodeType m
-         -> [(PortName, Val Z)]
-         -> [(PortName, Val Z)]
-         -> Node
-  mkNode Braty = BratNode
-  mkNode Kerny = KernelNode
+
+mkNode :: forall m. Modey m -> NodeType m
+        -> [(PortName, Val Z)]
+        -> [(PortName, Val Z)]
+        -> Node
+mkNode Braty = BratNode
+mkNode Kerny = KernelNode
 
 type Endz = Ny :* Stack Z End
 
@@ -208,6 +223,7 @@ endPorts node port2End mkPort n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
   (row, stuff) <- endPorts node port2End mkPort (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
+
 next :: String -> NodeType Brat -> (Semz i, Some Endz)
      -> Ro Brat i j
      -> Ro Brat j k
@@ -245,14 +261,14 @@ getThunks :: Modey m
                       )
 getThunks _ [] = pure ([], [], [])
 getThunks Braty ((src, Right ty):rest) = do
-  ty <- eval S0 ty
+  ty <- awaitTypeDefinition ty
   (src, ss :->> ts) <- vectorise Braty (src, ty)
   (node, unders, overs, _) <- let ?my = Braty in
                                 anext "Eval" (Eval (end src)) (S0, Some (Zy :* S0)) ss ts
   (nodes, unders', overs') <- getThunks Braty rest
   pure (node:nodes, unders <> unders', overs <> overs')
 getThunks Kerny ((src, Right ty):rest) = do
-  ty <- eval S0 ty
+  ty <- awaitTypeDefinition ty
   (src, ss :->> ts) <- vectorise Kerny (src,ty)
   (node, unders, overs, _) <- let ?my = Kerny in anext "Splice" (Splice (end src)) (S0, Some (Zy :* S0)) ss ts
   (nodes, unders', overs') <- getThunks Kerny rest
@@ -272,57 +288,11 @@ vecLayers :: Modey m -> Val Z -> Checking ([(Src, NumVal (VVar Z))] -- The sizes
                                           ,CTy m Z -- The function type at the end
                                           )
 vecLayers my (TVec ty (VNum n)) = do
-  src <- mkStaticNum n
+  src <- buildNatVal n
   first ((src, n):) <$> vecLayers my ty
 vecLayers Braty (VFun Braty cty) = pure ([], cty)
 vecLayers Kerny (VFun Kerny cty) = pure ([], cty)
 vecLayers my ty = typeErr $ "Expected a " ++ showMode my ++ "function or vector of functions, got " ++ show ty
-
-mkStaticNum :: NumVal (VVar Z) -> Checking Src
-mkStaticNum n@(NumValue c gro) = do
-  (_, [], [(constSrc,_)], _) <- next "const" (Const (Num (fromIntegral c))) (S0, Some (Zy :* S0)) R0 (RPr ("value", TNat) R0)
-  src <- case gro of
-    Constant0 -> pure constSrc
-    StrictMonoFun sm -> do
-      (_, [(lhs,_),(rhs,_)], [(src,_)], _) <- next "add_const" (ArithNode Add) (S0, Some (Zy :* S0))
-                                              (RPr ("lhs", TNat) (RPr ("rhs", TNat) R0))
-                                              (RPr ("value", TNat) R0)
-      smSrc <- mkStrictMono sm
-      wire (constSrc, TNat, lhs)
-      wire (smSrc, TNat, rhs)
-      pure src
-  defineSrc src (VNum n)
-  pure src
- where
-  mkStrictMono :: StrictMono (VVar Z) -> Checking Src
-  mkStrictMono (StrictMono k mono) = do
-    (_, [], [(constSrc,_)], _) <- next "2^k" (Const (Num (2^k))) (S0, Some (Zy :* S0)) R0 (RPr ("value", TNat) R0)
-    (_, [(lhs,_),(rhs,_)], [(src,_)], _) <- next "mult_const" (ArithNode Mul) (S0, Some (Zy :* S0))
-                                            (RPr ("lhs", TNat) (RPr ("rhs", TNat) R0))
-                                            (RPr ("value", TNat) R0)
-    monoSrc <- mkMono mono
-    wire (constSrc, TNat, lhs)
-    wire (monoSrc, TNat, rhs)
-    pure src
-
-  mkMono :: Monotone (VVar Z) -> Checking Src
-  mkMono (Linear (VPar (ExEnd e))) = pure (NamedPort e "mono")
-  mkMono (Full sm) = do
-    (_, [], [(twoSrc,_)], _) <- next "2" (Const (Num 2)) (S0, Some (Zy :* S0)) R0 (RPr ("value", TNat) R0)
-    (_, [(lhs,_),(rhs,_)], [(powSrc,_)], _) <- next "2^" (ArithNode Pow) (S0, Some (Zy :* S0))
-                                               (RPr ("lhs", TNat) (RPr ("rhs", TNat) R0))
-                                               (RPr ("value", TNat) R0)
-    smSrc <- mkStrictMono sm
-    wire (twoSrc, TNat, lhs)
-    wire (smSrc, TNat, rhs)
-
-    (_, [], [(oneSrc,_)], _) <- next "1" (Const (Num 1)) (S0, Some (Zy :* S0)) R0 (RPr ("value", TNat) R0)
-    (_, [(lhs,_),(rhs,_)], [(src,_)], _) <- next "n-1" (ArithNode Sub) (S0, Some (Zy :* S0))
-                                            (RPr ("lhs", TNat) (RPr ("rhs", TNat) R0))
-                                            (RPr ("value", TNat) R0)
-    wire (powSrc, TNat, lhs)
-    wire (oneSrc, TNat, rhs)
-    pure src
 
 vectorise :: forall m. Modey m -> (Src, Val Z) -> Checking (Src, CTy m Z)
 vectorise my (src, ty) = do
@@ -339,7 +309,7 @@ vectorise my (src, ty) = do
       next "MapFun" MapFun (S0, Some (Zy :* S0))
       (REx ("len", Nat) (RPr ("value", weak1 ty) R0))
       (RPr ("vector", weak1 vecFun) R0)
-    defineTgt lenTgt (VNum len)
+    defineTgt' "vectorise" lenTgt (VNum len)
     wire (lenSrc, kindType Nat, lenTgt)
     wire (valSrc, ty, valTgt)
     let vecCTy = case (my,my',cty) of
@@ -376,16 +346,20 @@ valueToBinder Braty = Right
 valueToBinder Kerny = id
 
 defineSrc :: Src -> Val Z -> Checking ()
-defineSrc src = defineEnd (ExEnd (end src))
+defineSrc src = defineEnd "" (ExEnd (end src))
 
+-- TODO: Do the work of checking if there's a dynamic hope here
 defineTgt :: Tgt -> Val Z -> Checking ()
-defineTgt tgt = defineEnd (InEnd (end tgt))
+defineTgt tgt = defineEnd "" (InEnd (end tgt))
 
-declareSrc :: Src -> Modey m -> BinderType m -> Checking ()
-declareSrc src my ty = req (Declare (ExEnd (end src)) my ty)
+defineSrc' :: String -> Src -> Val Z -> Checking ()
+defineSrc' lbl src = defineEnd lbl (ExEnd (end src))
+
+defineTgt' :: String -> Tgt -> Val Z -> Checking ()
+defineTgt' lbl tgt = defineEnd lbl (InEnd (end tgt))
 
 declareTgt :: Tgt -> Modey m -> BinderType m -> Checking ()
-declareTgt tgt my ty = req (Declare (InEnd (end tgt)) my ty)
+declareTgt tgt my ty = req (Declare (InEnd (end tgt)) my ty Definable)
 
 -- listToRow :: [(PortName, BinderType m)] -> Ro m Z i
 -- listToRow [] = R0
@@ -402,14 +376,14 @@ makeBox name cty@(ss :->> ts) body = do
   (tgt, unders, _, _) <- anext (name ++ "/out") Target ctx ts R0
   case (?my, body) of
     (Kerny, _) -> do
-      (_,_,[thunk],_) <- next (name ++ "_thunk") (Box M.empty src tgt) (S0, Some (Zy :* S0))
+      (_,_,[thunk],_) <- next (name ++ "_thunk") (Box src tgt) (S0, Some (Zy :* S0))
                                 R0 (RPr ("thunk", VFun Kerny cty) R0)
-      bres <- name -! body (overs, unders)
+      bres <- body (overs, unders)
       pure (thunk, bres)
     (Braty, body) -> do
-      (bres, captures) <- name -! captureOuterLocals (body (overs, unders))
-      (_, [], [thunk], _) <- next (name ++ "_thunk") (Box captures src tgt) (S0, Some (Zy :* S0))
+      (node, [], [thunk], _) <- next (name ++ "_thunk") (Box src tgt) (S0, Some (Zy :* S0))
                                      R0 (RPr ("thunk", VFun ?my cty) R0)
+      bres <- captureOuterLocals node (body (overs, unders))
       pure (thunk, bres)
 
 -- Evaluate either mode's BinderType
@@ -493,7 +467,288 @@ runArith (NumValue upl grol) Pow (NumValue upr gror)
  = pure $ NumValue (upl ^ upr) (StrictMonoFun (StrictMono (l * upr) (Full (StrictMono (k + k') mono))))
 runArith _ _ _ = Nothing
 
+buildArithOp :: ArithOp -> Checking ((Tgt, Tgt), Src)
+buildArithOp op = do
+  (_, [(lhs,_), (rhs,_)], [(out,_)], _) <- next (show op) (ArithNode op) (S0, Some (Zy :* S0)) (REx ("lhs", Nat) (REx ("rhs", Nat) R0)) (REx ("value", Nat) R0)
+  pure ((lhs, rhs), out)
+
 buildConst :: SimpleTerm -> Val Z -> Checking Src
 buildConst tm ty = do
   (_, _, [(out,_)], _) <- next "buildConst" (Const tm) (S0, Some (Zy :* S0)) R0 (RPr ("value", ty) R0)
   pure out
+
+buildNum :: Integer -> Checking Src
+buildNum n = buildConst (Num (fromIntegral n)) TNat
+
+buildAdd :: Integer -> Checking (Tgt, Src)
+buildAdd n = do
+  nDangling <- buildNum n
+  ((lhs,rhs),out) <- buildArithOp Add
+  req $ Wire (end nDangling, TNat, end lhs)
+  defineSrc out (VNum (nPlus n (nVar (VPar (toEnd rhs)))))
+  pure (rhs, out)
+
+buildSub :: Integer -> Checking (Tgt, Src)
+buildSub n = do
+  nDangling <- buildNum n
+  ((lhs,rhs),out) <- buildArithOp Sub
+  req $ Wire (end nDangling, TNat, end rhs)
+  defineTgt' "Sub" lhs (VNum (nPlus n (nVar (VPar (toEnd out)))))
+  pure (lhs, out)
+
+buildDoub :: Checking (Tgt, Src)
+buildDoub = do
+  nDangling <- buildNum 2
+  ((lhs,rhs),out) <- buildArithOp Mul
+  req $ Wire (end nDangling, TNat, end lhs)
+  defineSrc out (VNum (n2PowTimes 1 (nVar (VPar (toEnd rhs)))))
+  pure (rhs, out)
+
+buildHalve :: Checking (Tgt, Src)
+buildHalve = do
+  nDangling <- buildNum 2
+  ((lhs,rhs),out) <- buildArithOp Div
+  req $ Wire (end nDangling, TNat, end rhs)
+  defineTgt' "Helpers"lhs (VNum (n2PowTimes 1 (nVar (VPar (toEnd out)))))
+  pure (lhs, out)
+
+-- Return an End with the same polarity whose value is half that of the input End
+makeHalf :: End -> Checking End
+makeHalf (InEnd e) = do
+  (doubIn, doubOut) <- buildDoub
+  req (Wire (end doubOut, TNat, e))
+  defineTgt' "Helpers"(NamedPort e "") (VNum (nVar (VPar (toEnd doubOut))))
+  pure (InEnd (end doubIn))
+makeHalf (ExEnd e) = do
+  (halveIn, halveOut) <- buildHalve
+  req (Wire (e, TNat, end halveIn))
+  defineSrc (NamedPort e "") (VNum (nVar (VPar (toEnd halveIn))))
+  pure (toEnd halveOut)
+
+makePred :: End -> Checking End
+makePred (InEnd e) = do
+  (succIn, succOut) <- buildAdd 1
+  req (Wire (end succOut, TNat, e))
+  defineTgt' "Helpers"(NamedPort e "") (VNum (nVar (VPar (toEnd succOut))))
+  pure (toEnd succIn)
+makePred (ExEnd e) = do
+  (predIn, predOut) <- buildSub 1
+  req (Wire (e, TNat, end predIn))
+  defineSrc (NamedPort e "") (VNum (nVar (VPar (toEnd predIn))))
+  pure (toEnd predOut)
+
+-- Generate wiring to produce a dynamic instance of the numval argument
+-- N.B. In these functions, we wire using Req, rather than the `wire` function
+-- because we don't want it to do any extra evaluation.
+buildNatVal :: NumVal (VVar Z) -> Checking Src
+buildNatVal nv@(NumValue n gro) = case n of
+  0 -> buildGro gro
+  n -> do
+    (inn, out) <- buildAdd n
+    src <- buildGro gro
+    req $ Wire (end src, TNat, end inn)
+    --traceM $ "buildNatVal " ++ show inn
+    defineTgt' "Helpers"inn (VNum (nVar (VPar (toEnd src))))
+    pure out
+ where
+  buildGro :: Fun00 (VVar Z) -> Checking Src
+  buildGro Constant0 = buildNum 0
+  buildGro (StrictMonoFun sm) = buildSM sm
+
+  buildSM :: StrictMono (VVar Z) -> Checking Src
+  buildSM (StrictMono k mono) = do
+    factor <- buildNum $ 2 ^ k
+    -- Multiply mono by 2^k; note we could avoid this if k==0
+    ((lhs,rhs),out) <- buildArithOp Mul
+    monoDangling <- buildMono mono
+    req $ Wire (end factor, TNat, end lhs)
+    req $ Wire (end monoDangling, TNat, end rhs)
+    defineSrc out (VNum (n2PowTimes k (nVar (VPar (toEnd monoDangling)))))
+    pure out
+
+  buildMono :: Monotone (VVar Z) -> Checking Src
+  buildMono (Linear (VPar (ExEnd e))) = pure $ NamedPort e "numval"
+  buildMono (Full sm) = do
+    -- Calculate 2^n as `outPlus1`
+    two <- buildNum 2
+    dangling <- buildSM sm
+    ((lhs,rhs),outPlus1) <- buildArithOp Pow
+    req $ Wire (end two, TNat, end lhs)
+    req $ Wire (end dangling, TNat, end rhs)
+    -- Then subtract 1
+    one <- buildNum 1
+    ((lhs,rhs),out) <- buildArithOp Sub
+    req $ Wire (end outPlus1, TNat, end lhs)
+    req $ Wire (end one, TNat, end rhs)
+    defineSrc out (VNum (nFull (nVar (VPar (toEnd dangling)))))
+    pure out
+  buildMono _ = err . InternalError $ "Trying to build a non-closed nat value: " ++ show nv
+
+invertNatVal :: NumVal (VVar Z) -> Checking Tgt
+invertNatVal (NumValue up gro) = case up of
+  0 -> invertGro gro
+  _ -> do
+    ((lhs,rhs),out) <- buildArithOp Sub
+    upSrc <- buildNum up
+    req $ Wire (end upSrc, TNat, end rhs)
+    tgt <- invertGro gro
+    req $ Wire (end out, TNat, end tgt)
+    defineTgt' "Helpers"tgt (VNum (nVar (VPar (toEnd out))))
+    defineTgt' "Helpers"lhs (VNum (nPlus up (nVar (VPar (toEnd tgt)))))
+    pure lhs
+ where
+  invertGro Constant0 = error "Invariant violated: the numval arg to invertNatVal should contain a variable"
+  invertGro (StrictMonoFun sm) = invertSM sm
+
+  invertSM (StrictMono k mono) = case k of
+    0 -> invertMono mono
+    _ -> do
+      divisor <- buildNum (2 ^ k)
+      ((lhs,rhs),out) <- buildArithOp Div
+      tgt <- invertMono mono
+      req $ Wire (end out, TNat, end tgt)
+      req $ Wire (end divisor, TNat, end rhs)
+      defineTgt' "Helpers"tgt (VNum (nVar (VPar (toEnd out))))
+      defineTgt' "Helpers"lhs (VNum (n2PowTimes k (nVar (VPar (toEnd tgt)))))
+      pure lhs
+
+  invertMono (Linear (VPar (InEnd e))) = pure (NamedPort e "numval")
+  invertMono (Full sm) = do
+    (_, [(llufTgt,_)], [(llufSrc,_)], _) <- next "luff" (Prim ("BRAT","lluf")) (S0, Some (Zy :* S0)) (REx ("n", Nat) R0) (REx ("n", Nat) R0)
+    tgt <- invertSM sm
+    req $ Wire (end llufSrc, TNat, end tgt)
+    defineTgt' "Helpers"tgt (VNum (nVar (VPar (toEnd llufSrc))))
+    defineTgt' "Helpers"llufTgt (VNum (nFull (nVar (VPar (toEnd tgt)))))
+    pure llufTgt
+
+-- This will update the `hopes`, potentially invalidating things that have
+-- been eval'd.
+-- The Sem is closed, for now.
+solveVal :: TypeKind -> End -> Val Z -> Checking ()
+solveVal _ it (VApp (VPar e) B0) | it == e = pure ()
+solveVal _ it v | Left msg <- doesntOccur it v =
+    -- TODO: Not all occurrences are toxic. The end could be in an argument
+    -- to a hoping variable which isn't used.
+    -- E.g. h1 = h2 h1 - this is valid if h2 is the identity, or ignores h1.
+    err msg
+solveVal Nat it@(InEnd inn) v@(VNum nv) = do
+  dangling <- buildNatVal nv
+  req (Wire (end dangling, TNat, inn))
+  defineEnd "solveValNat" it v
+solveVal k@(TypeFor _ _) it@(InEnd inn) v = do
+  (_, _, [(dummySrc, _)], _) <- anext "" (Dummy k) (S0, Some (Zy :* S0)) R0 (REx ("dummy", k) R0)
+  req $ Wire (end dummySrc, kindType k, inn)
+  defineEnd "solveVal" it v
+  -- Do we also need dummy wiring here?
+
+solveSem :: TypeKind -> End -> Sem -> Checking ()
+solveSem k hope = quote Zy >=> solveVal k hope
+
+-- Convert a pattern into a value for the purposes of solving it with unification
+-- for pattern matching. This is used for checking type constructors - we're only
+-- dealing in static information.
+valPat2Val :: TypeKind
+           -> ValPat
+           -> Checking (Bwd (Val Z) -- Values of the pattern vars
+                       ,Val Z  -- The value of the whole pattern
+                       )
+valPat2Val k VPVar = do
+  (_, [(idTgt, _)], [_], _) <- anext "pat2val" Id (S0, Some (Zy :* S0)) (REx ("", k) R0) (REx ("", k) R0)
+  let val = VApp (VPar (toEnd idTgt)) B0
+  pure (B0 :< val, val)
+valPat2Val (TypeFor m _) (VPCon con args) = do
+  ks <- fmap snd <$> tlup (m, con)
+  (stk, args) <- valPats2Val ks args
+  let val = VCon con args
+  pure (stk, val)
+valPat2Val Nat (VPNum n) = numPat2Val n >>= \(stk, nv) -> pure (stk, VNum nv)
+ where
+  numPat2Val :: NumPat -> Checking (Bwd (Val Z), NumVal (VVar Z))
+  numPat2Val NP0 = pure (B0, nZero)
+  numPat2Val (NP1Plus np) = second (nPlus 1) <$> numPat2Val np
+  numPat2Val (NP2Times np) = second (n2PowTimes 1) <$> numPat2Val np
+  numPat2Val NPVar = do
+    (_, [(idTgt, _)], [_], _) <- anext "numpat2val" Id (S0, Some (Zy :* S0)) (REx ("", Nat) R0) (REx ("", Nat) R0)
+    let var = endVal Nat (toEnd idTgt)
+    pure (B0 :< var, nVar (VPar (toEnd idTgt)))
+
+valPats2Val :: [TypeKind]
+            -> [ValPat]
+            -> Checking (Bwd (Val Z) -- Values of the pattern vars
+                        ,[Val Z]  -- The value of the whole pattern
+                        )
+valPats2Val (k:ks) (v:vs) = do
+  (stk, v) <- valPat2Val k v
+  (stk', vs) <- valPats2Val ks vs
+  pure (stk <+ stk', v:vs)
+valPats2Val [] [] = pure (B0, [])
+valPats2Val _ _ = err $ InternalError "Type args didn't match expected - kindCheck should've sorted it"
+
+traceChecking :: String -> (a -> Checking b) -> (a -> Checking b)
+traceChecking _lbl m a = do
+  --traceM ("Enter " ++ lbl ++ ": " ++ show a)
+  b <- m a
+  --traceM ("Exit  " ++ lbl ++ ": " ++ show b)
+  pure b
+
+--traceChecking = const id
+
+dollarAndItsPrefix :: Bwd (String, Int) -> Maybe (Bwd (String, Int), String)
+dollarAndItsPrefix B0 = Nothing
+dollarAndItsPrefix (siz :< ('$':doll, _)) = Just (siz, doll)
+dollarAndItsPrefix (siz :< _) = dollarAndItsPrefix siz
+
+prefixLeftOf :: Bwd (String, Int) -> String -> Maybe (Bwd (String, Int))
+prefixLeftOf B0 _ = Nothing
+prefixLeftOf (siz :< (s, _)) key
+  | s == key = Just siz
+  | otherwise = prefixLeftOf siz key
+
+allowedToSolve :: Bwd (String, Int) -> End -> Maybe String
+allowedToSolve me it =
+  let MkName itFwd = endName it
+      itBwd = (B0 <>< itFwd)
+  in  case (it, dollarAndItsPrefix me, dollarAndItsPrefix itBwd) of
+        -- Solving a hope
+        (InEnd _, Just (region, "rhs"), Just (maker, '!':_))
+	  | Just region == prefixLeftOf maker "$rhs"
+	   ->
+	  trackPermission ("Allowed to solve:\n  " ++ show me ++ " / " ++ show it)
+	  $ Just "$!"
+        -- We can only solve dangling wires when doing pattern matching in `solve`
+        (_, Just (region, "lhs"), Just (region', "lhs"))
+          | region == region'
+          -> trackPermission ("Allowed to solve:\n  " ++ show me ++ " / " ++ show it)
+          $ Just "gen"
+        _ -> trackPermission ("Forbidden to solve:\n  " ++ show me ++ " / " ++ show it)
+          Nothing
+
+mineToSolve :: Checking (End -> Maybe String)
+mineToSolve = allowedToSolve <$> whoAmI
+
+-- Don't call this on kinds
+-- Note: We can't really tell whether there's any prospect of the variable becoming
+-- defined - if we could we could give a better error when something that wont be
+-- defined is passed in.
+awaitTypeDefinition :: Val Z -> Checking (Val Z)
+awaitTypeDefinition ty = eval S0 ty >>= \case
+  VApp (VPar e) _ -> mkYield "awaitTypeDefinition" (S.singleton e) >> awaitTypeDefinition ty
+  ty -> pure ty
+
+
+typeOfEnd :: Modey m -> End -> Checking (BinderType m)
+typeOfEnd my e = (req (TypeOf e) <&> fst) >>= \case
+  EndType my' ty
+    | Just Refl <- testEquality my my' -> case my' of
+        Braty -> case ty of
+          Right ty -> Right <$> eval S0 ty
+          _ -> pure ty
+        Kerny -> eval S0 ty
+    | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
+
+
+mkGraph :: TypeKind -> Val Z -> Checking Src
+mkGraph Nat (VNum nv) = buildNatVal nv
+mkGraph k _ = do
+ (_, [], [(src,_)], _) <- next "" (Const Unit) (S0, Some (Zy :* S0)) R0 (REx ("", k) R0)
+ pure src

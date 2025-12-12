@@ -2,7 +2,6 @@
 
 module Brat.Graph where
 
-import Brat.Checker.Types (VEnv)
 import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Common
@@ -13,6 +12,7 @@ import Hasochism (N(..))
 
 import qualified Data.Graph as G
 import qualified Data.Map as M
+import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Kind (Type)
 
@@ -35,8 +35,7 @@ data NodeType :: Mode -> Type where
   Const :: SimpleTerm -> NodeType a
   Eval  :: OutPort -> NodeType Brat   -- A computation on a wire
   Splice :: OutPort -> NodeType Kernel  -- A computation (classical) to add to this kernel
-  Box :: VEnv -- Parameters that are in scope
-      -> Name -- Source node
+  Box :: Name -- Source node
       -> Name -- Target node
       -> NodeType Brat -- Graph in a box
   Source :: NodeType a  -- For building..
@@ -45,6 +44,9 @@ data NodeType :: Mode -> Type where
   PatternMatch :: NonEmpty
                   ( TestMatchData a  -- pattern match LHS as conjunctive sequence
                   , Name  -- The node for the RHS box
+                  -- The processed solution solution from pattern matching, which says
+                  -- which extra things we need to feed into the RHS box
+                  --, [(String, (Src, BinderType Brat))]
                   )
                -> NodeType a
   Hypo :: NodeType a  -- Hypothesis for type checking
@@ -53,6 +55,9 @@ data NodeType :: Mode -> Type where
   ArithNode :: ArithOp -> NodeType Brat
   Replicate :: NodeType Brat
   MapFun :: NodeType a
+  -- The thing that gets plugged into type hopes when we solve them
+  Dummy :: TypeKind -> NodeType Brat
+  Copy :: NodeType Brat
 
 deriving instance Show (NodeType a)
 
@@ -61,21 +66,30 @@ deriving instance Show (NodeType a)
 -- tag 0 with the function's inputs returned as they were
 -- tag 1 with the environment of pattern variables from a successful
 data TestMatchData (m :: Mode) where
-  TestMatchData :: Show (BinderType m) => Modey m -> MatchSequence (BinderType m) -> TestMatchData m
+  TestMatchData :: Show (BinderType m)
+                => Modey m
+                -> MatchSequence (BinderType m)
+                -> TestMatchData m
 
 deriving instance Show (TestMatchData a)
 
--- A collections of tests to determine if a clause matches.
+-- A collection of tests to determine if a clause matches.
 -- Invariants:
 --    1. Each src in `matchTests` has been mentioned earlier (either in `matchInputs`
 --       or in the srcs outputted by a previous `PrimCtorTest`
---    2. The same goes for the sources in `matchOutputs`
+--    2. The same goes for the sources in `rhsInputs`
 data MatchSequence ty = MatchSequence
   { matchInputs :: [(Src, ty)]
   , matchTests :: [(Src, PrimTest ty)]
-  , matchOutputs ::[(Src, ty)]
+  , rhsInputs ::[(Src, ty)]
   } deriving (Foldable, Functor, Traversable)
-deriving instance Show ty => Show (MatchSequence ty)
+--deriving instance Show ty => Show (MatchSequence ty)
+
+instance Show ty => Show (MatchSequence ty) where
+  show (MatchSequence { .. }) = unlines ["matchInputs:\n  " ++ intercalate "\n  " (show <$> matchInputs)
+                                        ,"matchTests:\n  " ++ intercalate "\n  " (show <$> matchTests)
+                                        ,"rhsInputs:\n  " ++ intercalate "\n  " (show <$> rhsInputs)
+                                        ]
 
 data PrimTest ty
   = PrimCtorTest
@@ -112,9 +126,6 @@ toGraph (ns, ws) = G.graphFromEdges adj
           )
         | (name, node) <- M.toList ns]
 
-wiresFrom :: Name -> Graph -> [Wire]
-wiresFrom src (_, ws) = [ w | w@(Ex a _, _, _) <- ws, a == src ]
-
 lookupNode :: Name -> Graph -> Maybe Node
 lookupNode name (ns, _) = M.lookup name ns
 
@@ -123,3 +134,10 @@ wireStart (Ex x _, _, _) = x
 
 wireEnd :: Wire -> Name
 wireEnd (_, _, In x _) = x
+
+-- These are horribly inefficient until we use a better structure for graph edges
+wiresFrom :: Name -> Graph -> [Wire]
+wiresFrom src (_, ws) = [ w | w@(Ex a _, _, _) <- ws, a == src ]
+
+wiresTo :: Name -> Graph -> [Wire]
+wiresTo tgt (_, ws) = [ w | w@(_, _, In a _) <- ws, a == tgt ]

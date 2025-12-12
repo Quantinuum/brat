@@ -91,7 +91,7 @@ elaborate (WC fc x) = do
 
 elaborate' :: Flat -> Either Error SomeRaw'
 elaborate' (FVar x) = pure $ SomeRaw' (RVar x)
-elaborate' FHope = pure $ SomeRaw' RHope
+elaborate' (FHope ident) = pure $ SomeRaw' (RHope ident)
 elaborate' (FArith op a b) = do
   (SomeRaw a) <- elaborate a
   (SomeRaw b) <- elaborate b

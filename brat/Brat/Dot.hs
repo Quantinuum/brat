@@ -50,7 +50,7 @@ toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params vert
   getRefEdge :: Name' -> Node -> [(Name', Name', EdgeType)]
   getRefEdge x (BratNode (Eval (Ex y _)) _ _) = [(Name' y, x, EvalEdge)]
   getRefEdge x (KernelNode (Splice (Ex y _)) _ _) = [(Name' y, x, EvalEdge)]
-  getRefEdge x (BratNode (Box _ src _) _ _) = [(x, Name' src, SrcEdge)]
+  getRefEdge x (BratNode (Box src _) _ _) = [(x, Name' src, SrcEdge)]
   getRefEdge _ _ = []
 
   -- Map all nodes in a box to the src node
@@ -59,7 +59,7 @@ toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params vert
    where
     (g, toNode, toVert) = toGraph (ns, ws)
     f (_, node) m = case node of
-      BratNode (Box _ src tgt) _ _ ->
+      BratNode (Box src tgt) _ _ ->
         -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
         -- reachable from src that can reach tgt
         let srcReaches = reachable g (fromJust (toVert src))

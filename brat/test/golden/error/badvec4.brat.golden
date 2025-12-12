@@ -2,9 +2,5 @@ Error in test/golden/error/badvec4.brat on line 2:
 v3 = [1,2]
      ^^^^^
 
-  Expected vector of length 3
-from the type:  Vec(Int, 3)
-but got vector: [1,2]
-of length 2
-
+  Unification error: Couldn't force 1 to be 0
 
