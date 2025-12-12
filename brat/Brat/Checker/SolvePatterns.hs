@@ -98,10 +98,6 @@ solve my ((src, PCon c abs):p) = do
   ty <- typeOfSrc my src
   mine <- mineToSolve
   case (my, ty) of
-    -- TODO: When solving constructors, we need to provide actual wiring to get
-    -- from the fully applied constructor to the bound pattern variables.
-    -- E.g. for cons(x, xs), we need to actually take apart a Vec to get the x
-    -- and xs to put in the environment
     (Kerny, ty) -> solveConstructor Kerny src (c, abs) ty p
     (Braty, Right ty) -> solveConstructor Braty src (c, abs) ty p
     (Braty, Left Nat) -> case c of
