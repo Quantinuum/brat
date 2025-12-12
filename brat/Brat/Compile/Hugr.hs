@@ -693,8 +693,8 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
 makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [TypedPort]
 makeRowTag hint parent tag sor@(SoR sumRows) ins =
   if sumRows !! tag == (snd <$> ins)
-  then addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!0))])) ins [compileSumOfRows sor]
-  else error "Elements do not match tag"
+  then addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!tag))])) ins [compileSumOfRows sor]
+  else error $ "In makeRowTag " ++ hint ++ ", Elements " ++ show (snd <$> ins) ++ " do not match tag " ++ show tag ++ " of " ++ show sumRows
 
 getSumVariants :: HugrType -> [[HugrType]]
 getSumVariants (HTSum (SU (UnitSum n))) = replicate n []
