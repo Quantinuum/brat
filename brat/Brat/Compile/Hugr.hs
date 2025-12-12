@@ -27,7 +27,6 @@ import Data.Hugr
 import Hasochism
 import Util
 
-import Control.Exception (assert)
 import Control.Monad (unless)
 import Data.Aeson
 import Data.Bifunctor (first, second)
@@ -692,8 +691,10 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     allMatched parent = makeRowTag "AllMatched" parent 1 sumTy
 
 makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [TypedPort]
-makeRowTag hint parent tag sor@(SoR sumRows) ins = assert (sumRows !! tag == (snd <$> ins)) $ do
-  addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!0))])) ins [compileSumOfRows sor]
+makeRowTag hint parent tag sor@(SoR sumRows) ins =
+  if sumRows !! tag == (snd <$> ins)
+  then addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!0))])) ins [compileSumOfRows sor]
+  else error "Elements do not match tag"
 
 getSumVariants :: HugrType -> [[HugrType]]
 getSumVariants (HTSum (SU (UnitSum n))) = replicate n []

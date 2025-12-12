@@ -10,7 +10,6 @@ module Brat.Checker (checkBody
                     ,CheckConstraints
                     ) where
 
-import Control.Exception (assert)
 import Control.Monad (foldM, forM, zipWithM_)
 import Control.Monad.Freer
 import Data.Bifunctor
@@ -644,9 +643,11 @@ check' (Of n e) ((), unders) = case ?my of
               -- Wire up the outputs of the replicate nodes to the _used_ vec
               -- unders. The remainder of the replicate nodes don't get used.
               -- (their inputs live in `elemRightUnders`)
-              assert (length repOvers >= length usedVecUnders) $ do
+              if length repOvers >= length usedVecUnders
+              then do
                 zipWithM_ (\(dangling, _) (hungry, ty) -> wire (dangling, ty, hungry)) repOvers usedVecUnders
                 pure (((), ()), ((), (second Right <$> unusedVecUnders) ++ rightUnders))
+              else error $ "repOvers " ++ show repOvers ++ "should be >= usedVecUnders " ++ show usedVecUnders
 
             _ -> localFC (fcOf e) $ typeErr "No type dependency allowed when using `of`"
       Syny -> do

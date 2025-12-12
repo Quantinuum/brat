@@ -24,7 +24,6 @@ import Brat.QualName
 import Util (duplicates,duplicatesWith)
 import Hasochism
 
-import Control.Exception (assert)
 import Control.Monad (filterM, foldM, forM, forM_, unless)
 import Control.Monad.Except
 import Control.Monad.Trans.Class (lift)
@@ -166,7 +165,7 @@ loadStmtsWithEnv ns (venv, oldDecls, oldEndData) (fname, pre, stmts, cts) = addS
   venv <- pure $ venv <> M.fromList [(name, overs) | ((name, _), (_, overs)) <- entries]
   ((), (holes, newEndData, graph, capSets)) <- run venv kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
-    pure $ assert (M.null remaining) () -- all to_defines were defined
+    if M.null remaining then pure () else error $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
   pure (venv, oldDecls <> vdecls, holes, oldEndData <> newEndData, kcGraph <> graph, capSets)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]
