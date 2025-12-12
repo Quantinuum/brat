@@ -21,7 +21,7 @@ brat my-program.brat
 which, if `my-program` typechecks, will print out the parsed versions of the declarations and a list of remaining holes.
 
 ### Compiling
-The `--compile` flag can be used to compile the BRAT program to the [hugr](https://github.com/CQCL/hugr) IR and print the JSON representation to the command line.
+The `--compile` flag can be used to compile the BRAT program to the [hugr](https://github.com/Quantinuum/hugr) IR and print the JSON representation to the command line.
 
 ### Validating
 There is a tool in the root of the repository called `hugr_validator` (install by `cd hugr_validator && cargo install --path .`) which is used to check that the JSON output from BRAT constitutes a valid hugr. This is invoked by:
