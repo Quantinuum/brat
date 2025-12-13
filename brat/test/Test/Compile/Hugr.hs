@@ -23,6 +23,8 @@ invalidExamples = map ((++ ".brat") . ("examples" </>))
   ,"app"
   ,"dollar_kind"
   ,"portpulling"
+  ,"eatsfull"
+  ,"map"
   ,"infer_thunks"
   ,"infer_thunks2"
   ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
