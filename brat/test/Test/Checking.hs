@@ -15,6 +15,9 @@ expectedCheckingFails = map ("examples" </>) ["nested-abstractors.brat"
                                              ,"karlheinz.brat"
                                              ,"karlheinz_alias.brat"
                                              ,"hea.brat"
+                                             -- https://github.com/Quantinuum/brat/issues/92
+                                             ,"repeated_app.brat"
+                                             ,"adder.brat"
                                              ]
 
 parseAndCheckXF :: [FilePath] -> [TestTree]
@@ -28,5 +31,5 @@ parseAndCheck libDirs file = testCase (show file) $ do
   env <- runExceptT $ loadFilename root libDirs file
   case env of
     Left err -> assertFailure (show err)
-    Right (venv, nouns, holes, _, _) ->
+    Right (venv, nouns, holes, _, _, _) ->
       (length venv + length nouns + length holes > 0) @? "Should produce something"

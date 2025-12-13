@@ -1,7 +1,7 @@
 Nodes:
-(check_defs_1_one_const,BratNode (Const 1) [] [("value",Int)])
-(check_defs_1_two_1_Eval,BratNode (Eval (Ex globals_prim_5_add 0)) [("a",Int),("b",Int)] [("c",Int)])
-(check_defs_1_two_1_const_1,BratNode (Const 1) [] [("value",Int)])
+(check_defs_1_one_$rhs_const,BratNode (Const 1) [] [("value",Int)])
+(check_defs_1_two_1_$rhs_Eval,BratNode (Eval (Ex globals_prim_5_add 0)) [("a",Int),("b",Int)] [("c",Int)])
+(check_defs_1_two_1_$rhs_const_1,BratNode (Const 1) [] [("value",Int)])
 (globals_Int_2,BratNode (Constructor Int) [] [("value",[])])
 (globals_Int_3,BratNode (Constructor Int) [] [("value",[])])
 (globals_Int_4,BratNode (Constructor Int) [] [("value",[])])
@@ -12,12 +12,12 @@ Nodes:
 (globals_prim_5_add,BratNode (Prim ("","add")) [] [("thunk",{ (a :: Int), (b :: Int) -> (c :: Int) })])
 
 Wires:
-(Ex check_defs_1_one_const 0,Int,In globals_decl_8_one 0)
-(Ex check_defs_1_two_1_Eval 0,Int,In globals_decl_11_two 0)
-(Ex check_defs_1_two_1_const_1 0,Int,In check_defs_1_two_1_Eval 0)
+(Ex check_defs_1_one_$rhs_const 0,Int,In globals_decl_8_one 0)
+(Ex check_defs_1_two_1_$rhs_Eval 0,Int,In globals_decl_11_two 0)
+(Ex check_defs_1_two_1_$rhs_const_1 0,Int,In check_defs_1_two_1_$rhs_Eval 0)
 (Ex globals_Int_10 0,[],In globals___kca_two_9 0)
 (Ex globals_Int_2 0,[],In globals___kcc_1 0)
 (Ex globals_Int_3 0,[],In globals___kcc_1 1)
 (Ex globals_Int_4 0,[],In globals___kcc_1 2)
 (Ex globals_Int_7 0,[],In globals___kca_one_6 0)
-(Ex globals_decl_8_one 0,Int,In check_defs_1_two_1_Eval 1)
+(Ex globals_decl_8_one 0,Int,In check_defs_1_two_1_$rhs_Eval 1)

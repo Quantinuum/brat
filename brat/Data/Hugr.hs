@@ -239,6 +239,7 @@ data FuncDefn node = FuncDefn
  { parent :: node
  , name :: String
  , signature_ :: PolyFuncType
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq a => Ord (FuncDefn a) where
@@ -249,6 +250,7 @@ instance ToJSON node => ToJSON (FuncDefn node) where
                                     ,"op" .= ("FuncDefn" :: Text)
                                     ,"name" .= name
                                     ,"signature" .= signature_
+                                    ,"metadata" .= metadata
                                     ]
 
 data CustomConst where
@@ -286,36 +288,41 @@ instance ToJSON node => ToJSON (ConstOp node) where
 data InputNode node = InputNode
  { parent :: node
  , types  :: [HugrType]
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq a => Ord (InputNode a) where
   compare _ _ = EQ
 
 instance ToJSON node => ToJSON (InputNode node) where
-  toJSON (InputNode parent types) = object ["parent" .= parent
-                                           ,"op" .= ("Input" :: Text)
-                                           ,"types" .= types
-                                           ]
+  toJSON (InputNode parent types metadata) = object ["parent" .= parent
+                                                    ,"op" .= ("Input" :: Text)
+                                                    ,"types" .= types
+                                                    ,"metadata" .= metadata
+                                                    ]
 
 data OutputNode node = OutputNode
  { parent :: node
  , types  :: [HugrType]
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq a => Ord (OutputNode a) where
   compare _ _ = EQ
 
 instance ToJSON node => ToJSON (OutputNode node) where
-  toJSON (OutputNode parent types) = object ["parent" .= parent
-                                            ,"op" .= ("Output" :: Text)
-                                            ,"types" .= types
-                                            ]
+  toJSON (OutputNode { .. }) = object ["parent" .= parent
+                                      ,"op" .= ("Output" :: Text)
+                                      ,"types" .= types
+                                      ,"metadata" .= metadata
+                                      ]
 
 data Conditional node = Conditional
  { parent :: node
  , sum_rows :: [[HugrType]]
  , other_inputs :: [HugrType]
  , outputs :: [HugrType]
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq a => Ord (Conditional a) where
@@ -329,11 +336,13 @@ instance ToJSON node => ToJSON (Conditional node) where
             ,"other_inputs" .= other_inputs
             ,"outputs" .= outputs
             ,"extension_delta" .= ([] :: [Text])
+            ,"metadata" .= metadata
             ]
 
 data Case node = Case
   { parent :: node
   , signature_ :: FunctionType
+  , metadata :: [(String, String)]
   } deriving (Eq, Functor, Show)
 
 instance Eq node => Ord (Case node) where
@@ -343,6 +352,7 @@ instance ToJSON node => ToJSON (Case node) where
   toJSON (Case { .. }) = object ["op" .= ("Case" :: Text)
                                 ,"parent" .= parent
                                 ,"signature" .= signature_
+                                ,"metadata" .= metadata
                                 ]
 
 {-
@@ -356,6 +366,7 @@ data Const = Const
 data DFG node = DFG
  { parent :: node
  , signature_ :: FunctionType
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq node => Ord (DFG node) where
@@ -365,23 +376,26 @@ instance ToJSON node => ToJSON (DFG node) where
   toJSON (DFG { .. }) = object ["op" .= ("DFG" :: Text)
                                ,"parent" .= parent
                                ,"signature" .= signature_
+                               ,"metadata" .= metadata
                                ]
 
 data TagOp node = TagOp
  { parent :: node
  , tag :: Int
  , variants :: [[HugrType]]
+ , metadata :: [(String, String)]
  } deriving (Eq, Functor, Show)
 
 instance Eq node => Ord (TagOp node) where
   compare _ _ = EQ
 
 instance ToJSON node => ToJSON (TagOp node) where
-  toJSON (TagOp parent tag variants)
+  toJSON (TagOp parent tag variants metadata)
    = object ["parent" .= parent
             ,"op" .= ("Tag" :: Text)
             ,"tag" .= tag
             ,"variants" .= variants
+            ,"metadata" .= metadata
             ]
 
 data MakeTupleOp node = MakeTupleOp
@@ -590,6 +604,15 @@ data HugrOp node
   | OpLoadFunction (LoadFunctionOp node)
   | OpNoop (NoopOp node)
  deriving (Eq, Functor, Ord, Show)
+
+addMetadata :: [(String, String)] -> HugrOp node -> HugrOp node
+addMetadata md (OpDFG (DFG { .. })) = OpDFG (DFG { metadata = metadata ++ md, .. })
+addMetadata md (OpCase (i, (Case { .. }))) = OpCase (i, (Case { metadata = metadata ++ md, .. }))
+addMetadata md (OpIn (InputNode { .. })) = OpIn (InputNode { metadata = metadata ++ md, .. })
+addMetadata md (OpTag (TagOp { .. })) = OpTag (TagOp { metadata = metadata ++ md, .. })
+addMetadata md (OpDefn (FuncDefn { .. })) = OpDefn (FuncDefn { metadata = metadata ++ md, .. })
+addMetadata md (OpConditional (Conditional { .. })) = OpConditional (Conditional { metadata = metadata ++ md, .. })
+addMetadata _ op = op
 
 instance ToJSON node => ToJSON (HugrOp node) where
   toJSON (OpMod op) = toJSON op

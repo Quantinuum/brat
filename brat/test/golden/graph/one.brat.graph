@@ -1,8 +1,8 @@
 Nodes:
-(check_defs_1_one_const,BratNode (Const 1) [] [("value",Int)])
+(check_defs_1_one_$rhs_const,BratNode (Const 1) [] [("value",Int)])
 (globals_Int_1,BratNode (Constructor Int) [] [("value",[])])
 (globals_decl_2_one,BratNode Id [("n",Int)] [("n",Int)])
 
 Wires:
-(Ex check_defs_1_one_const 0,Int,In globals_decl_2_one 0)
+(Ex check_defs_1_one_$rhs_const 0,Int,In globals_decl_2_one 0)
 (Ex globals_Int_1 0,[],In globals___kca_one 0)

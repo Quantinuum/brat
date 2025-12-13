@@ -45,4 +45,4 @@ instance Show Name where
 class Monad m => FreshMonad m where
   freshName :: String -> m Name
   (-!) :: String -> m a -> m a
-
+  whoAmI :: m (Bwd (String, Int))

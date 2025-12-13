@@ -2,7 +2,6 @@
 
 module Brat.Graph where
 
-import Brat.Checker.Types (VEnv)
 import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Common
@@ -35,8 +34,7 @@ data NodeType :: Mode -> Type where
   Const :: SimpleTerm -> NodeType a
   Eval  :: OutPort -> NodeType Brat   -- A computation on a wire
   Splice :: OutPort -> NodeType Kernel  -- A computation (classical) to add to this kernel
-  Box :: VEnv -- Parameters that are in scope
-      -> Name -- Source node
+  Box :: Name -- Source node
       -> Name -- Target node
       -> NodeType Brat -- Graph in a box
   Source :: NodeType a  -- For building..

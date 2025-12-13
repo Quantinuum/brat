@@ -115,7 +115,7 @@ loadVFile state _ msg = do
       --                                                vv
       env <- liftIO . runExceptT $ loadFiles Name.root (cwd :| []) (show fileName) file
       case env of
-        Right (_,newDecls,holes,_,_) -> do
+        Right (_,newDecls,holes,_,_,_) -> do
           old <- liftIO $ takeMVar state
           liftIO $ putMVar state (updateState (snd <$> newDecls, holes) old)
           allGood fileName

@@ -1,0 +1,11 @@
+foo(n :: #, Vec(Nat, 2 * n)) -> Vec(Nat, 4 * n)
+foo(n, xs =%= ys) = goo(n, (xs =%= ys) =%= (ys =%= xs))
+
+goo(n :: #, Vec(Nat, 4 * n)) -> Vec(Nat, 4 * n)
+goo(_, xs) = xs
+
+--merge(n :: #, Vec(Nat, 2^n), Vec(Nat, 2^n)) -> Vec(Nat, 2^(n + 1))
+--merge(succ(n), xs, ys) = fix(succ(n), xs =%= ys)
+--
+--fix(n :: #, Vec(Nat, 2^(n + 1))) -> Vec(Nat, 2^(n + 1))
+--fix(_, xs) = xs

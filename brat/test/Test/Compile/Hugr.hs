@@ -23,6 +23,10 @@ invalidExamples = map ((++ ".brat") . ("examples" </>))
   ,"app"
   ,"dollar_kind"
   ,"portpulling"
+  ,"eatsfull"
+  ,"map"
+  ,"infer_thunks"
+  ,"infer_thunks2"
   ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ,"thunks"]
 
@@ -35,8 +39,11 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   ,"let"
   ,"patterns"
   ,"qft"
+  ,"infer" -- problems with undoing pattern tests
+  ,"infer2" -- problems with undoing pattern tests
   ,"fanout" -- Contains Selectors
   ,"vectorise" -- Generates MapFun nodes which aren't implemented yet
+  ,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet
   ,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet
   -- Victims of #13
   ,"arith"

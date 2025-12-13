@@ -1,0 +1,33 @@
+-- The "succ" still being required in both of these cases is https://github.com/CQCL/brat/issues/35
+
+-- While some cases can infer the holes from the other arguments,
+-- here we need to infer the holes (arguments) from the results:
+repeat(X :: *, n :: #, x :: X) -> Vec(X, n)
+repeat(_, 0, _) = []
+repeat(_, succ(_), x) = x ,- repeat(!, !, x) -- X can be inferred from x but n cannot
+
+mapFirst(X :: *, Y :: *, { X -> Y}, n :: #, Vec(X, n)) -> Vec(Y, n)
+mapFirst(_, _, _, _, []) = []
+mapFirst(_, _, f, succ(_), x ,- _) = repeat(!, !, f(x)) -- first ! (X) is second _ (Y)
+
+isfull(n :: #) -> Bool
+isfull(succ(doub(n))) = isfull(n)
+isfull(0) = true
+isfull(_) = false
+
+hasfulllen(n :: #, Vec(Bool, n)) -> Bool
+hasfulllen(n, x ,- (xs =,= ys)) = hasfulllen(!, xs)
+hasfulllen(_, []) = true
+hasfulllen(_, _) = false
+
+eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
+eatsfull(n, _) = n
+mkftwo :: Nat
+mkftwo = eatsfull(!, [false,false,false])
+
+eatsodd(n :: #, xs :: Vec(Bool, succ(doub(n)))) -> Nat
+eatsodd(n, _) = n
+mkotwo' :: Nat
+mkotwo' = eatsodd(2, [false,false,false,false,false])
+mkotwo :: Nat
+mkotwo = eatsodd(!, [false,false,false,false,false])
