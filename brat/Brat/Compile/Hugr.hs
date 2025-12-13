@@ -286,6 +286,40 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   let TestMatchData my matchSeq = matchData
   matchSeq <- compileGraphTypes (fmap (binderToValue my) matchSeq)
 
+{-
+  -- Dilemma: we want to compile this extra stuff *if we use it* and put it in
+  -- the port table. Otherwise it causes problems *because* the stuff isn't used.
+  extraStuff <- for extraInps $ \(src@(NamedPort out@(Ex bratNode port) _), ty) -> do
+       hugrNode <- compileWithInputs parent bratNode >>= \case
+         Just node -> pure (Port node port)
+         Nothing -> error $ "Couldn't compile " ++ show bratNode
+       -- TODO: This probably isn't working hard enough - might the type have deps?
+       let hugrTy = compileType (binderToValue my ty)
+       pure (src, (hugrNode, hugrTy))
+-}
+
+{-
+       case [ bang "wee" ns tgtEnd | (src', _, In tgtEnd _) <- es, out == src'] of
+--         [BratNode Hypo _ _] -> pure []
+--         [KernelNode Hypo _ _] -> pure []
+         _ -> do
+          compiledMap <- gets compiled
+          hugrNode <- case M.lookup bratNode compiledMap of
+            Nothing -> error $ show bratNode ++ " not found in\n" ++ intercalate "\n" (show <$> M.toList compiledMap)
+            Just node -> pure (Port node port)
+
+
+          -- IS THIS WHERE THE EXTRA INPUT IS COMING FROM
+          let hugrTy = compileType (binderToValue my ty)
+          traceM ("EXTRA INPUT:\n" ++ show src ++ "\n" ++ show hugrTy)
+          hugrNode <- compileWithInputs parent bratNode >>= \case
+            Just node -> pure (Port node port)
+            Nothing -> error $ "Couldn't compile " ++ show bratNode
+          -- TODO: This probably isn't working hard enough - might the type have deps?
+          let hugrTy = compileType (binderToValue my ty)
+          pure [(src, (hugrNode, hugrTy))])
+-}
+
   let portTbl = fromJust (zipSameLength (fst <$> matchInputs matchSeq) ins)
   testResult <- compileMatchSequence parent portTbl matchSeq
 
