@@ -5,9 +5,9 @@ import Test.Tasty
 {-
 -- TODO: update to value scopes syntax
 import Brat.Checker.Monad
+import Brat.Checker.SolveHoles
 import Brat.Checker.Types
 import Brat.Error
-import Brat.Eval (typeEq)
 import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Common

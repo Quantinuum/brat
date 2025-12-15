@@ -1,8 +1,51 @@
-map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
-map(_, _, _, []) = []
-map(_, _, f, x ,- xs) = f(x) ,- map(!, !, f, xs)
+id(n :: #, Vec(Nat, n)) -> Vec(Nat, n)
+id(_, xs) = xs
 
--- TODO: Make BRAT solve for the # kinded args
-mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
-mapVec(_, _, _, _, []) = []
-mapVec(_, _, f, succ(n), x ,- xs) = f(x) ,- mapVec(!, !, f, n, xs)
+foo(n :: #, Vec(Nat, n + 1)) -> Vec(Nat, n), (k :: #)
+foo(succ(l), _ ,- xs) = id(!nhope, xs), l
+
+--map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
+--map(_, _, _, []) = []
+--map(_, _, f, x ,- xs) = f(x) ,- map(!, !, f, xs)
+
+--mapVec(X :: *, Y :: *, { X -> Y }, n :: #, Vec(X, n)) -> Vec(Y, n)
+--mapVec(_, _, _, _, []) = []
+--mapVec(_, _, f, n, x ,- xs) = f(x) ,- mapVec(!, !, f, !, xs)
+
+--length(X :: *, n :: #, Vec(X, n)) -> (m :: #)
+--length(_, n, []) = n
+--length(_, n, x ,- xs) = n
+
+-- The "succ" still being required in both of these cases is https://github.com/CQCL/brat/issues/35
+
+-- While map above can infer the holes from the other arguments,
+-- here we need to infer the holes (arguments) from the results:
+-- repeat(X :: *, n :: #, x :: X) -> Vec(X, n)
+-- repeat(_, 0, _) = []
+-- repeat(_, succ(_), x) = x ,- repeat(!, !, x) -- X can be inferred from x but n cannot
+--
+-- mapFirst(X :: *, Y :: *, { X -> Y}, n :: #, Vec(X, n)) -> Vec(Y, n)
+-- mapFirst(_, _, _, _, []) = []
+-- mapFirst(_, _, f, succ(_), x ,- _) = repeat(!, !, f(x)) -- first ! (X) is second _ (Y)
+--
+-- isfull(n :: #) -> Bool
+-- isfull(succ(doub(n))) = isfull(n)
+-- isfull(0) = true
+-- isfull(_) = false
+--
+-- hasfulllen(n :: #, Vec(Bool, n)) -> Bool
+-- hasfulllen(n, x ,- (xs =,= ys)) = hasfulllen(!, xs)
+-- hasfulllen(_, []) = true
+-- hasfulllen(_, _) = false
+--
+-- eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
+-- eatsfull(n, _) = n
+-- mkftwo :: Nat
+-- mkftwo = eatsfull(!, [false,false,false])
+--
+-- eatsodd(n :: #, xs :: Vec(Bool, succ(doub(n)))) -> Nat
+-- eatsodd(n, _) = n
+-- mkotwo' :: Nat
+-- mkotwo' = eatsodd(2, [false,false,false,false,false])
+-- mkotwo :: Nat
+-- mkotwo = eatsodd(!, [false,false,false,false,false])

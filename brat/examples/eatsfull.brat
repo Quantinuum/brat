@@ -1,0 +1,4 @@
+eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
+eatsfull(n, _) = n
+mkftwo :: Nat
+mkftwo = eatsfull(!, [false,false,false])

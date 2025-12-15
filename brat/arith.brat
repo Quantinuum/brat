@@ -1,0 +1,37 @@
+i :: Nat
+i = 3 + 4
+
+j :: Nat
+j = 7 - 2
+
+f :: Float
+f = 2.1 * 5.3
+
+g :: Float
+g = 7.2 - 3.9
+
+inc(Nat) -> Nat
+inc(x) = x + 1
+
+foo :: Nat
+foo = inc(inc(4) + inc(7))
+
+dec(Nat) -> Nat
+dec(0) = 0
+dec(succ(n)) = n
+
+goo :: Nat
+goo = dec(foo)
+
+length(X :: *, n :: #, Vec(X, n)) -> Nat
+length(_, n, _) = n
+
+hoo(n :: #, Vec(Nat, n + 1)) -> Nat
+hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
+hoo(n, _) = n
+
+ioo :: Nat
+ioo = hoo(2, [1,2,3])
+
+joo :: Vec(Nat, 3)
+joo = [1,2,3]

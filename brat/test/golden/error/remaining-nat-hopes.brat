@@ -1,0 +1,8 @@
+show(n :: #) -> []
+show(_) = []
+
+read([]) -> n :: #
+read([]) = 42
+
+bad :: []
+bad = let _ = read([]) in show(!)

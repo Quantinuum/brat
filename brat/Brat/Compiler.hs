@@ -3,6 +3,7 @@ module Brat.Compiler (printAST
                      ,writeDot
                      ,compileFile
                      ,compileAndPrintFile
+                     ,compileToGraph
                      ,CompilingHoles(..)
                      ) where
 
@@ -12,7 +13,7 @@ import Brat.Dot (toDotString)
 import Brat.Elaborator
 import Brat.Error
 import Brat.Load
-import Brat.Naming (root, split)
+import Brat.Naming (Namespace, root, split)
 
 import Control.Exception (evaluate)
 import Control.Monad (when)
@@ -23,7 +24,7 @@ import System.Exit (die)
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
-  (_, decls, holes, _, _) <- eitherIO env
+  (_, decls, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
   print decls
   putStrLn ""
@@ -56,7 +57,8 @@ printAST printRaw printAST file = do
 writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do
   env <- runExceptT $ loadFilename root libDirs file
-  (_, _, _, _, graph) <- eitherIO env
+  -- Discard captureSets; perhaps we could incorporate into the graph
+  (_, _, _, _, graph, _) <- eitherIO env
   writeFile out (toDotString graph)
 {-
  where
@@ -70,14 +72,18 @@ instance Show CompilingHoles where
   show (CompilingHoles hs) = unlines $
     "Can't compile file with remaining holes": fmap (("  " ++) . show) hs
 
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
-compileFile libDirs file = do
+compileToGraph :: [FilePath] -> String -> IO (Namespace, VMod)
+compileToGraph libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
   env <- runExceptT $ loadFilename checkRoot libDirs file
-  (venv, _, holes, defs, outerGraph) <- eitherIO env
+  (newRoot,) <$> eitherIO env
+
+compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
+compileFile libDirs file = do
+  (newRoot, (venv, _, holes, defs, outerGraph, capSets)) <- compileToGraph libDirs file
   case holes of
     [] -> Right <$> evaluate -- turns 'error' into IO 'die'
-                    (compile defs newRoot outerGraph venv)
+                    (compile defs newRoot outerGraph capSets venv)
     hs -> pure $ Left (CompilingHoles hs)
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()

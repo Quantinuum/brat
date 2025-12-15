@@ -1,0 +1,11 @@
+ext "to_float" to_float(i :: Int) -> Float
+
+id(X :: *, X) -> X
+id(_, x) = x
+
+map(X :: *, Y :: *, List(X), { X -> Y }) -> List(Y)
+map(_, _, [], _) = []
+map(X, Y, x ,- xs, f) = f(x) ,- map(X, Y, xs, f)
+
+test :: List(Float)
+test = map(!, !, [to_float], {f => f(5)})

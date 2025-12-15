@@ -2,9 +2,5 @@ Error in test/golden/error/kbadvec3.brat on line 2:
 constNil = { b => cons(1, nil) }
                   ^^^^^^^^^^^^
 
-  Expected vector of length 0
-from the type:  Vec(Bit, 0)
-but got vector: [1]
-of length (> 0)
-
+  Unification error: Couldn't force 1 + VPar In checking_check_defs_1_constNil_$rhs_check'Th_LambdaChk_7_checkClauses_1_$rhs_4_check'Con_$!_numpat2val_1 0 to be 0
 

@@ -5,7 +5,7 @@ module Brat.Checker.Types (Overs, Unders
                           ,ChkConnectors, SynConnectors
                           ,Mode(..), Modey(..)
                           ,Env, VEnv, KEnv, EnvData
-                          ,Store(..), EndType(..)
+                          ,IsSkolem(..), Store(..), EndType(..)
                           ,emptyEnv
                           ,TypedHole(..), HoleTag(..), HoleData(..)
                           ,initStore
@@ -94,8 +94,11 @@ instance Show EndType where
   show (EndType Braty (Left k)) = show k
   show (EndType Braty (Right ty)) = show ty
 
+data IsSkolem = SkolemConst | Definable
+  deriving (Eq, Show)
+
 data Store = Store
-  { typeMap  :: M.Map End EndType
+  { typeMap  :: M.Map End (EndType, IsSkolem)
   , valueMap :: M.Map End (Val Z)
   }
 

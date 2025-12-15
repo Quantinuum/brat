@@ -41,9 +41,14 @@ instance ToEnd InPort where
 instance ToEnd OutPort where
   toEnd = ExEnd
 
+-- N.B. Ord is derived with In < Ex
 data End = InEnd InPort | ExEnd OutPort
  deriving (Eq, Ord)
 
 instance Show End where
   show (InEnd e) = show e
   show (ExEnd e) = show e
+
+endName :: End -> Name
+endName (InEnd (In n _)) = n
+endName (ExEnd (Ex n _)) = n

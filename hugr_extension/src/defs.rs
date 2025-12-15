@@ -9,10 +9,10 @@ use hugr::{
         ExtensionId, OpDef, SignatureError, SignatureFromArgs, SignatureFunc,
     },
     ops::NamedOp,
+    std_extensions::arithmetic::int_types::INT_TYPES,
     std_extensions::collections::list_type,
     types::{
-        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Type, TypeArg, TypeBound, TypeEnum,
-        TypeRV,
+        type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Signature, Type, TypeArg, TypeBound, TypeEnum,
     },
 };
 
@@ -22,6 +22,10 @@ use smol_str::{format_smolstr, SmolStr};
 use strum::ParseError;
 
 use crate::ctor::Ctor;
+
+lazy_static! {
+    static ref U64: Type = INT_TYPES[6].clone();
+}
 
 /// Brat extension operation definitions.
 #[derive(Clone, Debug, PartialEq, Eq, Sequence)]
@@ -35,6 +39,7 @@ pub enum BratOpDef {
     Panic,
     Ctor(BratCtor),
     PrimCtorTest(BratCtor),
+    Lluf,
     Replicate,
 }
 
@@ -50,6 +55,7 @@ impl NamedOp for BratOpDef {
             Panic => "Panic".into(),
             Ctor(ctor) => format_smolstr!("Ctor::{}", ctor.name()),
             PrimCtorTest(ctor) => format_smolstr!("PrimCtorTest::{}", ctor.name()),
+            Lluf => "Lluf".into(),
             Replicate => "Replicate".into(),
         }
     }
@@ -69,6 +75,7 @@ impl FromStr for BratOpDef {
             ["Panic"] => Ok(BratOpDef::Panic),
             ["Ctor", ctor] => Ok(BratOpDef::Ctor(BratCtor::from_str(ctor)?)),
             ["PrimCtorTest", ctor] => Ok(BratOpDef::PrimCtorTest(BratCtor::from_str(ctor)?)),
+            ["Lluf"] => Ok(BratOpDef::Lluf),
             ["Replicate"] => Ok(BratOpDef::Replicate),
             _ => Err(ParseError::VariantNotFound),
         }
@@ -132,6 +139,7 @@ impl MakeOpDef for BratOpDef {
                 )
                 .into()
             }
+            Lluf => Signature::new(vec![U64.clone()], vec![U64.clone()]).into(),
             Replicate => PolyFuncTypeRV::new(
                 [TypeParam::Type {
                     b: TypeBound::Copyable,
