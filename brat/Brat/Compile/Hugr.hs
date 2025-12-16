@@ -527,17 +527,16 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   st <- gets store
   g <- gets bratGraph
   cs <- gets capSets
+  let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  ((funTy, a), cs) <- desc -! do
+  (a, cs) <- desc -! do
     ns <- gets nameSupply
     pure $ flip runState (emptyCS g cs ns st) $ do
       -- make a DFG node at the root. We can't use `addNode` since the
       -- DFG needs itself as parent
       dfg_id <- freshNode ("Box_" ++ show desc)
-      a <- contents dfg_id
-      let funTy = FunctionType inTys outTys bratExts
       addOp (OpDFG $ DFG dfg_id funTy []) dfg_id
-      pure (funTy, a)
+      contents dfg_id
   let nestedHugr = renameAndSortHugr (nodes cs) (edges cs)
   let ht = HTFunc $ PolyFuncType [] funTy
 
