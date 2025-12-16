@@ -87,6 +87,7 @@ library
                        Bwd,
                        Control.Monad.Freer,
                        Data.Hugr,
+                       Data.HugrGraph,
                        Hasochism,
                        Util
 
