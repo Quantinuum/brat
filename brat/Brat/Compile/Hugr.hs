@@ -108,23 +108,6 @@ addNode name (parent, op) = do
 
 type Compile = State CompilationState
 
-instance FreshMonad Compile where
-  freshName x = do
-    s <- get
-    let (name, newSupply) = fresh x (nameSupply s)
-    put (s { nameSupply = newSupply })
-    pure name
-
-  x -! c = do
-    s <- get
-    let (nsx, nsNew) = split x (nameSupply s)
-    put (s { nameSupply = nsx })
-    v <- c
-    put (s { nameSupply = nsNew })
-    pure v
-
-  whoAmI = gets (fst . nameSupply)
-
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
 runCheckingInCompile (Req (ELup e) k) = do
@@ -508,12 +491,15 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   cs <- gets capSets
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  (a, compState) <- desc -! do
-    dfg_id <- freshNode ("Box_" ++ show desc)
-    ns <- gets nameSupply
-    -- And pass that namespace into nested monad that compiles the DFG
-    let nestedState = makeCS (g,cs,ns,st) dfg_id (OpDFG $ DFG funTy [])
-    pure $ runState (contents dfg_id) nestedState
+  s <- get
+  let (nsx, nsNew) = split desc (nameSupply s)
+  put (s { nameSupply = nsx })
+  dfg_id <- freshNode ("Box_" ++ show desc)
+  ns <- gets nameSupply
+  -- And pass that namespace into nested monad that compiles the DFG
+  let nestedState = makeCS (g,cs,ns,st) dfg_id (OpDFG $ DFG funTy [])
+  let (a, compState) = runState (contents dfg_id) nestedState
+  put (s { nameSupply = nsNew })
   let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
