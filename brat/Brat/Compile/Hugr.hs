@@ -24,6 +24,7 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
+import Data.HugrGraph (NodeId)
 import qualified Data.HugrGraph as H
 import Hasochism
 
@@ -47,15 +48,12 @@ For each top level function definition or value in BRAT: we should have a FuncDe
 hugr, whose child graph is the body of the function
 -}
 
-newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
-
 type TypedPort = (PortId NodeId, HugrType)
 
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
- , nameSupply :: Namespace
- , hugr :: H.Hugr NodeId
+ , hugr :: H.Hugr
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -71,40 +69,42 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
-makeCS (g, cs, ns, store) rootName rootOp = CompilationState
-  { bratGraph = g
-  , capSets = cs
-  , nameSupply = ns
-  , hugr = H.newWithRoot rootName rootOp
-  , compiled = M.empty
-  , holes = B0
-  , liftedOutPorts = M.empty
-  , store = store
-  , decls = M.empty
-  }
+makeCS :: (Graph, CaptureSets, Namespace, Store) -> String -> HugrOp -> (NodeId, CompilationState)
+makeCS (g, cs, ns, store) rootNam rootOp =
+  let (hugr, rootNode) = H.newWithRoot ns rootNam rootOp
+  in (rootNode
+     ,CompilationState
+      { bratGraph = g
+      , capSets = cs
+      , hugr = hugr
+      , compiled = M.empty
+      , holes = B0
+      , liftedOutPorts = M.empty
+      , store = store
+      , decls = M.empty
+      }
+     )
 
 registerFuncDef :: Name -> (NodeId, Bool) -> Compile ()
 registerFuncDef name hugrDef = do
   st <- get
   put (st { decls = M.insert name hugrDef (decls st) })
 
-
-freshNode :: String -> Compile NodeId
-freshNode str = do
-  st <- get
-  let ns = nameSupply st
-  let (freshName, newSupply) = fresh str ns
-  put (st { nameSupply = newSupply })
-  pure (NodeId freshName)
+freshNodeWithParent :: String -> NodeId -> Compile NodeId
+freshNodeWithParent name parent = do
+  s <- get
+  let (id, h) = H.freshNodeWithParent (hugr s) parent name
+  put s {hugr = h}
+  pure id
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
 addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
 
 addNode :: String -> (NodeId, HugrOp) -> Compile NodeId
-addNode name (parent, op) = do
-  id <- freshNode name
-  addOp (parent, addMetadata [("id", show id)] op) id
-  pure id
+addNode nam (parent, op) = do
+  name <- freshNodeWithParent nam parent
+  setOp name (addMetadata [("id", show name)] op)
+  pure name
 
 type Compile = State CompilationState
 
@@ -159,9 +159,9 @@ compileGraphTypes = traverse ((<&> compileType) . runCheckingInCompile . eval S0
 compilePorts :: [(a, Val Z)] -> Compile [HugrType]
 compilePorts = compileGraphTypes . map snd
 
-addOp :: (NodeId, HugrOp) -> NodeId -> Compile ()
-addOp op name | track ("addOp " ++ show op ++ show name) False = undefined
-addOp op name = get >>= \st -> put (st { hugr = H.addOp (hugr st) name op })
+setOp :: NodeId -> HugrOp -> Compile ()
+setOp name op | track ("addOp " ++ show op ++ show name) False = undefined
+setOp name op = get >>= \st -> put (st { hugr = H.setOp (hugr st) name op })
 
 registerCompiled :: Name -> NodeId -> Compile ()
 registerCompiled from to | track (show from ++ " |-> " ++ show to) False = undefined
@@ -204,7 +204,7 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
  )
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
-renameAndSortHugr :: H.Hugr NodeId -> Hugr Int
+renameAndSortHugr :: H.Hugr -> Hugr Int
 renameAndSortHugr hugr = H.serialize (foldl H.addOrderEdge hugr orderEdges)
  where
   orderEdges :: [(NodeId, NodeId)]
@@ -492,14 +492,11 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
   s <- get
-  let (nsx, nsNew) = split desc (nameSupply s)
-  put (s { nameSupply = nsx })
-  dfg_id <- freshNode ("Box_" ++ show desc)
-  ns <- gets nameSupply
+  let (nsx, hugr') = H.splitNamespace (hugr s) desc
+  put s {hugr=hugr'}
   -- And pass that namespace into nested monad that compiles the DFG
-  let nestedState = makeCS (g,cs,ns,st) dfg_id (OpDFG $ DFG funTy [])
+  let (dfg_id, nestedState) = makeCS (g,cs,nsx,st) ("Box_" ++ show desc) (OpDFG $ DFG funTy [])
   let (a, compState) = runState (contents dfg_id) nestedState
-  put (s { nameSupply = nsNew })
   let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
@@ -691,27 +688,27 @@ makeConditional :: String    -- Label
                 -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
 makeConditional lbl parent discrim otherInputs cases = do
-  condId <- freshNode "Conditional"
+  condId <- freshNodeWithParent "Conditional" parent
   let rows = getSumVariants (snd discrim)
   outTyss <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   unless
     (allRowsEqual outTyss)
     (error "Conditional output types didn't match")
-  let condOp = (parent, OpConditional (Conditional rows (snd <$> otherInputs) (head outTyss) [("label", lbl)]))
-  addOp condOp condId
+  let condOp = OpConditional (Conditional rows (snd <$> otherInputs) (head outTyss) [("label", lbl)])
+  setOp condId condOp
   addEdge (fst discrim, Port condId 0)
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
   pure $ zip (Port condId <$> [0..]) (head outTyss)
  where
   makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
   makeCase parent name ix tys f = do
-    caseId <- freshNode name
+    caseId <- freshNodeWithParent name parent
     inpId <- addNode ("Input_" ++ name) (caseId, OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
     outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs
     outId <- addNode ("Output" ++ name) (caseId, OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-    addOp (parent, OpCase (ix, Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)])) caseId
+    setOp caseId (OpCase (ix, Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
     pure outTys
 
   allRowsEqual :: [[HugrType]] -> Bool
@@ -857,13 +854,11 @@ compile :: Store
         -> VEnv
         -> BS.ByteString
 compile store ns g capSets venv =
-  let
-    (moduleName, ns') = fresh "module" ns
-    moduleNode = NodeId moduleName
+  let (moduleNode, initState) = makeCS (g, capSets, ns, store) "module" (OpMod ModuleOp)
   in evalState
     (trackM "compileFunctions" *>
      compileModule venv moduleNode *>
      trackM "dumpJSON" *>
      dumpJSON
     )
-    (makeCS (g, capSets, ns', store) moduleNode (OpMod ModuleOp))
+    initState
