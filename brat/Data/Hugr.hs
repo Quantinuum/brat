@@ -14,6 +14,19 @@ import Data.Text (Text, pack)
 
 import Brat.Syntax.Simple
 
+orderEdgeOffset :: Int
+orderEdgeOffset = -1
+
+data PortId node = Port
+  { nodeId :: node
+  , offset :: Int
+  }
+ deriving (Eq, Functor, Show)
+
+instance ToJSON node => ToJSON (PortId node) where
+  toJSON (Port node offset) = toJSON (node, offset')
+    where offset' = if offset == orderEdgeOffset then Nothing else Just offset
+
 -- We should be able to work out exact extension requirements for our functions,
 -- but instead we'll overapproximate.
 bratExts :: [ExtensionId]
@@ -618,25 +631,12 @@ instance JSONParent HugrOp where
   toJSONp (OpLoadFunction op) parent = toJSONp op parent
   toJSONp (OpNoop op) parent = toJSONp op parent
 
-data Hugr node = Hugr [(node, HugrOp)] [(PortId node, PortId node)]
-  deriving (Eq, Functor, Show)
+data Hugr node = Hugr ([(node, HugrOp)], [(PortId node, PortId node)]) deriving (Eq, Show)
 
-instance ToJSON node => ToJSON (Hugr node) where
-  toJSON (Hugr ns es) = object ["version" .= ("v1" :: Text)
-                               ,"nodes" .= [toJSONp op (toJSON node) | (node, op) <- ns]
-                               ,"edges" .= es
-                               ,"encoder" .= ("BRAT" :: Text)
-                               ]
-
-orderEdgeOffset :: Int
-orderEdgeOffset = -1
-
-data PortId node = Port
-  { nodeId :: node
-  , offset :: Int
-  }
- deriving (Eq, Functor, Show)
-
-instance ToJSON node => ToJSON (PortId node) where
-  toJSON (Port node offset) = toJSON (node, offset')
-    where offset' = if offset == orderEdgeOffset then Nothing else Just offset
+instance ToJSON (Hugr Int) where
+  toJSON (Hugr (nodes, edges)) = object
+    ["version" .= ("v1" :: Text)
+    ,"nodes" .= [toJSONp op (toJSON parent) | (parent, op) <- nodes]
+    ,"edges" .= edges
+    ,"encoder" .= ("BRAT" :: Text)
+    ]

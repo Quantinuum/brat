@@ -24,6 +24,7 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
+import qualified Data.HugrGraph as H
 import Hasochism
 
 import Control.Monad (unless)
@@ -32,7 +33,7 @@ import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>), ($>))
-import Data.List (partition, sort, sortBy)
+import Data.List (sortBy)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust, isJust)
 import Data.Ord (comparing)
@@ -40,7 +41,6 @@ import Data.Traversable (for)
 import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import GHC.Base (NonEmpty(..))
-import Data.Tuple (swap)
 
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
@@ -55,8 +55,7 @@ data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
  , nameSupply :: Namespace
- , nodes :: M.Map NodeId (NodeId, HugrOp) -- this node's id => HugrOp containing parent id
- , edges :: [(PortId NodeId, PortId NodeId)]
+ , hugr :: H.Hugr NodeId
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -72,12 +71,11 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
-emptyCS g cs ns store = CompilationState
+makeCS (g, cs, ns, store) rootName rootOp = CompilationState
   { bratGraph = g
   , capSets = cs
   , nameSupply = ns
-  , nodes = M.empty
-  , edges = []
+  , hugr = H.newWithRoot rootName rootOp
   , compiled = M.empty
   , holes = B0
   , liftedOutPorts = M.empty
@@ -100,10 +98,7 @@ freshNode str = do
   pure (NodeId freshName)
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
-addEdge e = do
-  st <- get
-  let es = edges st
-  put (st { edges = e:es })
+addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
 
 addNode :: String -> (NodeId, HugrOp) -> Compile NodeId
 addNode name (parent, op) = do
@@ -183,10 +178,7 @@ compilePorts = compileGraphTypes . map snd
 
 addOp :: (NodeId, HugrOp) -> NodeId -> Compile ()
 addOp op name | track ("addOp " ++ show op ++ show name) False = undefined
-addOp op name = do
-  st <- get
-  let new_nodes = M.alter (\Nothing -> Just op) name (nodes st) -- fail if key already present
-  put (st { nodes = new_nodes })
+addOp op name = get >>= \st -> put (st { hugr = H.addOp (hugr st) name op })
 
 registerCompiled :: Name -> NodeId -> Compile ()
 registerCompiled from to | track (show from ++ " |-> " ++ show to) False = undefined
@@ -229,39 +221,26 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
  )
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
-renameAndSortHugr :: M.Map NodeId (NodeId, HugrOp) -> [(PortId NodeId, PortId NodeId)] -> Hugr Int
-renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (swap . fst <$> sorted_nodes) (edges ++ orderEdges)) where
-  indexMetadata :: Hugr Int -> Hugr Int
-  indexMetadata (Hugr ops edges) = Hugr [(p, addMetadata [("index", show ix)] op) | (ix, (p, op)) <- zip [0..] ops] edges
-
-  sorted_nodes :: [((HugrOp, NodeId), NodeId)] -- (op, parent), name
-  sorted_nodes = let ([root], rest) = partition (\((_op, parent), nid) -> nid == parent)
-                                                [((op, parent), nid) | (nid, (parent, op)) <- M.assocs nodes]
-                 in root : (sort rest) -- sort rest by op 
-
-  names2Pos = M.fromList $ zip (snd <$> sorted_nodes) ([0..] :: [Int])
-  parentOf n = let (parent, _) = (nodes M.! n) in parent
-
-  update :: NodeId -> Int
-  update name = case M.lookup name names2Pos of
-                  Just ans -> ans
-                  Nothing -> error ("Couldn't find node " ++ show name ++ "???")
-
-  orderEdges :: [(PortId NodeId, PortId NodeId)]
+renameAndSortHugr :: H.Hugr NodeId -> Hugr Int
+renameAndSortHugr hugr = H.serialize (foldl H.addOrderEdge hugr orderEdges)
+ where
+  orderEdges :: [(NodeId, NodeId)]
   orderEdges =
     -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
     -- require an extra order edge from the source to the sibling that is ancestor of the target
-    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edges,
-            parentOf n1 /= parentOf n2 ,
-            requiresOrderEdge (nodes M.! n1),
-            requiresOrderEdge (nodes M.! n2) ] in
-    [(Port src orderEdgeOffset, Port tgt orderEdgeOffset) | (src, tgt) <- walkUp <$> interEdges]
+    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- H.edgeList hugr,
+            (parentOf n1 /= parentOf n2),
+            requiresOrderEdge (H.getOp hugr n1),
+            requiresOrderEdge (H.getOp hugr n2)] in
+    track ("interEdges: " ++ show interEdges) (walkUp <$> interEdges)
 
-  requiresOrderEdge :: (NodeId, HugrOp) -> Bool
-  requiresOrderEdge (_, OpMod _) = False
-  requiresOrderEdge (_, OpDefn _) = False
-  requiresOrderEdge (_, OpConst _) = False
+  requiresOrderEdge :: HugrOp -> Bool
+  requiresOrderEdge (OpMod _) = False
+  requiresOrderEdge (OpDefn _) = False
+  requiresOrderEdge (OpConst _) = False
   requiresOrderEdge _ = True
+
+  parentOf = H.getParent hugr
 
   -- Walk up the hierarchy from the tgt until we hit a node at the same level as src
   walkUp :: (NodeId, NodeId) -> (NodeId, NodeId)
@@ -269,12 +248,8 @@ renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (swap . fst <$
   walkUp (_, tgt) | parentOf tgt == tgt = error "Tgt was not descendant of Src-parent"
   walkUp (src, tgt) = walkUp (src, parentOf tgt)
 
-
 dumpJSON :: Compile BS.ByteString
-dumpJSON = do
-  ns <- gets nodes
-  es <- gets edges
-  pure $ encode (renameAndSortHugr ns es)
+dumpJSON = gets hugr <&> (encode . renameAndSortHugr) 
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
@@ -484,7 +459,6 @@ compileWithInputs parent name = gets compiled >>= (\case
       outs <- compilePorts outs
       dfgId <- addNode "DidMatch_DFG" (parent, OpDFG (DFG (FunctionType ins outs bratExts) []))
       inputNode <- addNode "PatternMatch.Input" (dfgId, OpIn (InputNode ins [("source", "PatternMatch"), ("parent", show dfgId)]))
-      
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
       addNodeWithInputs "PatternMatch.Output" (dfgId, OpOut (OutputNode (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)])) ccOuts []
       pure dfgId
@@ -534,15 +508,13 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   cs <- gets capSets
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  (a, cs) <- desc -! do
+  (a, compState) <- desc -! do
+    dfg_id <- freshNode ("Box_" ++ show desc)
     ns <- gets nameSupply
-    pure $ flip runState (emptyCS g cs ns st) $ do
-      -- make a DFG node at the root. We can't use `addNode` since the
-      -- DFG needs itself as parent
-      dfg_id <- freshNode ("Box_" ++ show desc)
-      addOp (dfg_id, OpDFG $ DFG funTy []) dfg_id
-      contents dfg_id
-  let nestedHugr = renameAndSortHugr (nodes cs) (edges cs)
+    -- And pass that namespace into nested monad that compiles the DFG
+    let nestedState = makeCS (g,cs,ns,st) dfg_id (OpDFG $ DFG funTy [])
+    pure $ runState (contents dfg_id) nestedState
+  let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
   constNode <- addNode ("ConstTemplate_" ++ desc) (parent, OpConst (ConstOp (HVFunction nestedHugr)))
@@ -813,10 +785,9 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
            [(Port constId 0, outTy)] [outTy]
 
 -- Create a module and FuncDecl nodes inside it for all of the functions given as argument
-compileModule :: VEnv
+compileModule :: VEnv -> NodeId
               -> Compile ()
-compileModule venv = do
-  moduleNode <- mkModuleNode
+compileModule venv moduleNode = do
   -- Prepare FuncDef nodes for all functions. Every "noun" also requires a Function
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
@@ -880,12 +851,6 @@ compileModule venv = do
               Just _ -> pure (fnName, idNode) -- assume all ports are 0,1,2...
               Nothing -> []
 
-  mkModuleNode :: Compile NodeId
-  mkModuleNode = do
-    id <- freshNode "module"
-    addOp (id, OpMod ModuleOp) id
-    pure id
-
   funcReturning :: [HugrType] -> PolyFuncType
   funcReturning outs = PolyFuncType [] (FunctionType [] outs bratExts)
 
@@ -905,11 +870,14 @@ compile :: Store
         -> CaptureSets
         -> VEnv
         -> BS.ByteString
-compile store ns g capSets venv
-  = evalState
+compile store ns g capSets venv =
+  let
+    (moduleName, ns') = fresh "module" ns
+    moduleNode = NodeId moduleName
+  in evalState
     (trackM "compileFunctions" *>
-     compileModule venv *>
+     compileModule venv moduleNode *>
      trackM "dumpJSON" *>
      dumpJSON
     )
-    (emptyCS g capSets ns store)
+    (makeCS (g, capSets, ns', store) moduleNode (OpMod ModuleOp))
