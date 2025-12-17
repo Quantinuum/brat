@@ -811,19 +811,15 @@ compileModule venv moduleNode = do
             -- computation that produces this constant. We do so by making a FuncDefn
             -- that takes no arguments and produces the constant kernel graph value.
             thunkTy <- HTFunc . PolyFuncType [] . (\(ins, outs) -> FunctionType ins outs bratExts) <$> compileSig Kerny cty
-            pure (funcReturning [thunkTy], True, \parent ->
-              withIO parent thunkTy $ compileKernBox parent input (compileBox (src, tgt)) cty)
+            pure (funcReturning [thunkTy], True, \parent -> do
+              addNode "input" (parent, OpIn (InputNode [] [("source", "analyseDecl")]))
+              output <- addNode "output" (parent, OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
+              wire <- compileKernBox parent input (compileBox (src, tgt)) cty
+              addEdge (fst wire, Port output 0))
           _ -> error "Box should have exactly one output of Thunk type"
       _ -> do -- a computation, or several values
         outs <- compilePorts srcPortTys -- note compiling already-erased types, is this right?
         pure (funcReturning outs, True, compileNoun outs (map fst srcPortTys))
-
-  withIO :: NodeId -> HugrType -> Compile TypedPort -> Compile ()
-  withIO parent output c = do
-    addNode "input" (parent, OpIn (InputNode [] [("source", "analyseDecl")]))
-    output <- addNode "output" (parent, OpOut (OutputNode [output] [("source", "analyseDecl")]))
-    wire <- c
-    addEdge (fst wire, Port output 0)
 
   -- top-level decls that are not Prims. RHS is the brat idNode
   decls :: [(QualName, Name)]
