@@ -288,6 +288,10 @@ compileBox (src, tgt) parent = do
   compileWithInputs parent tgt
   pure ()
 
+compileInEdges :: NodeId -> [((OutPort, Val Z), p)] -> Compile [(PortId NodeId, p)]
+compileInEdges parent in_edges = catMaybes <$> for in_edges (
+      \((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
+
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
 compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   Just nid -> pure (Just nid)
@@ -338,8 +342,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     case nod_edge_info of
       Nothing -> pure Nothing
       Just (node, tgtOffset, extra_edges) -> do
-        trans_edges <- catMaybes <$> for in_edges (\((src, _), tgtPort) ->
-            getOutPort parent src <&> fmap (, tgtPort + tgtOffset))
+        trans_edges <- compileInEdges parent in_edges <&> map (second (+tgtOffset))
         pure $ Just (node, extra_edges ++ trans_edges)
 
   default_edges :: NodeId -> Maybe (NodeId, Int, [(PortId NodeId, Int)])
