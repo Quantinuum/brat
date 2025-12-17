@@ -276,13 +276,14 @@ compileBox :: (Name, Name) -> NodeId -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
 compileBox (src, tgt) parent = do
   (ns, _) <- gets bratGraph
+  -- Compile Source
   let node = ns M.! src
   trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
-  let outs = case node of
+  let src_outs = case node of
                (BratNode Source [] outs) -> outs
                (KernelNode Source [] outs) -> outs
-  outs <- compilePorts outs
-  srcNode <- addNode "Input" (parent, OpIn (InputNode outs [("source", "Source"), ("parent", show parent)]))
+  srcTys <- compilePorts src_outs
+  srcNode <- addNode "Input" (parent, OpIn (InputNode srcTys [("source", "Source"), ("parent", show parent)]))
   registerCompiled src srcNode
   compileWithInputs parent tgt
   pure ()
