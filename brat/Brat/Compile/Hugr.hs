@@ -275,9 +275,8 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
 compileBox :: (Name, Name) -> NodeId -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
 compileBox (src, tgt) parent = do
-  (ns, _) <- gets bratGraph
   -- Compile Source
-  let node = ns M.! src
+  node <- gets ((M.! src) . fst . bratGraph)
   trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
   let src_outs = case node of
                (BratNode Source [] outs) -> outs
@@ -285,7 +284,20 @@ compileBox (src, tgt) parent = do
   srcTys <- compilePorts src_outs
   srcNode <- addNode "Input" (parent, OpIn (InputNode srcTys [("source", "Source"), ("parent", show parent)]))
   registerCompiled src srcNode
-  compileWithInputs parent tgt
+  compileTarget parent tgt
+
+compileTarget :: NodeId -> Name -> Compile ()
+compileTarget parent tgt = do
+  node <- gets ((M.! tgt) . fst . bratGraph)
+  trackM ("compileTarget (" ++ show parent ++ ") " ++ show tgt ++ " " ++ show node)
+  let tgt_ins = case node of
+               (BratNode Target ins []) -> ins
+               (KernelNode Target ins []) -> ins
+  tgtTys <- compilePorts tgt_ins
+  tgtNode <- addNode "Output" (parent, OpOut (OutputNode tgtTys [("source", "Target")]))
+  edges <- compileInEdges parent tgt
+  -- registerCompiled tgt tgtNode -- really shouldn't be necessary, not reachable
+  for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtNode tgtPort))
   pure ()
 
 in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
@@ -440,9 +452,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
 
     Source -> error "Source found outside of compileBox"
       
-    Target -> default_edges <$> do
-      ins <- compilePorts ins
-      addNode "Output" (parent, OpOut (OutputNode ins [("source", "Target")]))
+    Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
@@ -549,7 +559,7 @@ compileBratBox parent name (venv, src, tgt) cty = do
     st <- get
     put $ st {liftedOutPorts = M.fromList lifted}
     -- no need to return any holes
-    compileWithInputs dfgId tgt
+    compileTarget dfgId tgt
 
   -- Finally, we add a `Partial` node to supply the captured params.
   partialNode <- addNode "Partial" (parent, OpCustom $ partialOp boxInnerSig (length params))
