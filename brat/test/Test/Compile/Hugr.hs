@@ -23,10 +23,10 @@ invalidExamples = map ((++ ".brat") . ("examples" </>))
   ,"app"
   ,"dollar_kind"
   ,"portpulling"
-  ,"eatsfull"
-  ,"map"
-  ,"infer_thunks"
-  ,"infer_thunks2"
+  ,"eatsfull" -- Compiling hopes #96
+  ,"map" -- Compiling hopes #96
+  ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
+  ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
   ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ,"thunks"]
 
