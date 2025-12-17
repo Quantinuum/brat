@@ -90,10 +90,10 @@ registerFuncDef name hugrDef = do
   st <- get
   put (st { decls = M.insert name hugrDef (decls st) })
 
-freshNodeWithParent :: String -> NodeId -> Compile NodeId
-freshNodeWithParent name parent = do
+freshNode :: String -> NodeId -> Compile NodeId
+freshNode name parent = do
   s <- get
-  let (id, h) = H.freshNodeWithParent (hugr s) parent name
+  let (id, h) = H.freshNode (hugr s) parent name
   put s {hugr = h}
   pure id
 
@@ -102,7 +102,7 @@ addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
 
 addNode :: String -> (NodeId, HugrOp) -> Compile NodeId
 addNode nam (parent, op) = do
-  name <- freshNodeWithParent nam parent
+  name <- freshNode nam parent
   setOp name (addMetadata [("id", show name)] op)
   pure name
 
@@ -716,7 +716,7 @@ makeConditional :: String    -- Label
                 -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
 makeConditional lbl parent discrim otherInputs cases = do
-  condId <- freshNodeWithParent "Conditional" parent
+  condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
   outTyss <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   unless
@@ -730,7 +730,7 @@ makeConditional lbl parent discrim otherInputs cases = do
  where
   makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
   makeCase parent name ix tys f = do
-    caseId <- freshNodeWithParent name parent
+    caseId <- freshNode name parent
     inpId <- addNode ("Input_" ++ name) (caseId, OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
     outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs

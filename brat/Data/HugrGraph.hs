@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(Hugr, NodeId, PortId(..),
                       newWithRoot, splitNamespace, rootNode,
-                      freshNodeWithParent, setOp, getParent, getOp,
+                      freshNode, setOp, getParent, getOp,
                       addEdge, addOrderEdge,
                       edgeList, serialize
                      ) where
@@ -36,8 +36,8 @@ splitNamespace :: Hugr -> String -> (Namespace, Hugr)
 splitNamespace hugr n = let (nsx, nsNew) = split n (nameSupply hugr)
                         in (nsx, hugr {nameSupply = nsNew})
 
-freshNodeWithParent :: Hugr -> NodeId -> String -> (NodeId, Hugr)
-freshNodeWithParent hugr@(HugrGraph {parents, nameSupply}) parent nam =
+freshNode :: Hugr -> NodeId -> String -> (NodeId, Hugr)
+freshNode hugr@(HugrGraph {parents, nameSupply}) parent nam =
   case M.lookup parent parents of
     Nothing -> error "parent does not exist"
     Just _ -> let (freshName, newSupply) = fresh nam nameSupply
