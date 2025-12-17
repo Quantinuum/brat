@@ -34,6 +34,7 @@ module Brat.Syntax.Common (PortName,
                            KINDY(..),
                            DIRY(..),
                            modily,
+                           deModey,
                            ArithOp(..),
                            pattern Dollar,
                            pattern Star,
@@ -84,6 +85,10 @@ modily :: Modey m -> (MODEY m => t) -> t
 modily Braty t = t
 modily Kerny t = t
 
+deModey :: Modey m -> Mode
+deModey Braty = Brat
+deModey Kerny = Kernel
+
 instance TestEquality Modey where
   testEquality Braty Braty = Just Refl
   testEquality Kerny Kerny = Just Refl
@@ -110,7 +115,7 @@ instance Eq ty => Eq (TypeRowElem ty) where
   Anon ty == Anon ty' = ty == ty'
 
 data TypeKind = TypeFor Mode [(PortName, TypeKind)] | Nat
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show TypeKind where
   show (TypeFor m args) = let argsStr = if null args then "" else "(" ++ intercalate ", " (show <$> args) ++ ")"

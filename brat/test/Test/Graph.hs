@@ -21,7 +21,7 @@ mkGraphTest bratFile = do
   makeBratGraph :: String -> IO Graph
   makeBratGraph contents = runExceptT (loadFiles root includeDirs bratFile contents) >>= \case
     -- ns is a map so will already be sorted
-    Right (_, _, _, _, (ns, es)) -> pure (ns, sortOn endNames es)
+    Right (_, _, _, _, (ns, es), _) -> pure (ns, sortOn endNames es)
     Left err -> assertFailure (show err)
 
   endNames (inp, _, outp) = show inp ++ show outp

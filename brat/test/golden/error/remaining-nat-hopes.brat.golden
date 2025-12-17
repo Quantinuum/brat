@@ -1,0 +1,8 @@
+Error in test/golden/error/remaining-nat-hopes.brat on line 8:
+bad = let _ = read([]) in show(!)
+                              ^^^
+
+  Expected to work out values for these holes:
+    In checking_check_defs_1_bad_5_$rhs_$!_3 0
+
+

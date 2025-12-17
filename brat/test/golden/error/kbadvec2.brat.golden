@@ -2,9 +2,5 @@ Error in test/golden/error/kbadvec2.brat on line 2:
 triple = { b => nil }
                 ^^^
 
-  Expected vector of length 3
-from the type:  Vec(Bit, 3)
-but got vector: []
-of length 0
-
+  Unification error: Couldn't force 3 to be 0
 

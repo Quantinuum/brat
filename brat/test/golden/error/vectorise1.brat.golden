@@ -2,7 +2,7 @@ Error in test/golden/error/vectorise1.brat on line 2:
 bad1(n) = (n of (1, 2.0)), (n of 3)
                            ^^^^^^^^
 
-  Type error: Got: Vector of length VPar Ex checking_check_defs_1_bad1_bad1.box_2_lambda_fake_source 0
+  Type error: Got: Vector of length VPar Ex checking_check_defs_1_bad1_$lhs_3_lambda_fake_source 0
 Expected: empty row
 
 

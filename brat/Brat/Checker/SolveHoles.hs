@@ -1,23 +1,25 @@
-module Brat.Checker.SolveHoles (typeEq) where
+module Brat.Checker.SolveHoles (typeEq, typesEq) where
 
-import Brat.Checker.Helpers (buildConst)
+import Brat.Checker.Helpers (mineToSolve, solveSem)
 import Brat.Checker.Monad
+import Brat.Checker.SolveNumbers
 import Brat.Checker.Types (kindForMode)
 import Brat.Error (ErrorMsg(..))
 import Brat.Eval
+import Brat.Naming (FreshMonad(..))
 import Brat.Syntax.Common
-import Brat.Syntax.Simple (SimpleTerm(..))
+-- import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Value
 import Control.Monad.Freer
 import Bwd
 import Hasochism
+-- import Brat.Syntax.Port (toEnd)
 
-import Control.Monad (when)
+import Control.Monad (unless)
 import Data.Bifunctor (second)
 import Data.Foldable (sequenceA_)
 import Data.Functor
-import Data.Maybe (mapMaybe)
-import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 
 -- Demand that two closed values are equal, we're allowed to solve variables in the
@@ -28,7 +30,20 @@ typeEq :: String -- String representation of the term for error reporting
        -> Val Z -- Expected
        -> Val Z -- Actual
        -> Checking ()
-typeEq str = typeEq' str (Zy :* S0 :* S0)
+typeEq str k exp act = do
+  prefix <- whoAmI
+  trackM ("typeEq: Who am I: " ++ show prefix)
+  typeEq' str (Zy :* S0 :* S0) k exp act
+
+typesEq :: String -- String representation of the term for error reporting
+        -> [TypeKind] -- The kinds we're comparing at
+        -> [Val Z] -- Expected
+        -> [Val Z] -- Actual
+        -> Checking ()
+typesEq str k exp act = do
+  prefix <- whoAmI
+  trackM ("typesEq: Who am I: " ++ show prefix)
+  typeEqs str (Zy :* S0 :* S0) k exp act
 
 
 -- Internal version of typeEq with environment for non-closed values
@@ -38,83 +53,53 @@ typeEq' :: String -- String representation of the term for error reporting
         -> Val n -- Expected
         -> Val n -- Actual
         -> Checking ()
-typeEq' str stuff@(_ny :* _ks :* sems) k exp act = do
-  hopes <- req AskHopes
+typeEq' str stuff@(ny :* _ks :* sems) k exp act = do
+  mine <- mineToSolve
   exp <- sem sems exp
   act <- sem sems act
-  typeEqEta str stuff hopes k exp act
-
-isNumVar :: Sem -> Maybe SVar
-isNumVar (SNum (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear v))))) = Just v
-isNumVar _ = Nothing
+  qexp <- quote ny exp
+  qact <- quote ny act
+  trackM ("typeEq' exp: " ++ show qexp)
+  trackM ("typeEq' act: " ++ show qact)
+  typeEqEta str stuff mine k exp act
 
 -- Presumes that the hope set and the two `Sem`s are up to date.
 typeEqEta :: String -- String representation of the term for error reporting
           -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n
-          -> Hopes -- A map from the hope set to corresponding FCs
+          -> (End -> Maybe String) -- Tells us if we can solve a given End
           -> TypeKind -- The kind we're comparing at
           -> Sem -- Expected
           -> Sem -- Actual
           -> Checking ()
-typeEqEta tm (lvy :* kz :* sems) hopes (TypeFor m ((_, k):ks)) exp act = do
+typeEqEta tm (lvy :* kz :* sems) mine (TypeFor m ((_, k):ks)) exp act = do
   -- Higher kinded things
   let nextSem = semLvl lvy
   let xz = B0 :< nextSem
   exp <- applySem exp xz
   act <- applySem act xz
-  typeEqEta tm (Sy lvy :* (kz :<< k) :* (sems :<< nextSem)) hopes (TypeFor m ks) exp act
+  typeEqEta tm (Sy lvy :* (kz :<< k) :* (sems :<< nextSem)) mine (TypeFor m ks) exp act
 -- Not higher kinded - check for flex terms
 -- (We don't solve under binders for now, so we only consider Zy here)
 -- 1. "easy" flex cases
-typeEqEta _tm (Zy :* _ks :* _sems) hopes k (SApp (SPar (InEnd e)) B0) act
-  | M.member e hopes = solveHope k e act
-typeEqEta _tm (Zy :* _ks :* _sems) hopes k exp (SApp (SPar (InEnd e)) B0)
-  | M.member e hopes = solveHope k e exp
-typeEqEta _ (Zy :* _ :* _) hopes Nat exp act
-  | Just (SPar (InEnd e)) <- isNumVar exp, M.member e hopes = solveHope Nat e act
-  | Just (SPar (InEnd e)) <- isNumVar act, M.member e hopes = solveHope Nat e exp
+typeEqEta _tm (Zy :* _ks :* _sems) mine k (SApp (SPar e) B0) act
+  | Just _ <- mine e = solveSem k e act
+typeEqEta _tm (Zy :* _ks :* _sems) mine k exp (SApp (SPar e) B0)
+  | Just _ <- mine e = solveSem k e exp
+typeEqEta _ (Zy :* _ :* _) mine Nat (SNum exp) (SNum act) = unifyNum mine (quoteNum Zy exp) (quoteNum Zy act)
 -- 2. harder cases, neither is in the hope set, so we can't define it ourselves
-typeEqEta tm stuff@(ny :* _ks :* _sems) hopes k exp act = do
+typeEqEta tm stuff@(ny :* _ks :* _sems) _ k exp act = do
   exp <- quote ny exp
   act <- quote ny act
-  let ends = mapMaybe getEnd [exp,act]
-  -- sanity check: we've already dealt with either end being in the hopeset
-  when (or [M.member ie hopes | InEnd ie <- ends]) $ typeErr "ends were in hopeset"
-  case ends of
+  unless (exp == act) $ case flexes act ++ flexes exp of
     [] -> typeEqRigid tm stuff k exp act -- easyish, both rigid i.e. already defined
-    -- variables are trivially the same, even if undefined, but the values may
-    -- be different! E.g. X =? 1 + X
-    [_, _] | exp == act -> pure ()
-    -- TODO: Once we have scheduling, we must wait for one or the other to become more defined, rather than failing
-    _  -> err (TypeMismatch tm (show exp) (show act))
- where
-  getEnd (VApp (VPar e) _) = Just e
-  getEnd (VNum n) = getNumVar n
-  getEnd _ = Nothing
-
--- This will update the `hopes`, potentially invalidating things that have
--- been eval'd.
--- The Sem is closed, for now.
-solveHope :: TypeKind -> InPort -> Sem -> Checking ()
-solveHope k hope v = quote Zy v >>= \v -> case doesntOccur (InEnd hope) v of
-  Right () -> do
-    defineEnd (InEnd hope) v
-    dangling <- case (k, v) of
-      (Nat, VNum _v) -> err $ Unimplemented "Nat hope solving" []
-      (Nat, _) -> err $ InternalError "Head of Nat wasn't a VNum"
-      _ -> buildConst Unit TUnit
-    req (Wire (end dangling, kindType k, hope))
-    req (RemoveHope hope)
-  Left msg -> case v of
-    VApp (VPar (InEnd end)) B0 | hope == end -> pure ()
-    -- TODO: Not all occurrences are toxic. The end could be in an argument
-    -- to a hoping variable which isn't used.
-    -- E.g. h1 = h2 h1 - this is valid if h2 is the identity, or ignores h1.
-    _ -> err msg
+    -- tricky: must wait for one or other to become more defined
+    es -> mkYield "typeEqEta" (S.fromList es) >> typeEq' tm stuff k exp act
 
 typeEqs :: String -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n -> [TypeKind] -> [Val n] -> [Val n] -> Checking ()
 typeEqs _ _ [] [] [] = pure ()
-typeEqs tm stuff (k:ks) (exp:exps) (act:acts) = typeEqs tm stuff ks exps acts <* typeEq' tm stuff k exp act
+typeEqs tm stuff (k:ks) (exp:exps) (act:acts) = do
+  mkFork "typeEqsTail" $ typeEqs tm stuff ks exps acts
+  typeEq' tm stuff k exp act
 typeEqs _ _ _ _ _ = typeErr "arity mismatch"
 
 typeEqRow :: Modey m
@@ -145,7 +130,7 @@ typeEqRigid tm (_ :* _ :* semz) Nat exp act = do
   act <- sem semz act
   if getNum exp == getNum act
   then pure ()
-  else err $ TypeMismatch tm (show exp) (show act)
+  else err $ TypeMismatch tm ("TYPEEQRIGID " ++ show exp) ("TODO " ++ show act)
 typeEqRigid tm stuff@(_ :* kz :* _) (TypeFor m []) (VApp f args) (VApp f' args') | f == f' =
   svKind f >>= \case
     TypeFor m' ks | m == m' -> typeEqs tm stuff (snd <$> ks) (args <>> []) (args' <>> [])

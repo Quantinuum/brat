@@ -2,5 +2,5 @@ Error in test/golden/error/fanout-dynamic-length.brat on line 2:
 f(n) = { [/\] }
          ^^^^
 
-  Type error: Can't fanout a Vec with non-constant length: VPar Ex checking_check_defs_1_f_f.box_2_lambda_fake_source 0
+  Type error: Can't fanout a Vec with non-constant length: VPar Ex checking_check_defs_1_f_LambdaChk_7_checkClauses_1_lambda.0_rhs/in_1 0
 

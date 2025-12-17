@@ -53,6 +53,7 @@ data Inx :: N -> Type where
   VS :: Inx n -> Inx (S n)
 
 deriving instance Eq (Inx n)
+deriving instance Ord (Inx n)
 
 instance Show (Inx n) where
   show = show . toNat
@@ -60,6 +61,7 @@ instance Show (Inx n) where
     toNat :: forall n. Inx n -> Int
     toNat VZ = 0
     toNat (VS n) = 1 + toNat n
+
 
 data AddR :: N -> N -> N -> Type where
   AddZ :: Ny out -> AddR out Z out
@@ -143,6 +145,7 @@ data VVar :: N -> Type where
   VPar :: End -> VVar n  -- Has to be declared in the Store (for equality testing)
   VInx :: Inx n -> VVar n
 
+deriving instance Ord (VVar n)
 deriving instance Show (VVar n)
 
 instance Eq (VVar n) where
@@ -347,7 +350,7 @@ instance NumFun Monotone where
   calculate (Linear n) = n
   calculate (Full sm) = full (calculate sm)
    where
-    full n = 2 ^ n - 1
+    full n = (2 ^ n) - 1
 
   numValue = numValue . StrictMono 0
 
@@ -618,3 +621,45 @@ stkLen (zx :<< _) = Sy (stkLen zx)
 numValIsConstant :: NumVal (VVar Z) -> Maybe Integer
 numValIsConstant (NumValue up Constant0) = pure up
 numValIsConstant _ = Nothing
+
+flexes :: Val n -> [End]
+flexes (VApp (VPar e) _) = [e]
+flexes (VNum (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar e)))))) = [e]
+flexes _ = []
+
+numVars :: NumVal (VVar Z) -> [End]
+numVars nv = [e | VPar e <- vvars nv]
+ where
+  vvars :: NumVal a -> [a]
+  vvars = foldMap pure
+
+class DepEnds t where
+  depEnds :: t -> [End]
+
+instance DepEnds (NumVal (VVar n)) where
+  depEnds nv = [e | VPar e <- vvars nv]
+   where
+    vvars :: NumVal a -> [a]
+    vvars = foldMap pure
+
+instance DepEnds (Val n) where
+  depEnds (VNum nv) = depEnds nv
+  depEnds (VCon _ args) = depEnds args
+  depEnds (VLam body) = depEnds body
+  depEnds (VFun _ cty) = depEnds cty
+  depEnds (VApp (VPar e) args) = e : depEnds args
+  depEnds (VApp _ args) = depEnds args
+
+instance DepEnds t => DepEnds [t] where
+  depEnds = concatMap depEnds
+
+instance DepEnds t => DepEnds (Bwd t) where
+  depEnds = foldMap depEnds
+
+instance DepEnds (Ro m i j) where
+  depEnds R0 = []
+  depEnds (RPr (_, ty) ro) = depEnds ty ++ depEnds ro
+  depEnds (REx _ ro) = depEnds ro
+
+instance DepEnds (CTy m n) where
+  depEnds (ss :->> ts) = depEnds ss ++ depEnds ts

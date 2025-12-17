@@ -1,30 +1,42 @@
-f(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
-f(X, n, cons(x, xs)) = cons(x, xs)
-f(X, n, []) = []
+--f(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
+--f(X, n, cons(x, xs)) = cons(x, xs)
+--f(X, n, []) = []
 
-vectorTail(X :: *, n :: #, Vec(X, succ(n))) -> Vec(X, n)
-vectorTail(_, _, cons(_, xs)) = xs
--- vectorTail(_, _, []) = ?l -- Fails (correctly)
-
-zipWith(X :: *, Y :: *, Z :: *, n :: #, f :: { X, Y -> Z }, Vec(X, n), Vec(Y, n)) -> Vec(Z, n)
--- TODO: Fix port pulling for this
-zipWith(_, _, _, _, _, [], []) = []
-zipWith(X, Y, Z, succ(n), f, cons(x,xs), cons(y,ys)) = cons(f(x,y), zipWith(X,Y,Z,n,f,xs,ys))
+-- vectorTail(X :: *, n :: #, Vec(X, succ(n))) -> Vec(X, n)
+-- vectorTail(_, _, cons(_, xs)) = xs
+-- -- vectorTail(_, _, []) = ?l -- Fails (correctly)
+--
+-- zipWith(X :: *, Y :: *, Z :: *, n :: #, f :: { X, Y -> Z }, Vec(X, n), Vec(Y, n)) -> Vec(Z, n)
+-- -- TODO: Fix port pulling for this
+-- zipWith(_, _, _, _, _, [], []) = []
+-- zipWith(X, Y, Z, succ(n), f, cons(x,xs), cons(y,ys)) = cons(f(x,y), zipWith(X,Y,Z,n,f,xs,ys))
 
 replicate(X :: *, n :: #, x :: X) -> Vec(X, n)
 replicate(_, 0, _) = []
 replicate(X, succ(n), x) = cons(x, replicate(X, n, x))
 
-ap(X :: *, Y :: *, n :: #, fs :: Vec({ X -> Y }, n), xs :: Vec(X, n)) -> Vec(Y, n)
-ap(_, _, _, [], []) = []
-ap(X, Y, succ(n), cons(f,fs), cons(x,xs)) = cons(f(x), ap(X, Y, n, fs, xs))
+-- ap(X :: *, Y :: *, n :: #, fs :: Vec({ X -> Y }, n), xs :: Vec(X, n)) -> Vec(Y, n)
+-- ap(_, _, _, [], []) = []
+-- ap(X, Y, succ(n), cons(f,fs), cons(x,xs)) = cons(f(x), ap(X, Y, n, fs, xs))
+--
+-- permute(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
+-- permute(_, _, []) = []
+-- permute(_, _, [x]) = [x]
+-- permute(X, succ(succ(n)), cons(x, cons(y, zs))) = cons(y, cons(x, permute(X, n, zs)))
+--
+-- swapFront(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
+-- swapFront(_, _, []) = []
+-- swapFront(_, _, [x]) = [x]
+-- swapFront(X, _, cons(x, cons(y, zs))) = cons(y, cons(x, zs))
+--
+-- filled(X :: *, n :: #, Vec(X, full(n))) -> Vec(X, full(n))
+-- filled(_, _, xsl =, x ,= xsr) = xsl =, x ,= xsr
+--
+-- fullId(X :: *, n :: #, Vec(X, full(n))) -> Vec(X, full(n))
+-- fullId(_, _, [] =,= []) = []
+-- fullId(_, _, [] =, x ,= []) = [x]
+-- fullId(_, succ(n), xl =, x ,= xr) = fullId(!, n, xl) =, x ,= fullId(!, n, xr)
 
-permute(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
-permute(_, _, []) = []
-permute(_, _, [x]) = [x]
-permute(X, succ(succ(n)), cons(x, cons(y, zs))) = cons(y, cons(x, permute(X, n, zs)))
-
-swapFront(X :: *, n :: #, Vec(X, n)) -> Vec(X, n)
-swapFront(_, _, []) = []
-swapFront(_, _, [x]) = [x]
-swapFront(X, _, cons(x, cons(y, zs))) = cons(y, cons(x, zs))
+-- mapAndConquer(X :: *, Y :: *, n :: #, f :: { X -> Y }, Vec(X, succ(n))) -> Vec(Y, succ(n))
+-- mapAndConquer(_, _, doub(n), f, xsl =, x ,= xsr) = mapAndConquer(!, !, n, f, xsl) =, f(x) ,= mapAndConquer(!, !, n, f, xsr)
+-- mapAndConquer(_, _, succ(doub(n)), f, xsl =,= xsr) = mapAndConquer(!, !, n, f, xsl) =,= mapAndConquer(!, !, n, f, xsr)
