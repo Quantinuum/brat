@@ -566,11 +566,11 @@ compileKernBox parent name contents cty = do
   -- compile the kernel that should be spliced in and record its signature.
   ns <- gets (fst . bratGraph)
   hole_ports <- for (holelist <>> []) (\splice -> do
-    let (KernelNode (Splice (Ex kernel_src port)) ins outs) = ns M.! splice
+    let (KernelNode (Splice kernel_src) ins outs) = ns M.! splice
     ins <- compilePorts ins
     outs <- compilePorts outs
-    kernel_src <- compileWithInputs parent kernel_src <&> fromJust
-    pure (Port kernel_src port, HTFunc (PolyFuncType [] (FunctionType ins outs bratExts))))
+    kernel_src <- getOutPort parent kernel_src <&> fromJust
+    pure (kernel_src, HTFunc (PolyFuncType [] (FunctionType ins outs bratExts))))
 
   -- Add a substitute node to fill the holes in the template
   let hole_sigs = [ body poly | (_, HTFunc poly) <- hole_ports ]
