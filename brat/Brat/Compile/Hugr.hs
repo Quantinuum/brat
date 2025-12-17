@@ -167,7 +167,8 @@ registerCompiled :: Name -> NodeId -> Compile ()
 registerCompiled from to | track (show from ++ " |-> " ++ show to) False = undefined
 registerCompiled from to = do
   st <- get
-  put (st { compiled = M.insert from to (compiled st) })
+  let new_compiled = M.alter (\Nothing -> Just to) from (compiled st)
+  put (st { compiled = new_compiled })
 
 compileConst :: NodeId -> SimpleTerm -> HugrType -> Compile NodeId
 compileConst parent tm ty = do
@@ -273,10 +274,21 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
 
 compileBox :: (Name, Name) -> NodeId -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
-compileBox (src, tgt) parent = for_ [src, tgt] (compileWithInputs parent)
+compileBox (src, tgt) parent = do
+  (ns, _) <- gets bratGraph
+  let node = ns M.! src
+  trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
+  let outs = case node of
+               (BratNode Source [] outs) -> outs
+               (KernelNode Source [] outs) -> outs
+  outs <- compilePorts outs
+  srcNode <- addNode "Input" (parent, OpIn (InputNode outs [("source", "Source"), ("parent", show parent)]))
+  registerCompiled src srcNode
+  compileWithInputs parent tgt
+  pure ()
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
-compileWithInputs parent name = gets compiled >>= (\case
+compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   Just nid -> pure (Just nid)
   Nothing -> do
     (_, es) <- gets bratGraph
@@ -286,7 +298,7 @@ compileWithInputs parent name = gets compiled >>= (\case
       Just (tgtNodeId, edges) -> do
         registerCompiled name tgtNodeId
         for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtNodeId tgtPort))
-        pure $ Just tgtNodeId) . M.lookup name
+        pure $ Just tgtNodeId
  where
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
@@ -419,9 +431,8 @@ compileWithInputs parent name = gets compiled >>= (\case
         pure $ Just (partialNode, 1, captures) -- 1 is arbitrary, Box has no real inputs
       outs -> error $ "Unexpected outs of box: " ++ show outs
 
-    Source -> default_edges <$> do
-      outs <- compilePorts outs
-      addNode "Input" (parent, OpIn (InputNode outs [("source", "Source"), ("parent", show parent)]))
+    Source -> error "Source found outside of compileBox"
+      
     Target -> default_edges <$> do
       ins <- compilePorts ins
       addNode "Output" (parent, OpOut (OutputNode ins [("source", "Target")]))
