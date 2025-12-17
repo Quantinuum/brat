@@ -443,7 +443,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     -- We need to figure out if this thunk contains a brat- or a kernel-computation
     (Box src tgt) -> case outs of
       [(_, VFun Kerny cty)] -> default_edges . nodeId . fst <$>
-           compileKernBox parent name (compileBox (src, tgt)) cty
+           compileKernBox parent (show name) (src, tgt) cty
       [(_, VFun Braty cty)] -> do
         cs <- gets (M.findWithDefault M.empty name . capSets)
         (partialNode, captures) <- compileBratBox parent name (cs, src, tgt) cty
@@ -568,15 +568,15 @@ compileBratBox parent name (venv, src, tgt) cty = do
   pure (partialNode, zip (map fromJust edge_srcs) [1..])
     -- error on Nothing, the Partial is expecting a value
 
-compileKernBox :: NodeId -> Name -> (NodeId -> Compile ()) -> CTy Kernel Z -> Compile TypedPort
-compileKernBox parent name contents cty = do
+compileKernBox :: NodeId -> String -> (Name, Name) -> CTy Kernel Z -> Compile TypedPort
+compileKernBox parent desc src_tgt cty = do
   -- compile kernel nodes only into a Hugr with "Holes"
   -- when we see a Splice, we'll record the func-port onto a list
   -- return a Hugr with holes
   boxInnerSig@(inTys, outTys) <- compileSig Kerny cty
   let boxTy = HTFunc $ PolyFuncType [] (FunctionType inTys outTys bratExts)
-  (templatePort, holelist) <- compileConstDfg parent ("KB" ++ show name) boxInnerSig $ \dfg_id -> do
-    contents dfg_id
+  (templatePort, holelist) <- compileConstDfg parent ("KB" ++ desc) boxInnerSig $ \dfg_id -> do
+    compileBox src_tgt dfg_id
     gets holes
 
   -- For each hole in the template (index 0 i.e. earliest, first)
@@ -591,7 +591,7 @@ compileKernBox parent name contents cty = do
 
   -- Add a substitute node to fill the holes in the template
   let hole_sigs = [ body poly | (_, HTFunc poly) <- hole_ports ]
-  head <$> addNodeWithInputs ("subst_" ++ show name) (parent, OpCustom (substOp (FunctionType inTys outTys bratExts) hole_sigs)) (templatePort : hole_ports) [boxTy]
+  head <$> addNodeWithInputs ("subst_" ++ desc) (parent, OpCustom (substOp (FunctionType inTys outTys bratExts) hole_sigs)) (templatePort : hole_ports) [boxTy]
 
 
 -- We get a bunch of TypedPorts which are associated with Srcs in the BRAT graph.
@@ -842,7 +842,7 @@ compileModule venv moduleNode = do
             pure (funcReturning [thunkTy], True, \parent -> do
               addNode "input" (parent, OpIn (InputNode [] [("source", "analyseDecl")]))
               output <- addNode "output" (parent, OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
-              wire <- compileKernBox parent input (compileBox (src, tgt)) cty
+              wire <- compileKernBox parent (show input) (src, tgt) cty
               addEdge (fst wire, Port output 0))
           _ -> error "Box should have exactly one output of Thunk type"
       _ -> do -- a computation, or several values
