@@ -36,7 +36,7 @@ import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>), ($>))
 import Data.List (sortBy)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromJust, isJust)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Ord (comparing)
 import Data.Traversable (for)
 import Control.Monad.State
@@ -288,17 +288,19 @@ compileBox (src, tgt) parent = do
   compileWithInputs parent tgt
   pure ()
 
-compileInEdges :: NodeId -> [((OutPort, Val Z), p)] -> Compile [(PortId NodeId, p)]
-compileInEdges parent in_edges = catMaybes <$> for in_edges (
-      \((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
+in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
+in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
+
+compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
+compileInEdges parent name = do
+  in_edges <- in_edges name
+  catMaybes <$> for in_edges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
 compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   Just nid -> pure (Just nid)
   Nothing -> do
-    (_, es) <- gets bratGraph
-    let in_edges = [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
-    compileNode in_edges >>= \case
+    compileNode >>= \case
       Nothing -> pure Nothing
       Just (tgtNodeId, edges) -> do
         registerCompiled name tgtNodeId
@@ -307,43 +309,44 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
  where
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
-  compileNode :: [((OutPort, Val Z), Int)] -> Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode in_edges | isJust (hasPrefix ["checking", "globals", "decl"] name) = do
-    -- reference to a top-level decl. Every such should be in the decls map.
-    -- We need to return value of each type (perhaps to be indirectCalled by successor).
-    -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
-    let hTys = map (compileType . snd . fst) $ sortBy (comparing snd) in_edges
+  compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
+  compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
+    Just _ -> do
+      -- reference to a top-level decl. Every such should be in the decls map.
+      -- We need to return value of each type (perhaps to be indirectCalled by successor).
+      -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
+      hTys <- in_edges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
 
-    decls <- gets decls
-    let (funcDef, extra_call) = decls M.! name
-    nod <- if extra_call
-           then addNode ("direct_call(" ++ show funcDef ++ ")")
-                        (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
-           -- We are loading idNode as a value (not an Eval'd thing), and it is a FuncDef directly
-           -- corresponding to a Brat TLD (not that produces said TLD when eval'd)
-           else case hTys of
-             [HTFunc poly@(PolyFuncType [] _)] ->
-               addNode ("load_thunk(" ++ show funcDef ++ ")")
-               (parent, OpLoadFunction (LoadFunctionOp poly [] (FunctionType [] [HTFunc poly] [])))
-             [HTFunc (PolyFuncType args _)] -> error $ unwords ["Unexpected type args to"
-                                                               ,show funcDef ++ ":"
-                                                               ,show args
-                                                               ]
-             _ -> error $ "Expected a function argument when loading thunk, got: " ++ show hTys
-    -- the only input
-    pure $ Just (nod, [(Port funcDef 0, 0)])
-  compileNode in_edges = do
-    (ns, _) <- gets bratGraph
-    let node = ns M.! name
-    trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
-    nod_edge_info <- case node of
-      (BratNode thing ins outs) -> compileNode' thing ins outs
-      (KernelNode thing ins outs) -> compileNode' thing ins outs
-    case nod_edge_info of
-      Nothing -> pure Nothing
-      Just (node, tgtOffset, extra_edges) -> do
-        trans_edges <- compileInEdges parent in_edges <&> map (second (+tgtOffset))
-        pure $ Just (node, extra_edges ++ trans_edges)
+      decls <- gets decls
+      let (funcDef, extra_call) = decls M.! name
+      nod <- if extra_call
+            then addNode ("direct_call(" ++ show funcDef ++ ")")
+                          (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
+            -- We are loading idNode as a value (not an Eval'd thing), and it is a FuncDef directly
+            -- corresponding to a Brat TLD (not that produces said TLD when eval'd)
+            else case hTys of
+              [HTFunc poly@(PolyFuncType [] _)] ->
+                addNode ("load_thunk(" ++ show funcDef ++ ")")
+                (parent, OpLoadFunction (LoadFunctionOp poly [] (FunctionType [] [HTFunc poly] [])))
+              [HTFunc (PolyFuncType args _)] -> error $ unwords ["Unexpected type args to"
+                                                                ,show funcDef ++ ":"
+                                                                ,show args
+                                                                ]
+              _ -> error $ "Expected a function argument when loading thunk, got: " ++ show hTys
+      -- the only input
+      pure $ Just (nod, [(Port funcDef 0, 0)])
+    _ -> do
+      (ns, _) <- gets bratGraph
+      let node = ns M.! name
+      trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
+      nod_edge_info <- case node of
+        (BratNode thing ins outs) -> compileNode' thing ins outs
+        (KernelNode thing ins outs) -> compileNode' thing ins outs
+      case nod_edge_info of
+        Nothing -> pure Nothing
+        Just (node, tgtOffset, extra_edges) -> do
+          trans_edges <- compileInEdges parent name <&> map (second (+tgtOffset))
+          pure $ Just (node, extra_edges ++ trans_edges)
 
   default_edges :: NodeId -> Maybe (NodeId, Int, [(PortId NodeId, Int)])
   default_edges nid = Just (nid, 0, [])
