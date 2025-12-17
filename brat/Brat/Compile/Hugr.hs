@@ -388,7 +388,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       pure $ default_edges loadConst
 
     -- Check if the node has prefix "globals", hence should be a direct call
-    Eval (Ex outNode outPort) -> do
+    Eval tgt@(Ex outNode _) -> do
       ins <- compilePorts ins
       outs <- compilePorts outs
       (ns, _) <- gets bratGraph
@@ -412,13 +412,13 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
           -- Either not global, or we must evaluate the global -- so an indirect call of a graph on a wire
           -- (If it's a global, compileWithInputs will generate extra no-args Call,
           -- since extra_call==True; we just turned the (Eval+)LoadFunction case into a direct Call above)
-          _ -> compileWithInputs parent outNode >>= \case
-            Just calleeId -> do
+          _ -> getOutPort parent tgt >>= \case
+            Just funcPort@(Port calleeId _) -> do
               callerId <- addNode ("indirect_call(" ++ show calleeId ++ ")")
                                   (parent, OpCallIndirect (CallIndirectOp (FunctionType ins outs bratExts {-[]-})))
               -- for an IndirectCall, the callee (thunk, function value) is the *first*
               -- Hugr input. So move all the others along, and add that extra edge.
-              pure $ Just (callerId, 1, [(Port calleeId outPort, 0)])
+              pure $ Just (callerId, 1, [(funcPort, 0)])
             Nothing -> error "Callee has been erased"
 
     -- We need to figure out if this thunk contains a brat- or a kernel-computation
@@ -451,7 +451,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
-      dfgId <- addNode "DidMatch_DFG" (parent, OpDFG (DFG (FunctionType ins outs bratExts) []))
+      dfgId <- addNode "PatternMatch_DFG" (parent, OpDFG (DFG (FunctionType ins outs bratExts) []))
       inputNode <- addNode "PatternMatch.Input" (dfgId, OpIn (InputNode ins [("source", "PatternMatch"), ("parent", show dfgId)]))
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
       addNodeWithInputs "PatternMatch.Output" (dfgId, OpOut (OutputNode (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)])) ccOuts []
