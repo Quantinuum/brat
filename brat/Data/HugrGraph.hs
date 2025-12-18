@@ -10,12 +10,12 @@ module Data.HugrGraph(NodeId, PortId(..), Container(..),
 
 import Brat.Naming
 
+import Bwd
 import Data.Hugr hiding (Hugr)
 import qualified Data.Hugr as D
-import Data.List (sortBy)
+
+import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
-import Data.Ord (comparing)
-import Data.Tuple (swap)
 import qualified Data.Map as M
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
@@ -124,14 +124,34 @@ getParent HugrGraph {parents} n = parents M.! n
 getOp :: Hugr -> NodeId -> HugrOp
 getOp HugrGraph {nodes} n = nodes M.! n
 
+-- this should be local to serialize but local `type` is not allowed
+type StackAndIndices = (Bwd (NodeId, HugrOp) -- node is index, this is (parent, op)
+                       , M.Map NodeId Int)
+
 serialize :: Hugr -> D.Hugr Int
 serialize hugr@(HugrGraph {root, nodes, parents}) = D.Hugr (
-    [(transNode parent, op) | (op, parent) <- snd <$> sortedNodes],
+    (first transNode) <$> (fst nodeStackAndIndices) <>> [],
     [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
   ) where
-    sortedNodes :: [(NodeId, (HugrOp, NodeId))] -- name, (op, parent)
-    sortedNodes = let withOp (name, parent) = (name, (nodes M.! name, parent))
-                  in (withOp (root, root)):(sortBy (comparing swap) (withOp <$> M.assocs parents))
+
+    nodeStackAndIndices :: StackAndIndices
+    nodeStackAndIndices = foldl addNode
+                            (B0 :< (root, nodes M.! root), M.singleton root 0)
+                            (M.keys parents)
+    
+    addNode :: StackAndIndices -> NodeId -> StackAndIndices
+    addNode ins n = case M.lookup n (snd ins) of
+      (Just _) -> ins
+      Nothing -> let
+        parent = parents M.! n -- guaranteed as root is always in `ins`
+        with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
+       in case M.lookup n indices of
+            Just _ -> with_parent -- self added by recursive call; we must be in parent's io_children 
+            Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
+                       in case M.lookup n (io_children hugr) of
+                         -- finally add io_children immediately after
+                         (Just (inp, out)) -> addNode (addNode with_n inp) out
+                         Nothing -> with_n
 
     transNode :: NodeId -> Int
-    transNode = ((M.fromList $ zip (fst <$> sortedNodes) [0..]) M.!)
+    transNode = ((snd nodeStackAndIndices) M.!)
