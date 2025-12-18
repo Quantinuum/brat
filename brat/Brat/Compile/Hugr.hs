@@ -69,21 +69,18 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
-makeCS :: (Graph, CaptureSets, Namespace, Store) -> String -> HugrOp -> (NodeId, CompilationState)
-makeCS (g, cs, ns, store) rootNam rootOp =
-  let (hugr, rootNode) = H.newWithRoot ns rootNam rootOp
-  in (rootNode
-     ,CompilationState
-      { bratGraph = g
-      , capSets = cs
-      , hugr = hugr
-      , compiled = M.empty
-      , holes = B0
-      , liftedOutPorts = M.empty
-      , store = store
-      , decls = M.empty
-      }
-     )
+makeCS :: (Graph, CaptureSets, Store) -> H.Hugr -> CompilationState
+makeCS (g, cs, store) hugr =
+  CompilationState
+    { bratGraph = g
+    , capSets = cs
+    , hugr = hugr
+    , compiled = M.empty
+    , holes = B0
+    , liftedOutPorts = M.empty
+    , store = store
+    , decls = M.empty
+    }
 
 registerFuncDef :: Name -> (NodeId, Bool) -> Compile ()
 registerFuncDef name hugrDef = do
@@ -523,8 +520,8 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   let (nsx, hugr') = H.splitNamespace (hugr s) desc
   put s {hugr=hugr'}
   -- And pass that namespace into nested monad that compiles the DFG
-  let (dfg_id, nestedState) = makeCS (g,cs,nsx,st) ("Box_" ++ show desc) (OpDFG $ DFG funTy [])
-  let (a, compState) = runState (contents dfg_id) nestedState
+  let (h, dfg_id) = H.newWithRoot nsx ("Box_" ++ show desc) (OpDFG $ DFG funTy [])
+  let (a, compState) = runState (contents dfg_id) (makeCS (g,cs,st) h)
   let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
@@ -878,11 +875,11 @@ compile :: Store
         -> VEnv
         -> BS.ByteString
 compile store ns g capSets venv =
-  let (moduleNode, initState) = makeCS (g, capSets, ns, store) "module" (OpMod ModuleOp)
+  let (hugr, moduleNode) = H.newWithRoot ns "module" (OpMod ModuleOp)
   in evalState
     (trackM "compileFunctions" *>
      compileModule venv moduleNode *>
      trackM "dumpJSON" *>
      dumpJSON
     )
-    initState
+    (makeCS (g, capSets, store) hugr)
