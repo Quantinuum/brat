@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.HugrGraph(Hugr, NodeId, PortId(..),
-                      newWithRoot, splitNamespace, rootNode,
-                      freshNode, setOp, getParent, getOp,
+module Data.HugrGraph(NodeId, PortId(..), Container(..),
+                      Hugr, -- do NOT export contents, keep abstract
+                      newWithIO, newModule, splitNamespace, rootNode,
+                      freshNode, freshNodeWithIO,
+                      setOp, getParent, getOp,
                       addEdge, addOrderEdge,
                       edgeList, serialize
                      ) where
@@ -17,6 +19,12 @@ import Data.Tuple (swap)
 import qualified Data.Map as M
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
+
+data Container = Ctr {
+  parent :: NodeId,
+  input :: NodeId,
+  output :: NodeId
+}
 
 data Hugr = HugrGraph {
     -- exactly one node (the root) will have parent == self
@@ -46,6 +54,13 @@ freshNode hugr@(HugrGraph {parents, nameSupply}) parent nam =
                 parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
                 })
 
+freshNodeWithIO :: Hugr -> NodeId -> String -> (Container, Hugr)
+freshNodeWithIO h gparent desc =
+  let (parent, h2) = freshNode h gparent desc
+      (input, h3) = freshNode h2 parent (desc ++ "_Input")
+      (output, h4) = freshNode h3 parent (desc ++ "_Output")
+  in (Ctr {parent, input, output}, h4)
+
 setOp :: Hugr -> NodeId -> HugrOp -> Hugr
 -- Insist the parent exists
 setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
@@ -54,18 +69,34 @@ setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
     -- alter + partial match is just to fail if key already present
     h { nodes = M.alter (\Nothing -> Just op) name nodes }
 
-newWithRoot :: Namespace -> String -> HugrOp -> (Hugr, NodeId)
-newWithRoot ns nam op =
+newWithIO :: Namespace -> String -> HugrOp -> (Hugr, Container)
+newWithIO ns nam op =
+  let (name, ns1) = fresh nam ns
+      (input, ns2) = fresh (nam ++ "_Input") ns1
+      (output, ns3) = fresh (nam ++ "_Output") ns2
+      node = NodeId name
+  in (HugrGraph {
+        parents = M.fromList ((, node) <$> [node, NodeId input, NodeId output]),
+        nodes = M.singleton node op,
+        edges_in = M.empty,
+        edges_out = M.empty,
+        nameSupply = ns3
+      }
+     ,Ctr node (NodeId input) (NodeId output)
+     )
+
+newModule :: Namespace -> String -> (Hugr, NodeId)
+newModule ns nam =
   let (name, ns') = fresh nam ns
       node = NodeId name
   in (HugrGraph {
         parents = M.singleton node node,
-        nodes = M.singleton node op,
+        nodes = M.singleton node (OpMod ModuleOp),
         edges_in = M.empty,
         edges_out = M.empty,
         nameSupply = ns'
       }
-     ,node
+     , node
      )
 
 addEdge :: Hugr -> (PortId NodeId, PortId NodeId) -> Hugr
