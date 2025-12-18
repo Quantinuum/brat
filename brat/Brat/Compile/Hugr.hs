@@ -749,7 +749,7 @@ makeConditional lbl parent discrim otherInputs cases = do
     let outTys = snd <$> outs
     setOp outId (OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-    setOp caseId (OpCase (ix, Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
+    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
     pure (outTys, caseId)
 
   allRowsEqual :: [[HugrType]] -> Bool

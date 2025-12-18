@@ -243,9 +243,6 @@ valFromSimple Unit = hvUnit
 
 data ModuleOp = ModuleOp deriving (Eq, Show)
 
-instance Ord ModuleOp where
-  compare _ _ = EQ
-
 instance JSONParent ModuleOp where
   toJSONp ModuleOp parent = object ["parent" .= parent
                                    ,"op" .= ("Module" :: Text)
@@ -256,9 +253,6 @@ data FuncDefn = FuncDefn
  , signature_ :: PolyFuncType
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
-
-instance Ord FuncDefn where
-  compare _ _ = EQ
 
 instance JSONParent FuncDefn where
   toJSONp (FuncDefn { .. }) parent = object ["parent" .= parent
@@ -288,9 +282,6 @@ data ConstOp = ConstOp
  { const :: HugrValue
  } deriving (Eq, Show)
 
-instance Ord ConstOp where
-  compare _ _ = EQ
-
 instance JSONParent ConstOp where
   toJSONp (ConstOp {..}) parent = object ["parent" .= parent
                                          ,"op" .= ("Const" :: Text)
@@ -304,9 +295,6 @@ data InputNode = InputNode
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
 
-instance Ord InputNode where
-  compare _ _ = EQ
-
 instance JSONParent InputNode where
   toJSONp (InputNode types metadata) parent = object ["parent" .= parent
                                                      ,"op" .= ("Input" :: Text)
@@ -318,9 +306,6 @@ data OutputNode = OutputNode
  { types  :: [HugrType]
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
-
-instance Ord OutputNode where
-  compare _ _ = EQ
 
 instance JSONParent OutputNode where
   toJSONp (OutputNode { .. }) parent = object ["parent" .= parent
@@ -335,9 +320,6 @@ data Conditional = Conditional
  , outputs :: [HugrType]
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
-
-instance Ord Conditional where
-  compare _ _ = EQ
 
 instance JSONParent Conditional where
   toJSONp (Conditional { .. }) parent
@@ -354,9 +336,6 @@ data Case = Case
   { signature_ :: FunctionType
   , metadata :: [(String, String)]
   } deriving (Eq, Show)
-
-instance Ord Case where
-  compare _ _ = EQ
 
 instance JSONParent Case where
   toJSONp (Case { .. }) parent = object ["op" .= ("Case" :: Text)
@@ -378,9 +357,6 @@ data DFG = DFG
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
 
-instance Ord DFG where
-  compare _ _ = EQ
-
 instance JSONParent DFG where
   toJSONp (DFG { .. }) parent = object ["op" .= ("DFG" :: Text)
                                        ,"parent" .= parent
@@ -393,9 +369,6 @@ data TagOp = TagOp
  , variants :: [[HugrType]]
  , metadata :: [(String, String)]
  } deriving (Eq, Show)
-
-instance Ord TagOp where
-  compare _ _ = EQ
 
 instance JSONParent TagOp where
   toJSONp (TagOp tag variants metadata) parent
@@ -410,9 +383,6 @@ data MakeTupleOp = MakeTupleOp
  { tys :: [HugrType]
  } deriving (Eq, Show)
 
-instance Ord MakeTupleOp where
-  compare _ _ = EQ
-
 instance JSONParent MakeTupleOp where
   toJSONp (MakeTupleOp tys) parent
    = object ["parent" .= parent
@@ -426,9 +396,6 @@ data CustomOp = CustomOp
   , signature_ :: FunctionType
   , args :: [TypeArg]
   } deriving (Eq, Show)
-
-instance Ord CustomOp where
-  compare _ _ = EQ
 
 instance JSONParent CustomOp where
   toJSONp (CustomOp { .. }) parent = object ["parent" .= parent
@@ -451,9 +418,6 @@ instance JSONParent CustomOp where
 data CallOp = CallOp
   { signature_ :: FunctionType
   } deriving (Eq, Show)
-
-instance Ord CallOp where
-  compare _ _ = EQ
 
 instance JSONParent CallOp where
   toJSONp (CallOp signature_) parent =
@@ -480,9 +444,6 @@ binaryFloatOp name = floatOp name [hugrFloat, hugrFloat] [hugrFloat] []
 data CallIndirectOp = CallIndirectOp
   { signature_ :: FunctionType
   } deriving (Eq, Show)
-
-instance Ord CallIndirectOp where
-  compare _ _ = EQ
 
 instance JSONParent CallIndirectOp where
   toJSONp (CallIndirectOp signature_) parent = object ["parent" .= parent
@@ -542,9 +503,6 @@ data LoadConstantOp = LoadConstantOp
   { datatype :: HugrType
   } deriving (Eq, Show)
 
-instance Ord LoadConstantOp where
-  compare _ _ = EQ
-
 instance JSONParent LoadConstantOp where
   toJSONp (LoadConstantOp {..}) parent = object ["parent" .= parent
                                                 ,"op" .= ("LoadConstant" :: Text)
@@ -557,9 +515,6 @@ data LoadFunctionOp = LoadFunctionOp
   , signature :: FunctionType
   } deriving (Eq, Show)
 
-instance Ord LoadFunctionOp where
-  compare _ _ = EQ
-
 instance JSONParent LoadFunctionOp where
   toJSONp (LoadFunctionOp {..}) parent = object ["parent" .= parent
                                                 ,"op" .= ("LoadFunction" :: Text)
@@ -571,9 +526,6 @@ instance JSONParent LoadFunctionOp where
 data NoopOp = NoopOp
   { ty :: HugrType
   } deriving (Eq, Show)
-
-instance Ord NoopOp where
-  compare _ _ = EQ
 
 instance JSONParent NoopOp where
   toJSONp (NoopOp {..}) parent = object ["parent" .= parent
@@ -592,8 +544,7 @@ data HugrOp
   | OpDFG DFG
   | OpConst ConstOp
   | OpConditional Conditional
-  -- Make sure that the cases are printed out in the correct order
-  | OpCase (Int, Case)
+  | OpCase Case
   | OpTag TagOp
   | OpMakeTuple MakeTupleOp
   | OpCustom CustomOp
@@ -602,11 +553,11 @@ data HugrOp
   | OpLoadConstant LoadConstantOp
   | OpLoadFunction LoadFunctionOp
   | OpNoop NoopOp
- deriving (Eq, Ord, Show)
+ deriving (Eq, Show)
 
 addMetadata :: [(String, String)] -> HugrOp -> HugrOp
 addMetadata md (OpDFG (DFG { .. })) = OpDFG (DFG { metadata = metadata ++ md, .. })
-addMetadata md (OpCase (i, (Case { .. }))) = OpCase (i, (Case { metadata = metadata ++ md, .. }))
+addMetadata md (OpCase (Case { .. })) = OpCase (Case { metadata = metadata ++ md, .. })
 addMetadata md (OpIn (InputNode { .. })) = OpIn (InputNode { metadata = metadata ++ md, .. })
 addMetadata md (OpTag (TagOp { .. })) = OpTag (TagOp { metadata = metadata ++ md, .. })
 addMetadata md (OpDefn (FuncDefn { .. })) = OpDefn (FuncDefn { metadata = metadata ++ md, .. })
@@ -620,7 +571,7 @@ instance JSONParent HugrOp where
   toJSONp (OpDFG op) parent = toJSONp op parent
   toJSONp (OpIn op) parent = toJSONp op parent
   toJSONp (OpOut op) parent = toJSONp op parent
-  toJSONp (OpCase (_, op)) parent = toJSONp op parent
+  toJSONp (OpCase op) parent = toJSONp op parent
   toJSONp (OpConditional op) parent = toJSONp op parent
   toJSONp (OpTag op) parent = toJSONp op parent
   toJSONp (OpMakeTuple op) parent = toJSONp op parent
