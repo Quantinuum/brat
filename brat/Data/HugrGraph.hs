@@ -29,6 +29,7 @@ data Container = Ctr {
 data Hugr = HugrGraph {
     root :: NodeId,
     parents :: M.Map NodeId NodeId, -- definitive list of (valid) nodes, excluding root
+    io_children:: M.Map NodeId (NodeId, NodeId),
     nodes :: M.Map NodeId HugrOp,
     edges_out :: M.Map NodeId [(Int, PortId NodeId)],
     edges_in :: M.Map NodeId [(PortId NodeId, Int)],
@@ -54,7 +55,7 @@ freshNodeWithIO h gparent desc =
   let (parent, h2) = freshNode h gparent desc
       (input, h3) = freshNode h2 parent (desc ++ "_Input")
       (output, h4) = freshNode h3 parent (desc ++ "_Output")
-  in (Ctr {parent, input, output}, h4)
+  in (Ctr {parent, input, output}, h4 {io_children = M.insert parent (input, output) (io_children h4) })
 
 setOp :: Hugr -> NodeId -> HugrOp -> Hugr
 -- Insist the parent exists
@@ -67,18 +68,19 @@ setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
 newWithIO :: Namespace -> String -> HugrOp -> (Hugr, Container)
 newWithIO ns nam op =
   let (name, ns1) = fresh nam ns
-      (input, ns2) = fresh (nam ++ "_Input") ns1
-      (output, ns3) = fresh (nam ++ "_Output") ns2
-      root = NodeId name
+      (inp, ns2) = fresh (nam ++ "_Input") ns1
+      (outp, ns3) = fresh (nam ++ "_Output") ns2
+      (root, input, output) = (NodeId name, NodeId inp, NodeId outp)
   in (HugrGraph {
         root,
-        parents = M.fromList ((, root) . NodeId <$> [input, output]),
+        parents = M.fromList ((, root) <$> [input, output]),
+        io_children = M.singleton root (input, output),
         nodes = M.singleton root op,
         edges_in = M.empty,
         edges_out = M.empty,
         nameSupply = ns3
       }
-     ,Ctr root (NodeId input) (NodeId output)
+     ,Ctr {parent=root, input, output}
      )
 
 newModule :: Namespace -> String -> (Hugr, NodeId)
@@ -88,6 +90,7 @@ newModule ns nam =
   in (HugrGraph {
         root,
         parents = M.empty,
+        io_children = M.empty,
         nodes = M.singleton root (OpMod ModuleOp),
         edges_in = M.empty,
         edges_out = M.empty,
