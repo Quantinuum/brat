@@ -729,17 +729,19 @@ makeConditional :: String    -- Label
 makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
-  outTyss <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
-  unless
-    (allRowsEqual outTyss)
-    (error "Conditional output types didn't match")
-  let condOp = OpConditional (Conditional rows (snd <$> otherInputs) (head outTyss) [("label", lbl)])
+  (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  let outTys = if allRowsEqual (fst <$> outTyss_cases)
+               then fst (head outTyss_cases)
+               else (error "Conditional output types didn't match")
+  let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
+  s <- get
+  put s {hugr = H.setFirstChildren (hugr s) condId (snd <$> outTyss_cases)}
   addEdge (fst discrim, Port condId 0)
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
-  pure $ zip (Port condId <$> [0..]) (head outTyss)
+  pure $ zip (Port condId <$> [0..]) outTys
  where
-  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
+  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile ([HugrType], NodeId)
   makeCase parent name ix tys f = do
     (H.Ctr caseId inpId outId) <- freshNodeWithIO name parent
     setOp inpId (OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
@@ -748,7 +750,7 @@ makeConditional lbl parent discrim otherInputs cases = do
     setOp outId (OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
     setOp caseId (OpCase (ix, Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
-    pure outTys
+    pure (outTys, caseId)
 
   allRowsEqual :: [[HugrType]] -> Bool
   allRowsEqual [] = True

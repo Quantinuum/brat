@@ -3,6 +3,7 @@ module Data.HugrGraph(NodeId, PortId(..), Container(..),
                       Hugr, -- do NOT export contents, keep abstract
                       newWithIO, newModule, splitNamespace,
                       freshNode, freshNodeWithIO,
+                      setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
                       edgeList, serialize
@@ -56,6 +57,11 @@ freshNodeWithIO h gparent desc =
       (input, h3) = freshNode h2 parent (desc ++ "_Input")
       (output, h4) = freshNode h3 parent (desc ++ "_Output")
   in (Ctr {parent, input, output}, h4 {io_children = M.insert parent (input, output) (io_children h4) })
+
+-- This is a hack to deal with Conditionals, whose cases must be ordered.
+-- For now it only works if there are exactly two cases...
+setFirstChildren :: Hugr -> NodeId -> [NodeId] -> Hugr
+setFirstChildren h p [c1,c2] = h {io_children = M.alter (\Nothing -> Just (c1,c2)) p (io_children h)}
 
 setOp :: Hugr -> NodeId -> HugrOp -> Hugr
 -- Insist the parent exists
