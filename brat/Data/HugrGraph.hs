@@ -23,7 +23,7 @@ newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 data HugrGraph = HugrGraph {
     root :: NodeId,
     parents :: M.Map NodeId NodeId, -- definitive list of (valid) nodes, excluding root
-    io_children:: M.Map NodeId (NodeId, NodeId),
+    first_children:: M.Map NodeId [NodeId],
     nodes :: M.Map NodeId HugrOp,
     edges_out :: M.Map NodeId [(Int, PortId NodeId)],
     edges_in :: M.Map NodeId [(PortId NodeId, Int)],
@@ -44,10 +44,8 @@ freshNode hugr@(HugrGraph {root, parents, nameSupply}) parent nam =
               parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
             })
 
--- This is a hack to deal with Conditionals, whose cases must be ordered.
--- For now it only works if there are exactly two cases...
 setFirstChildren :: HugrGraph -> NodeId -> [NodeId] -> HugrGraph
-setFirstChildren h p [c1,c2] = h {io_children = M.alter (\Nothing -> Just (c1,c2)) p (io_children h)}
+setFirstChildren h p cs = h {first_children = M.alter (\Nothing -> Just cs) p (first_children h)}
 
 setOp :: HugrGraph -> NodeId -> HugrOp -> HugrGraph
 -- Insist the parent exists
@@ -64,7 +62,7 @@ new ns nam op =
   in HugrGraph {
         root,
         parents = M.empty,
-        io_children = M.empty,
+        first_children = M.empty,
         nodes = M.singleton root op,
         edges_in = M.empty,
         edges_out = M.empty,
@@ -118,12 +116,11 @@ serialize hugr@(HugrGraph {root, nodes, parents}) = Hugr (
         parent = parents M.! n -- guaranteed as root is always in `ins`
         with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
        in case M.lookup n indices of
-            Just _ -> with_parent -- self added by recursive call; we must be in parent's io_children 
+            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children 
             Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
-                       in case M.lookup n (io_children hugr) of
-                         -- finally add io_children immediately after
-                         (Just (inp, out)) -> addNode (addNode with_n inp) out
-                         Nothing -> with_n
+                           chs = fromMaybe [] (M.lookup n (first_children hugr))
+                       -- finally add first_children immediately after parent
+                       in foldl addNode with_n chs 
 
     transNode :: NodeId -> Int
     transNode = ((snd nodeStackAndIndices) M.!)
