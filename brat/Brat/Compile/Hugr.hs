@@ -96,10 +96,12 @@ freshNode name parent = do
 
 freshNodeWithIO :: String -> NodeId -> Compile Container
 freshNodeWithIO name parent = do
+  ctr <- freshNode name parent
+  input <- freshNode (name ++ "_Input") ctr
+  output <- freshNode (name ++ "_Input") ctr
   s <- get
-  let (ctr, h) = H.freshNodeWithIO (hugr s) parent name
-  put s {hugr = h}
-  pure ctr
+  put s {hugr = H.setFirstChildren (hugr s) ctr [input, output]}
+  pure $ Ctr ctr input output
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
 addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
