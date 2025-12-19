@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId, PortId(..), Container(..),
-                      Hugr, -- do NOT export contents, keep abstract
+                      HugrGraph, -- do NOT export contents, keep abstract
                       newWithIO, newModule, splitNamespace,
                       freshNode, freshNodeWithIO,
                       setFirstChildren,
@@ -12,8 +12,7 @@ module Data.HugrGraph(NodeId, PortId(..), Container(..),
 import Brat.Naming
 
 import Bwd
-import Data.Hugr hiding (Hugr)
-import qualified Data.Hugr as D
+import Data.Hugr
 
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
@@ -27,7 +26,7 @@ data Container = Ctr {
   output :: NodeId
 }
 
-data Hugr = HugrGraph {
+data HugrGraph = HugrGraph {
     root :: NodeId,
     parents :: M.Map NodeId NodeId, -- definitive list of (valid) nodes, excluding root
     io_children:: M.Map NodeId (NodeId, NodeId),
@@ -37,11 +36,11 @@ data Hugr = HugrGraph {
     nameSupply :: Namespace
 } deriving (Eq, Show) -- we probably want a better `show`
 
-splitNamespace :: Hugr -> String -> (Namespace, Hugr)
+splitNamespace :: HugrGraph -> String -> (Namespace, HugrGraph)
 splitNamespace hugr n = let (nsx, nsNew) = split n (nameSupply hugr)
                         in (nsx, hugr {nameSupply = nsNew})
 
-freshNode :: Hugr -> NodeId -> String -> (NodeId, Hugr)
+freshNode :: HugrGraph -> NodeId -> String -> (NodeId, HugrGraph)
 freshNode hugr@(HugrGraph {root, parents, nameSupply}) parent nam =
   case M.lookup parent parents of
     Nothing | parent /= root-> error "parent does not exist"
@@ -51,7 +50,7 @@ freshNode hugr@(HugrGraph {root, parents, nameSupply}) parent nam =
               parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
             })
 
-freshNodeWithIO :: Hugr -> NodeId -> String -> (Container, Hugr)
+freshNodeWithIO :: HugrGraph -> NodeId -> String -> (Container, HugrGraph)
 freshNodeWithIO h gparent desc =
   let (parent, h2) = freshNode h gparent desc
       (input, h3) = freshNode h2 parent (desc ++ "_Input")
@@ -60,10 +59,10 @@ freshNodeWithIO h gparent desc =
 
 -- This is a hack to deal with Conditionals, whose cases must be ordered.
 -- For now it only works if there are exactly two cases...
-setFirstChildren :: Hugr -> NodeId -> [NodeId] -> Hugr
+setFirstChildren :: HugrGraph -> NodeId -> [NodeId] -> HugrGraph
 setFirstChildren h p [c1,c2] = h {io_children = M.alter (\Nothing -> Just (c1,c2)) p (io_children h)}
 
-setOp :: Hugr -> NodeId -> HugrOp -> Hugr
+setOp :: HugrGraph -> NodeId -> HugrOp -> HugrGraph
 -- Insist the parent exists
 setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
   Nothing -> error "name has no parent"
@@ -71,7 +70,7 @@ setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
     -- alter + partial match is just to fail if key already present
     h { nodes = M.alter (\Nothing -> Just op) name nodes }
 
-newWithIO :: Namespace -> String -> HugrOp -> (Hugr, Container)
+newWithIO :: Namespace -> String -> HugrOp -> (HugrGraph, Container)
 newWithIO ns nam op =
   let (name, ns1) = fresh nam ns
       (inp, ns2) = fresh (nam ++ "_Input") ns1
@@ -89,7 +88,7 @@ newWithIO ns nam op =
      ,Ctr {parent=root, input, output}
      )
 
-newModule :: Namespace -> String -> (Hugr, NodeId)
+newModule :: Namespace -> String -> (HugrGraph, NodeId)
 newModule ns nam =
   let (name, ns') = fresh nam ns
       root = NodeId name
@@ -105,7 +104,7 @@ newModule ns nam =
      , root
      )
 
-addEdge :: Hugr -> (PortId NodeId, PortId NodeId) -> Hugr
+addEdge :: HugrGraph -> (PortId NodeId, PortId NodeId) -> HugrGraph
 addEdge h@HugrGraph {..} (src@(Port s o), tgt@(Port t i)) = case (M.lookup s nodes, M.lookup t nodes) of
   (Just _, Just _) -> h {
     edges_out = addToMap s (o, tgt) edges_out,
@@ -116,26 +115,26 @@ addEdge h@HugrGraph {..} (src@(Port s o), tgt@(Port t i)) = case (M.lookup s nod
   addToMap :: Ord k => k -> v -> M.Map k [v] -> M.Map k [v]
   addToMap k v m = M.insert k (v:(fromMaybe [] $ M.lookup k m)) m
 
-addOrderEdge :: Hugr -> (NodeId, NodeId) -> Hugr
+addOrderEdge :: HugrGraph -> (NodeId, NodeId) -> HugrGraph
 addOrderEdge h (src, tgt) = addEdge h (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
 
-edgeList :: Hugr -> [(PortId NodeId, PortId NodeId)]
+edgeList :: HugrGraph -> [(PortId NodeId, PortId NodeId)]
 edgeList (HugrGraph {edges_out}) = [(Port n off, tgt) | (n, vs) <- M.assocs edges_out
                                                       , (off, tgt) <- vs
                                    ]
 
-getParent :: Hugr -> NodeId -> NodeId
+getParent :: HugrGraph -> NodeId -> NodeId
 getParent HugrGraph {parents} n = parents M.! n
 
-getOp :: Hugr -> NodeId -> HugrOp
+getOp :: HugrGraph -> NodeId -> HugrOp
 getOp HugrGraph {nodes} n = nodes M.! n
 
 -- this should be local to serialize but local `type` is not allowed
 type StackAndIndices = (Bwd (NodeId, HugrOp) -- node is index, this is (parent, op)
                        , M.Map NodeId Int)
 
-serialize :: Hugr -> D.Hugr Int
-serialize hugr@(HugrGraph {root, nodes, parents}) = D.Hugr (
+serialize :: HugrGraph -> Hugr Int
+serialize hugr@(HugrGraph {root, nodes, parents}) = Hugr (
     (first transNode) <$> (fst nodeStackAndIndices) <>> [],
     [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
   ) where

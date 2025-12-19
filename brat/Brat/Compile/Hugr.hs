@@ -24,7 +24,7 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
-import Data.HugrGraph (Container, NodeId)
+import Data.HugrGraph (HugrGraph, Container(..), NodeId)
 import qualified Data.HugrGraph as H
 import Hasochism
 
@@ -53,7 +53,7 @@ type TypedPort = (PortId NodeId, HugrType)
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
- , hugr :: H.Hugr
+ , hugr :: HugrGraph
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -69,7 +69,7 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
-makeCS :: (Graph, CaptureSets, Store) -> H.Hugr -> CompilationState
+makeCS :: (Graph, CaptureSets, Store) -> HugrGraph -> CompilationState
 makeCS (g, cs, store) hugr =
   CompilationState
     { bratGraph = g
@@ -209,7 +209,7 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
  )
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
-renameAndSortHugr :: H.Hugr -> Hugr Int
+renameAndSortHugr :: HugrGraph -> Hugr Int
 renameAndSortHugr hugr = H.serialize (foldl H.addOrderEdge hugr orderEdges)
  where
   orderEdges :: [(NodeId, NodeId)]
@@ -280,7 +280,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
 
 compileBox :: Container  -> (Name, Name) -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
-compileBox (H.Ctr parent srcN tgtN) (src, tgt) = do
+compileBox (Ctr parent srcN tgtN) (src, tgt) = do
   -- Compile Source
   node <- gets ((M.! src) . fst . bratGraph)
   trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
@@ -476,7 +476,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
-      (H.Ctr dfgId inputNode outputNode) <- freshNodeWithIO "PatternMatch" parent
+      (Ctr dfgId inputNode outputNode) <- freshNodeWithIO "PatternMatch" parent
       setOp dfgId (OpDFG (DFG (FunctionType ins outs bratExts) []))
       setOp inputNode (OpIn (InputNode ins [("source", "PatternMatch"), ("parent", show dfgId)]))
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
@@ -743,7 +743,7 @@ makeConditional lbl parent discrim otherInputs cases = do
  where
   makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile ([HugrType], NodeId)
   makeCase parent name ix tys f = do
-    (H.Ctr caseId inpId outId) <- freshNodeWithIO name parent
+    (Ctr caseId inpId outId) <- freshNodeWithIO name parent
     setOp inpId (OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
     outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs
@@ -816,7 +816,7 @@ compileModule venv moduleNode = do
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
     (funTy, extra_call, body) <- analyseDecl idNode
-    ctr@H.Ctr {parent} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
+    ctr@Ctr {parent} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
     setOp parent (OpDefn $ FuncDefn (show fnName) funTy [])
     registerFuncDef idNode (parent, extra_call)
     pure (body ctr)
@@ -853,7 +853,7 @@ compileModule venv moduleNode = do
             -- computation that produces this constant. We do so by making a FuncDefn
             -- that takes no arguments and produces the constant kernel graph value.
             thunkTy <- HTFunc . PolyFuncType [] . (\(ins, outs) -> FunctionType ins outs bratExts) <$> compileSig Kerny cty
-            pure (funcReturning [thunkTy], True, \H.Ctr {parent,input,output} -> do
+            pure (funcReturning [thunkTy], True, \Ctr {parent,input,output} -> do
               setOp input (OpIn (InputNode [] [("source", "analyseDecl")]))
               setOp output (OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
               wire <- compileKernBox parent (show input) (src, tgt) cty
@@ -876,7 +876,7 @@ compileModule venv moduleNode = do
   funcReturning outs = PolyFuncType [] (FunctionType [] outs bratExts)
 
 compileNoun :: [HugrType] -> [OutPort] -> Container -> Compile ()
-compileNoun outs srcPorts H.Ctr {parent, input, output} = do
+compileNoun outs srcPorts Ctr {parent, input, output} = do
   setOp input (OpIn (InputNode [] [("source", "compileNoun")]))
   setOp output (OpOut (OutputNode outs [("source", "compileNoun")]))
   for_ (zip [0..] srcPorts) (\(outport, Ex src srcPort) ->
