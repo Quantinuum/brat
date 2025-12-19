@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId, PortId(..),
-                      HugrGraph, -- do NOT export contents, keep abstract
+                      HugrGraph(root), -- do NOT export contents, keep abstract
                       new, splitNamespace,
                       freshNode,
                       setFirstChildren,
@@ -57,11 +57,11 @@ setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
     -- alter + partial match is just to fail if key already present
     h { nodes = M.alter (\Nothing -> Just op) name nodes }
 
-new :: Namespace -> String -> HugrOp -> (HugrGraph, NodeId)
+new :: Namespace -> String -> HugrOp -> HugrGraph
 new ns nam op =
   let (name, ns') = fresh nam ns
       root = NodeId name
-  in (HugrGraph {
+  in HugrGraph {
         root,
         parents = M.empty,
         io_children = M.empty,
@@ -70,8 +70,6 @@ new ns nam op =
         edges_out = M.empty,
         nameSupply = ns'
       }
-     , root
-     )
 
 addEdge :: HugrGraph -> (PortId NodeId, PortId NodeId) -> HugrGraph
 addEdge h@HugrGraph {..} (src@(Port s o), tgt@(Port t i)) = case (M.lookup s nodes, M.lookup t nodes) of

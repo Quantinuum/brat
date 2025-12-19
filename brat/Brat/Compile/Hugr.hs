@@ -15,7 +15,7 @@ import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (Store(..), VEnv)
 import Brat.Eval (eval, evalCTy, kindType)
 import Brat.Graph hiding (lookupNode)
-import Brat.Naming
+import Brat.Naming hiding (root)
 import Brat.QualName
 import Brat.Syntax.Port
 import Brat.Syntax.Common
@@ -24,7 +24,7 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
-import Data.HugrGraph (HugrGraph, NodeId)
+import Data.HugrGraph (HugrGraph(..), NodeId)
 import qualified Data.HugrGraph as H
 import Hasochism
 
@@ -546,8 +546,8 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   put s {hugr=hugr'}
   -- And pass that namespace into nested monad that compiles the DFG
   let boxdesc = "Box_" ++ desc
-  let (h, root) = H.new nsx boxdesc (OpDFG $ DFG funTy [])
-  let (a, compState) = runState (makeIO boxdesc root >>= contents)
+  let h = H.new nsx boxdesc (OpDFG $ DFG funTy [])
+  let (a, compState) = runState (makeIO boxdesc (root h) >>= contents)
                                 (makeCS (g,cs,st) h)
   let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
@@ -907,10 +907,10 @@ compile :: Store
         -> VEnv
         -> BS.ByteString
 compile store ns g capSets venv =
-  let (hugr, moduleNode) = H.new ns "module" (OpMod ModuleOp)
+  let hugr = H.new ns "module" (OpMod ModuleOp)
   in evalState
     (trackM "compileFunctions" *>
-     compileModule venv moduleNode *>
+     compileModule venv (root hugr) *>
      trackM "dumpJSON" *>
      dumpJSON
     )
