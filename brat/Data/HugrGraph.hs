@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.HugrGraph(NodeId, PortId(..), Container(..),
+module Data.HugrGraph(NodeId, PortId(..),
                       HugrGraph, -- do NOT export contents, keep abstract
-                      newWithIO, newModule, splitNamespace,
+                      new, splitNamespace,
                       freshNode,
                       setFirstChildren,
                       setOp, getParent, getOp,
@@ -19,12 +19,6 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
-
-data Container = Ctr {
-  parent :: NodeId,
-  input :: NodeId,
-  output :: NodeId
-}
 
 data HugrGraph = HugrGraph {
     root :: NodeId,
@@ -63,33 +57,15 @@ setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
     -- alter + partial match is just to fail if key already present
     h { nodes = M.alter (\Nothing -> Just op) name nodes }
 
-newWithIO :: Namespace -> String -> HugrOp -> (HugrGraph, Container)
-newWithIO ns nam op =
-  let (name, ns1) = fresh nam ns
-      (inp, ns2) = fresh (nam ++ "_Input") ns1
-      (outp, ns3) = fresh (nam ++ "_Output") ns2
-      (root, input, output) = (NodeId name, NodeId inp, NodeId outp)
-  in (HugrGraph {
-        root,
-        parents = M.fromList ((, root) <$> [input, output]),
-        io_children = M.singleton root (input, output),
-        nodes = M.singleton root op,
-        edges_in = M.empty,
-        edges_out = M.empty,
-        nameSupply = ns3
-      }
-     ,Ctr {parent=root, input, output}
-     )
-
-newModule :: Namespace -> String -> (HugrGraph, NodeId)
-newModule ns nam =
+new :: Namespace -> String -> HugrOp -> (HugrGraph, NodeId)
+new ns nam op =
   let (name, ns') = fresh nam ns
       root = NodeId name
   in (HugrGraph {
         root,
         parents = M.empty,
         io_children = M.empty,
-        nodes = M.singleton root (OpMod ModuleOp),
+        nodes = M.singleton root op,
         edges_in = M.empty,
         edges_out = M.empty,
         nameSupply = ns'

@@ -24,7 +24,7 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
-import Data.HugrGraph (HugrGraph, Container(..), NodeId)
+import Data.HugrGraph (HugrGraph, NodeId)
 import qualified Data.HugrGraph as H
 import Hasochism
 
@@ -69,6 +69,12 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
+data Container = Ctr {
+  parent :: NodeId,
+  input :: NodeId,
+  output :: NodeId
+}
+
 makeCS :: (Graph, CaptureSets, Store) -> HugrGraph -> CompilationState
 makeCS (g, cs, store) hugr =
   CompilationState
@@ -94,14 +100,18 @@ freshNode name parent = do
   put s {hugr = h}
   pure id
 
+makeIO :: String -> NodeId -> Compile Container
+makeIO name parent = do
+  input <- freshNode (name ++ "_Input") parent
+  output <- freshNode (name ++ "_Input") parent
+  s <- get
+  put s {hugr = H.setFirstChildren (hugr s) parent [input, output]}
+  pure $ Ctr {parent, input, output}
+
 freshNodeWithIO :: String -> NodeId -> Compile Container
 freshNodeWithIO name parent = do
-  ctr <- freshNode name parent
-  input <- freshNode (name ++ "_Input") ctr
-  output <- freshNode (name ++ "_Input") ctr
-  s <- get
-  put s {hugr = H.setFirstChildren (hugr s) ctr [input, output]}
-  pure $ Ctr ctr input output
+  root <- freshNode name parent
+  makeIO name root
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
 addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
@@ -272,8 +282,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
     BratNode (Box src tgt) _ _ -> do
-      ctr <- freshNodeWithIO "DidMatch" parent
-      let dfgId = H.parent ctr
+      ctr@Ctr {parent=dfgId} <- freshNodeWithIO "DidMatch" parent
       setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) []))
       compileBox ctr (src, tgt)
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
@@ -407,12 +416,13 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       let [(_, VFun Braty cty)] = outs
       boxSig@(inputTys, outputTys) <- compileSig Braty cty
       let boxFunTy = FunctionType inputTys outputTys bratExts
-      ((Port loadConst _, _ty), ()) <- compileConstDfg parent n boxSig $ \ctr -> do
-        setOp (H.input ctr) (OpIn (InputNode inputTys [("source", "Prim")]))
-        let ins = zip (Port (H.input ctr) <$> [0..]) inputTys
-        outs <- addNodeWithInputs n (H.parent ctr, OpCustom (CustomOp ext op boxFunTy [])) ins outputTys
-        setOp (H.output ctr) (OpOut (OutputNode outputTys [("source", "Prim")]))
-        for_ (zip (fst <$> outs) (Port (H.output ctr) <$> [0..])) addEdge
+      ((Port loadConst _, _ty), ()) <- compileConstDfg parent n boxSig $
+       \Ctr{parent, input, output} -> do
+        setOp input (OpIn (InputNode inputTys [("source", "Prim")]))
+        let ins = zip (Port input <$> [0..]) inputTys
+        outs <- addNodeWithInputs n (parent, OpCustom (CustomOp ext op boxFunTy [])) ins outputTys
+        setOp output (OpOut (OutputNode outputTys [("source", "Prim")]))
+        for_ (zip (fst <$> outs) (Port output <$> [0..])) addEdge
         pure ()
       pure $ default_edges loadConst
 
@@ -535,8 +545,10 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   let (nsx, hugr') = H.splitNamespace (hugr s) desc
   put s {hugr=hugr'}
   -- And pass that namespace into nested monad that compiles the DFG
-  let (h, ctr) = H.newWithIO nsx ("Box_" ++ show desc) (OpDFG $ DFG funTy [])
-  let (a, compState) = runState (contents ctr) (makeCS (g,cs,st) h)
+  let boxdesc = "Box_" ++ desc
+  let (h, root) = H.new nsx boxdesc (OpDFG $ DFG funTy [])
+  let (a, compState) = runState (makeIO boxdesc root >>= contents)
+                                (makeCS (g,cs,st) h)
   let nestedHugr = renameAndSortHugr (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
@@ -561,8 +573,9 @@ compileBratBox parent name (venv, src, tgt) cty = do
   let allInputTys = parmTys ++ inputTys
   let boxInnerSig = FunctionType allInputTys outputTys bratExts
 
-  (templatePort, _) <- compileConstDfg parent ("BB" ++ show name) (allInputTys, outputTys) $ \ctr -> do
-    let src_id = H.input ctr -- would be good to name "LiftedCapturedInputs"
+  (templatePort, _) <- compileConstDfg parent ("BB" ++ show name) (allInputTys, outputTys) $
+   -- ideally would name the Input "LiftedCapturedInputs"
+   \Ctr {parent, input = src_id, output} -> do
     setOp src_id (OpIn (InputNode allInputTys [("source", "compileBratBox")]))
     -- Now map ports in the BRAT Graph to their Hugr equivalents.
           -- Each captured value is read from an element of src_id, starting from 0
@@ -572,7 +585,7 @@ compileBratBox parent name (venv, src, tgt) cty = do
     st <- get
     put $ st {liftedOutPorts = M.fromList lifted}
     -- no need to return any holes
-    compileTarget (H.parent ctr) (H.output ctr) tgt
+    compileTarget parent output tgt
 
   -- Finally, we add a `Partial` node to supply the captured params.
   partialNode <- addNode "Partial" (parent, OpCustom $ partialOp boxInnerSig (length params))
@@ -855,7 +868,7 @@ compileModule venv moduleNode = do
             -- computation that produces this constant. We do so by making a FuncDefn
             -- that takes no arguments and produces the constant kernel graph value.
             thunkTy <- HTFunc . PolyFuncType [] . (\(ins, outs) -> FunctionType ins outs bratExts) <$> compileSig Kerny cty
-            pure (funcReturning [thunkTy], True, \Ctr {parent,input,output} -> do
+            pure (funcReturning [thunkTy], True, \Ctr {parent, input, output} -> do
               setOp input (OpIn (InputNode [] [("source", "analyseDecl")]))
               setOp output (OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
               wire <- compileKernBox parent (show input) (src, tgt) cty
@@ -894,7 +907,7 @@ compile :: Store
         -> VEnv
         -> BS.ByteString
 compile store ns g capSets venv =
-  let (hugr, moduleNode) = H.newModule ns "module"
+  let (hugr, moduleNode) = H.new ns "module" (OpMod ModuleOp)
   in evalState
     (trackM "compileFunctions" *>
      compileModule venv moduleNode *>
