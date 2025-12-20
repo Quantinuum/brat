@@ -10,9 +10,10 @@ module Data.HugrGraph(NodeId, PortId(..),
                      ) where
 
 import Brat.Naming
-
 import Bwd
 import Data.Hugr
+
+import Control.Monad.State (State, state)
 
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
@@ -30,12 +31,12 @@ data HugrGraph = HugrGraph {
     nameSupply :: Namespace
 } deriving (Eq, Show) -- we probably want a better `show`
 
-splitNamespace :: HugrGraph -> String -> (Namespace, HugrGraph)
-splitNamespace hugr n = let (nsx, nsNew) = split n (nameSupply hugr)
-                        in (nsx, hugr {nameSupply = nsNew})
+splitNamespace :: String -> State HugrGraph Namespace
+splitNamespace n = state $ \hugr -> let (nsx, nsNew) = split n (nameSupply hugr)
+                                    in (nsx, hugr {nameSupply = nsNew})
 
-freshNode :: HugrGraph -> NodeId -> String -> (NodeId, HugrGraph)
-freshNode hugr@(HugrGraph {root, parents, nameSupply}) parent nam =
+freshNode :: NodeId -> String -> State HugrGraph NodeId
+freshNode parent nam = state $ \hugr@(HugrGraph {root, parents, nameSupply}) ->
   case M.lookup parent parents of
     Nothing | parent /= root-> error "parent does not exist"
     _ -> let (freshName, newSupply) = fresh nam nameSupply
@@ -44,16 +45,17 @@ freshNode hugr@(HugrGraph {root, parents, nameSupply}) parent nam =
               parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
             })
 
-setFirstChildren :: HugrGraph -> NodeId -> [NodeId] -> HugrGraph
-setFirstChildren h p cs = h {first_children = M.alter (\Nothing -> Just cs) p (first_children h)}
+setFirstChildren :: NodeId -> [NodeId] -> State HugrGraph ()
+setFirstChildren p cs = state $ \h -> let nch = M.alter (\Nothing -> Just cs) p (first_children h)
+                                      in ((), h {first_children = nch})
 
-setOp :: HugrGraph -> NodeId -> HugrOp -> HugrGraph
+setOp :: NodeId -> HugrOp -> State HugrGraph ()
 -- Insist the parent exists
-setOp h@HugrGraph {parents, nodes} name op = case M.lookup name parents of
+setOp name op = state $ \h@HugrGraph {parents, nodes} -> case M.lookup name parents of
   Nothing -> error "name has no parent"
   Just _ ->
     -- alter + partial match is just to fail if key already present
-    h { nodes = M.alter (\Nothing -> Just op) name nodes }
+    ((), h { nodes = M.alter (\Nothing -> Just op) name nodes })
 
 new :: Namespace -> String -> HugrOp -> HugrGraph
 new ns nam op =
@@ -69,19 +71,20 @@ new ns nam op =
         nameSupply = ns'
       }
 
-addEdge :: HugrGraph -> (PortId NodeId, PortId NodeId) -> HugrGraph
-addEdge h@HugrGraph {..} (src@(Port s o), tgt@(Port t i)) = case (M.lookup s nodes, M.lookup t nodes) of
-  (Just _, Just _) -> h {
-    edges_out = addToMap s (o, tgt) edges_out,
-    edges_in = addToMap t (src, i) edges_in
-   }
-  _ -> error "addEdge to/from node not present"
+addEdge :: (PortId NodeId, PortId NodeId) -> State HugrGraph ()
+addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
+  ((), ) $ case (M.lookup s nodes, M.lookup t nodes) of
+    (Just _, Just _) -> h {
+      edges_out = addToMap s (o, tgt) edges_out,
+      edges_in = addToMap t (src, i) edges_in
+    }
+    _ -> error "addEdge to/from node not present"
  where
   addToMap :: Ord k => k -> v -> M.Map k [v] -> M.Map k [v]
   addToMap k v m = M.insert k (v:(fromMaybe [] $ M.lookup k m)) m
 
-addOrderEdge :: HugrGraph -> (NodeId, NodeId) -> HugrGraph
-addOrderEdge h (src, tgt) = addEdge h (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
+addOrderEdge :: (NodeId, NodeId) -> State HugrGraph ()
+addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
 
 edgeList :: HugrGraph -> [(PortId NodeId, PortId NodeId)]
 edgeList (HugrGraph {edges_out}) = [(Port n off, tgt) | (n, vs) <- M.assocs edges_out

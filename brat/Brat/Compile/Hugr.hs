@@ -69,6 +69,11 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
+type Compile = State CompilationState
+
+onHugr :: State HugrGraph a -> Compile a
+onHugr f = get >>= \s -> let (r, h') = runState f (hugr s) in put (s {hugr=h'}) >> pure r
+
 data Container = Ctr {
   parent :: NodeId,
   input :: NodeId,
@@ -94,35 +99,26 @@ registerFuncDef name hugrDef = do
   put (st { decls = M.insert name hugrDef (decls st) })
 
 freshNode :: String -> NodeId -> Compile NodeId
-freshNode name parent = do
-  s <- get
-  let (id, h) = H.freshNode (hugr s) parent name
-  put s {hugr = h}
-  pure id
+freshNode name parent = onHugr (H.freshNode parent name)
 
 makeIO :: String -> NodeId -> Compile Container
 makeIO name parent = do
   input <- freshNode (name ++ "_Input") parent
   output <- freshNode (name ++ "_Input") parent
-  s <- get
-  put s {hugr = H.setFirstChildren (hugr s) parent [input, output]}
+  onHugr $ H.setFirstChildren parent [input, output]
   pure $ Ctr {parent, input, output}
 
 freshNodeWithIO :: String -> NodeId -> Compile Container
-freshNodeWithIO name parent = do
-  root <- freshNode name parent
-  makeIO name root
+freshNodeWithIO name parent = freshNode name parent >>= makeIO name
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
-addEdge e = get >>= \st -> put (st { hugr = H.addEdge (hugr st) e })
+addEdge e = onHugr (H.addEdge e)
 
 addNode :: String -> (NodeId, HugrOp) -> Compile NodeId
 addNode nam (parent, op) = do
   name <- freshNode nam parent
   setOp name (addMetadata [("id", show name)] op)
   pure name
-
-type Compile = State CompilationState
 
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
@@ -177,7 +173,7 @@ compilePorts = compileGraphTypes . map snd
 
 setOp :: NodeId -> HugrOp -> Compile ()
 setOp name op | track ("addOp " ++ show op ++ show name) False = undefined
-setOp name op = get >>= \st -> put (st { hugr = H.setOp (hugr st) name op })
+setOp name op = onHugr (H.setOp name op)
 
 registerCompiled :: Name -> NodeId -> Compile ()
 registerCompiled from to | track (show from ++ " |-> " ++ show to) False = undefined
@@ -222,7 +218,7 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
 renameAndSortHugr :: HugrGraph -> Hugr Int
-renameAndSortHugr hugr = H.serialize (foldl H.addOrderEdge hugr orderEdges)
+renameAndSortHugr hugr = H.serialize (execState (for_ orderEdges H.addOrderEdge) hugr)
  where
   orderEdges :: [(NodeId, NodeId)]
   orderEdges =
@@ -541,9 +537,7 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   cs <- gets capSets
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  s <- get
-  let (nsx, hugr') = H.splitNamespace (hugr s) desc
-  put s {hugr=hugr'}
+  nsx <- onHugr (H.splitNamespace desc)
   -- And pass that namespace into nested monad that compiles the DFG
   let boxdesc = "Box_" ++ desc
   let h = H.new nsx boxdesc (OpDFG $ DFG funTy [])
@@ -750,8 +744,7 @@ makeConditional lbl parent discrim otherInputs cases = do
                else (error "Conditional output types didn't match")
   let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
-  s <- get
-  put s {hugr = H.setFirstChildren (hugr s) condId (snd <$> outTyss_cases)}
+  onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)
   addEdge (fst discrim, Port condId 0)
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
   pure $ zip (Port condId <$> [0..]) outTys
