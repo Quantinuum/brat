@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Data.HugrGraph(NodeId, PortId(..),
+module Data.HugrGraph(NodeId,
                       HugrGraph(root), -- do NOT export contents, keep abstract
                       new, splitNamespace,
                       freshNode,
