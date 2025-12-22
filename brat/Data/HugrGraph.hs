@@ -116,6 +116,8 @@ splice host hole add = case M.lookup hole (nodes host) of
                                                         | (src, out_edges) <- M.assocs (edges_out add)],
         first_children = union (first_children host) (M.mapKeys k $ M.map (k <$>) $ first_children add)
       }
+    other -> error $ "Expected DFG with sig " ++ show sig ++ "\nBut found: " ++ show other
+  other -> error $ "Expected a hole, found " ++ show other
   where
     prefixRoot :: NodeId -> NodeId
     prefixRoot (NodeId (MkName ids)) = let NodeId (MkName rs) = hole in NodeId $ MkName (rs ++ ids)

@@ -166,6 +166,7 @@ test-suite tests
                        Test.Elaboration,
                        Test.Failure,
                        Test.Graph,
+                       Test.HugrGraph,
                        Test.Libs,
                        Test.Parsing,
                        Test.Naming,
@@ -175,7 +176,8 @@ test-suite tests
                        Test.TypeArith,
                        Test.Util
 
-  build-depends:       base <5,
+  build-depends:       aeson,
+                       base <5,
                        brat,
                        tasty,
                        tasty-hunit,
