@@ -132,15 +132,14 @@ type StackAndIndices = (Bwd (NodeId, HugrOp) -- node is index, this is (parent, 
                        , M.Map NodeId Int)
 
 renameAndSort :: HugrGraph -> Hugr Int
-renameAndSort hugr@(HugrGraph {root, first_children, nodes, parents}) = Hugr (
+renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr (
     (first transNode) <$> (fst nodeStackAndIndices) <>> [],
     [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
   ) where
+    first_children k = M.findWithDefault [] k fc
     nodeStackAndIndices :: StackAndIndices
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
-                              init = case M.lookup root first_children of
-                                Nothing -> just_root
-                                Just fs -> foldl addNode just_root fs
+                              init = foldl addNode just_root (first_children root)
                           in foldl addNode init (M.keys parents)
     
     addNode :: StackAndIndices -> NodeId -> StackAndIndices
@@ -152,9 +151,8 @@ renameAndSort hugr@(HugrGraph {root, first_children, nodes, parents}) = Hugr (
        in case M.lookup n indices of
             Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children 
             Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
-                           chs = fromMaybe [] (M.lookup n first_children)
-                       -- finally add first_children immediately after parent
-                       in foldl addNode with_n chs 
+                       -- finally add first_children immediately after n
+                       in foldl addNode with_n (first_children n)
 
     transNode :: NodeId -> Int
     transNode = ((snd nodeStackAndIndices) M.!)
