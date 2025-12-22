@@ -11,13 +11,15 @@ module Data.HugrGraph(NodeId,
 
 import Brat.Naming (Namespace, Name, fresh, split)
 import Bwd
-import Data.Hugr
+import Data.Hugr hiding (const)
 
-import Control.Monad.State (State, state)
-
+import Control.Monad.State (State, execState, state)
+import Data.Foldable (for_)
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
+
+track = const id
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 
@@ -97,12 +99,40 @@ getParent HugrGraph {parents} n = parents M.! n
 getOp :: HugrGraph -> NodeId -> HugrOp
 getOp HugrGraph {nodes} n = nodes M.! n
 
--- this should be local to serialize but local `type` is not allowed
+serialize :: HugrGraph -> Hugr Int
+serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
+ where
+  orderEdges :: [(NodeId, NodeId)]
+  orderEdges =
+    -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
+    -- require an extra order edge from the source to the sibling that is ancestor of the target
+    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edgeList hugr,
+            (parentOf n1 /= parentOf n2),
+            requiresOrderEdge n1,
+            requiresOrderEdge n2] in
+    track ("interEdges: " ++ show interEdges) (walkUp <$> interEdges)
+
+  requiresOrderEdge :: NodeId -> Bool
+  requiresOrderEdge n = case getOp hugr n of
+    OpMod _ -> False
+    OpDefn _ -> False
+    OpConst _ -> False
+    _ -> True
+
+  parentOf = getParent hugr
+
+  -- Walk up the hierarchy from the tgt until we hit a node at the same level as src
+  walkUp :: (NodeId, NodeId) -> (NodeId, NodeId)
+  walkUp (src, tgt) | parentOf src == parentOf tgt = (src, tgt)
+  walkUp (_, tgt) | parentOf tgt == tgt = error "Tgt was not descendant of Src-parent"
+  walkUp (src, tgt) = walkUp (src, parentOf tgt)
+
+-- this should be local to renameAndSort but local `type` is not allowed
 type StackAndIndices = (Bwd (NodeId, HugrOp) -- node is index, this is (parent, op)
                        , M.Map NodeId Int)
 
-serialize :: HugrGraph -> Hugr Int
-serialize hugr@(HugrGraph {root, nodes, parents}) = Hugr (
+renameAndSort :: HugrGraph -> Hugr Int
+renameAndSort hugr@(HugrGraph {root, nodes, parents}) = Hugr (
     (first transNode) <$> (fst nodeStackAndIndices) <>> [],
     [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
   ) where

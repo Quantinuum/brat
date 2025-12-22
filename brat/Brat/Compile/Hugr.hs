@@ -217,35 +217,8 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
  )
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
-renameAndSortHugr :: HugrGraph -> Hugr Int
-renameAndSortHugr hugr = H.serialize (execState (for_ orderEdges H.addOrderEdge) hugr)
- where
-  orderEdges :: [(NodeId, NodeId)]
-  orderEdges =
-    -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
-    -- require an extra order edge from the source to the sibling that is ancestor of the target
-    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- H.edgeList hugr,
-            (parentOf n1 /= parentOf n2),
-            requiresOrderEdge (H.getOp hugr n1),
-            requiresOrderEdge (H.getOp hugr n2)] in
-    track ("interEdges: " ++ show interEdges) (walkUp <$> interEdges)
-
-  requiresOrderEdge :: HugrOp -> Bool
-  requiresOrderEdge (OpMod _) = False
-  requiresOrderEdge (OpDefn _) = False
-  requiresOrderEdge (OpConst _) = False
-  requiresOrderEdge _ = True
-
-  parentOf = H.getParent hugr
-
-  -- Walk up the hierarchy from the tgt until we hit a node at the same level as src
-  walkUp :: (NodeId, NodeId) -> (NodeId, NodeId)
-  walkUp (src, tgt) | parentOf src == parentOf tgt = (src, tgt)
-  walkUp (_, tgt) | parentOf tgt == tgt = error "Tgt was not descendant of Src-parent"
-  walkUp (src, tgt) = walkUp (src, parentOf tgt)
-
 dumpJSON :: Compile BS.ByteString
-dumpJSON = gets hugr <&> (encode . renameAndSortHugr) 
+dumpJSON = gets hugr <&> (encode . H.serialize)
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
@@ -543,7 +516,7 @@ compileConstDfg parent desc (inTys, outTys) contents = do
   let h = H.new nsx boxdesc (OpDFG $ DFG funTy [])
   let (a, compState) = runState (makeIO boxdesc (root h) >>= contents)
                                 (makeCS (g,cs,st) h)
-  let nestedHugr = renameAndSortHugr (hugr compState)
+  let nestedHugr = H.serialize (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
   constNode <- addNode ("ConstTemplate_" ++ desc) (parent, OpConst (ConstOp (HVFunction nestedHugr)))
