@@ -9,7 +9,7 @@ module Data.HugrGraph(NodeId,
                       edgeList, serialize
                      ) where
 
-import Brat.Naming
+import Brat.Naming (Namespace, Name, fresh, split)
 import Bwd
 import Data.Hugr
 
