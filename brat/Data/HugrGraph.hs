@@ -5,11 +5,11 @@ module Data.HugrGraph(NodeId,
                       freshNode,
                       setFirstChildren,
                       setOp, getParent, getOp,
-                      addEdge, addOrderEdge,
-                      edgeList, serialize
+                      addEdge, addOrderEdge, edgeList,
+                      splice, serialize
                      ) where
 
-import Brat.Naming (Namespace, Name, fresh, split)
+import Brat.Naming (Namespace, Name(..), fresh, split)
 import Bwd
 import Data.Hugr hiding (const)
 
@@ -98,6 +98,34 @@ getParent HugrGraph {parents} n = parents M.! n
 
 getOp :: HugrGraph -> NodeId -> HugrOp
 getOp HugrGraph {nodes} n = nodes M.! n
+
+--- Replaces the specified node of the first Hugr, with the second Hugr.
+splice :: HugrGraph -> NodeId -> HugrGraph -> HugrGraph
+splice host hole add = case M.lookup hole (nodes host) of
+  Just (OpCustom (CustomOp "BRAT" "Hole" sig _)) -> case M.lookup (root add) (nodes add) of
+    Just (OpDFG (DFG sig' _)) | sig == sig' -> {-inlineDFG hole-} host {
+        -- prefer host entry for parent of (`hole` == root of `add`)
+        parents = union (parents host) (M.mapKeys k $ M.map k $ parents add),
+        -- override host `nodes` for `hole` with new (DFG)
+        nodes = M.union (M.mapKeys k (nodes add)) (nodes host),
+        edges_in  = union (edges_in host)  $ M.fromList [(k tgt, [(Port (k srcNode) srcPort, tgtPort)
+                                                                 | (Port srcNode srcPort, tgtPort) <- in_edges ])
+                                                        | (tgt, in_edges ) <- M.assocs (edges_in add)],
+        edges_out = union (edges_out host) $ M.fromList [(k src, [(srcPort, Port (k tgtNode) tgtPort)
+                                                                 | (srcPort, Port tgtNode tgtPort) <- out_edges])
+                                                        | (src, out_edges) <- M.assocs (edges_out add)],
+        first_children = union (first_children host) (M.mapKeys k $ M.map (k <$>) $ first_children add)
+      }
+  where
+    prefixRoot :: NodeId -> NodeId
+    prefixRoot (NodeId (MkName ids)) = let NodeId (MkName rs) = hole in NodeId $ MkName (rs ++ ids)
+
+    keyMap :: M.Map NodeId NodeId -- translate `add` keys into `host` by prefixing with `hole`.
+    -- parent is definitive list of non-root nodes
+    keyMap = M.fromList $ (root add, hole):[(k, prefixRoot k) | k <- M.keys (parents add)]
+
+    union = M.unionWith (\_ _ -> error "keys not disjoint")
+    k = (keyMap M.!)
 
 serialize :: HugrGraph -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
