@@ -25,19 +25,26 @@ addNode nam parent op = do
   pure name
 
 getSpliceTests :: IO TestTree
-getSpliceTests = createDirectoryIfMissing True outputDir >> pure testSplice
+getSpliceTests = do
+  createDirectoryIfMissing True outputDir
+  pure $ testGroup "splice" [testSplice False, testSplice True]
 
-testSplice :: TestTree
-testSplice = testCaseInfo "splice" $ do
+testSplice :: Bool -> TestTree
+testSplice inline = testCaseInfo name $ do
   let (h, holeId) = host
-  BS.writeFile (outputDir </> "host.json") (encode $ H.serialize h)
-  BS.writeFile (outputDir </> "insertee.json") (encode $ H.serialize dfgHugr)
-  let resHugr@(Hugr (ns, _))  = H.serialize $ H.splice h holeId dfgHugr
-  let outFile = outputDir </> "result.json"
+  let outPrefix = outputDir </> name
+  BS.writeFile (outPrefix ++ "_host.json") (encode $ H.serialize h)
+  BS.writeFile (outPrefix ++ "_insertee.json") (encode $ H.serialize dfgHugr)
+  let spliced = H.splice h holeId dfgHugr
+  let resHugr@(Hugr (ns, _))  = H.serialize $ if inline
+        then execState (inlineDFG holeId) spliced else spliced
+  let outFile = outPrefix ++ "_result.json"
   BS.writeFile outFile $ encode resHugr
   assertBool "Should be no holes now" $ isNothing $ find (isJust . isHole) $ snd <$> ns
+  -- if inline, we should assert there's no DFG either
   pure $ "Written to " ++ outFile ++ " pending validation"
  where
+  name = if inline then "inline" else "noinline"
   host :: (HugrGraph, NodeId)
   host = swap $ flip runState (H.new N.root "root" rootDefn) $ do
     root <- get <&> H.root
