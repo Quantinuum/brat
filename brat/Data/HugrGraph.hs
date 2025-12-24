@@ -101,8 +101,8 @@ getOp HugrGraph {nodes} n = nodes M.! n
 
 --- Replaces the specified node of the first Hugr, with the second Hugr.
 splice :: HugrGraph -> NodeId -> HugrGraph -> HugrGraph
-splice host hole add = case M.lookup hole (nodes host) of
-  Just (OpCustom (CustomOp "BRAT" "Hole" sig _)) -> case M.lookup (root add) (nodes add) of
+splice host hole add = case (M.lookup hole (nodes host) >>= isHole) of
+  Just (_, sig) -> case M.lookup (root add) (nodes add) of
     Just (OpDFG (DFG sig' _)) | sig == sig' -> {-inlineDFG hole-} host {
         -- prefer host entry for parent of (`hole` == root of `add`)
         parents = union (parents host) (M.mapKeys k $ M.map k $ parents add),

@@ -7,6 +7,8 @@ import Data.Hugr
 import Control.Monad.State (State, execState, get, runState)
 import Data.Aeson (encode)
 import Data.Functor ((<&>))
+import Data.Maybe (isJust, isNothing)
+import Data.List (find)
 import qualified Data.ByteString.Lazy as BS
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
@@ -30,9 +32,10 @@ testSplice = testCaseInfo "splice" $ do
   let (h, holeId) = host
   BS.writeFile (outputDir </> "host.json") (encode $ H.serialize h)
   BS.writeFile (outputDir </> "insertee.json") (encode $ H.serialize dfgHugr)
-  let resHugr = H.splice h holeId dfgHugr
+  let resHugr@(Hugr (ns, _))  = H.serialize $ H.splice h holeId dfgHugr
   let outFile = outputDir </> "result.json"
-  BS.writeFile outFile (encode $ H.serialize resHugr)
+  BS.writeFile outFile $ encode resHugr
+  assertBool "Should be no holes now" $ isNothing $ find (isJust . isHole) $ snd <$> ns
   pure $ "Written to " ++ outFile ++ " pending validation"
  where
   host :: (HugrGraph, NodeId)

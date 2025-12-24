@@ -455,6 +455,11 @@ holeOp :: Int -> FunctionType -> CustomOp
 holeOp idx sig = CustomOp "BRAT" "Hole" sig
                         [TANat idx, TAType (HTFunc (PolyFuncType [] sig))]
 
+isHole :: HugrOp -> Maybe (Int, FunctionType)
+isHole (OpCustom (CustomOp "BRAT" "Hole" sig args)) =
+  let [TANat idx, _] = args in Just (idx, sig) -- crash rather than return false for bad args
+isHole _ = Nothing
+
 -- TYPE ARGS:
 --  * A length-2 sequence comprising:
 --    * A sequence of types (the inputs of outerSig)
