@@ -6,15 +6,17 @@ module Data.HugrGraph(NodeId,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge, edgeList,
-                      splice, serialize
+                      splice, inlineDFG,
+                      serialize
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh, split)
 import Bwd
 import Data.Hugr hiding (const)
 
-import Control.Monad.State (State, execState, state)
+import Control.Monad.State (State, execState, state, get, put, modify)
 import Data.Foldable (for_)
+import Data.Functor ((<&>))
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
@@ -129,6 +131,69 @@ splice host hole add = case (M.lookup hole (nodes host) >>= isHole) of
     union = M.unionWith (\_ _ -> error "keys not disjoint")
     k = (keyMap M.!)
 
+inlineDFG :: NodeId -> State HugrGraph ()
+inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
+  (Just (OpDFG _)) -> do
+    let newp = (parents h) M.! dfg
+    let [inp, out] = (first_children h) M.! dfg
+    -- rewire edges
+    dfg_in_map <- takeInEdgeMap dfg
+    input_out_map <- takeOutEdges inp
+    for_ input_out_map $ \(outp, dest) -> addEdge (dfg_in_map M.! outp, dest)
+    dfg_out_map <- takeOutEdges dfg
+    output_in_map <- takeInEdgeMap out
+    for_ dfg_out_map $ \(outp, dest) -> addEdge (output_in_map M.! outp, dest)
+    -- remove dfg, inp, out; reparent children of dfg
+    let to_remove = [dfg, inp, out]
+    modify $ \h -> h {
+      first_children = M.delete dfg (first_children h), -- inp/out shouldn't have any children
+      nodes = foldl (flip M.delete) (nodes h) to_remove,
+      -- TODO this is O(size of hugr) reparenting. Either add a child map,
+      -- or combine with splicing so we only iterate through the inserted
+      -- hugr (which we do anyway) rather than the host.
+      parents = M.fromList [(n, if p==dfg then newp else p)
+                          | (n,p) <- M.assocs (parents h), not (elem n to_remove)]
+    }
+  other -> error $ "Expected DFG, found " ++ show other
+ where
+  takeInEdgeMap n = takeInEdges n <&> \es -> M.fromList [(p, src) | (src, p) <- es]
+
+takeInEdges :: NodeId -> State HugrGraph [(PortId NodeId, Int)]
+takeInEdges tgt = do
+  h <- get
+  let (removed_edges, edges_in') = first (fromMaybe []) $ M.updateLookupWithKey
+        (\_ _ -> Nothing) tgt (edges_in h)
+  let edges_out' = foldl removeFromOutMap (edges_out h) removed_edges
+  put h {edges_in=edges_in', edges_out=edges_out'}
+  pure removed_edges
+ where
+  removeFromOutMap :: M.Map NodeId [(Int, PortId NodeId)] -> (PortId NodeId, Int) -> M.Map NodeId [(Int, PortId NodeId)]
+  removeFromOutMap eos (Port src outport, inport) = M.alter (\(Just es) -> Just $ removeFromOutList es (outport, Port tgt inport)) src eos
+
+  removeFromOutList :: [(Int, PortId NodeId)] -> (Int, PortId NodeId) -> [(Int, PortId NodeId)]
+  removeFromOutList [] _ = error "Out-edge not found"
+  removeFromOutList (e:es) e' | e == e' = es
+  removeFromOutList ((outport, _):_) (outport', _) | outport == outport' = error "Wrong out-edge"
+  removeFromOutList (e:es) r = e:(removeFromOutList es r)
+
+takeOutEdges :: NodeId -> State HugrGraph [(Int, PortId NodeId)]
+takeOutEdges src = do
+  h <- get
+  let (removed_edges, edges_out') = first (fromMaybe []) $ M.updateLookupWithKey
+       (\_ _ -> Nothing) src (edges_out h)
+  let edges_in' = foldl removeFromInMap (edges_in h) removed_edges
+  put h {edges_in=edges_in', edges_out=edges_out'}
+  pure removed_edges
+ where
+  removeFromInMap :: M.Map NodeId [(PortId NodeId, Int)] -> (Int, PortId NodeId) -> M.Map NodeId [(PortId NodeId, Int)]
+  removeFromInMap eis (outport, Port tgt inport) = M.alter (\(Just es) -> Just $ removeFromInList es (Port src outport, inport)) tgt eis
+
+  removeFromInList:: [(PortId NodeId, Int)] -> (PortId NodeId, Int) -> [(PortId NodeId, Int)]
+  removeFromInList [] _ = error "In-edge not found"
+  removeFromInList (e:es) e' | e==e' = es
+  removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
+  removeFromInList (e:es) r = e:(removeFromInList es r)
+
 serialize :: HugrGraph -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
  where
@@ -171,7 +236,7 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
                               init = foldl addNode just_root (first_children root)
                           in foldl addNode init (M.keys parents)
-    
+
     addNode :: StackAndIndices -> NodeId -> StackAndIndices
     addNode ins n = case M.lookup n (snd ins) of
       (Just _) -> ins
