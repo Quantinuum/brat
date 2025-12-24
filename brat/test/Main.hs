@@ -7,6 +7,7 @@ import Test.Graph
 import Test.Compile.Hugr
 import Test.Elaboration
 import Test.Failure
+import Test.HugrGraph
 import Test.Libs
 import Test.Naming
 import Test.Parsing
@@ -64,6 +65,7 @@ main = do
   parsingTests <- getParsingTests
   compilationTests <- setupCompilationTests
   graphTests <- getGraphTests
+  spliceTests <- getSpliceTests
   let coroTests = testGroup "coroutine"
        [testCase "coroT1" $ assertChecking coroT1
        ,testCase "coroT2" $ assertCheckingFail "Typechecking blocked on" coroT2
@@ -82,4 +84,5 @@ main = do
                                 ,compilationTests
                                 ,typeArithTests
                                 ,coroTests
+                                ,spliceTests
                                 ]
