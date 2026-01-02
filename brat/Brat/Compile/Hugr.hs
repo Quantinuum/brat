@@ -691,9 +691,7 @@ compileModule venv moduleNode = do
       -- All top-level functions are compiled into Box-es, which should look like this:
       [(Ex input 0, _)] | Just (BratNode (Box src tgt) _ outs) <- M.lookup input ns ->
         case outs of
-          [(_, VFun Braty cty)] -> do
-            (inTys, outTys) <- compileSig Braty cty
-            pure (PolyFuncType [] (FunctionType inTys outTys bratExts), False, flip compileBox (src, tgt))
+          [(_, VFun Braty cty)] -> error "Can't compile classical Brat"
           [(_, VFun Kerny cty)] -> do
             -- We're compiling, e.g.
             --   f :: { Qubit -o Qubit }
