@@ -22,18 +22,18 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
--- import Debug.Trace
+import Debug.Trace
 
 -- Used for messages about thread forking / spawning
 thTrace = const id
 --thTrace = trace
 
 trackM :: Monad m => String -> m ()
-trackM = const (pure ())
---trackM = traceM
+--trackM = const (pure ())
+trackM = traceM
 
-track = const id
---track = trace
+--track = const id
+track = trace
 trackShowId x = track (show x) x
 
 -- Data for using a type alias. E.g.
