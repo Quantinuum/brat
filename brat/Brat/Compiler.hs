@@ -24,7 +24,7 @@ import Control.Monad (when)
 import Control.Monad.Except
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
-import Data.HugrGraph (NodeId)
+import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import qualified Data.Map as M
 import System.Exit (die)
 
@@ -87,7 +87,7 @@ compileToGraph libDirs file = do
 
 -- Map from box name to (compiled bytes, list of splices)
 -- TODO: should keep Hugr as struct not ByteString
-type CompilationResult = M.Map Name (BS.ByteString, [(NodeId, OutPort)])
+type CompilationResult = M.Map Name (HugrGraph, [(NodeId, OutPort)])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
@@ -100,8 +100,8 @@ compileFile libDirs file = do
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
-  Right hs -> for_ (M.toList hs) $ \(n, (bs, splices)) -> do
+  Right hs -> for_ (M.toList hs) $ \(n, (hugr, splices)) -> do
     putStrLn $ "Compiled box: " ++ show n
-    BS.putStr bs
+    BS.putStr (to_json hugr)
     putStrLn $ "With splices: " ++ show splices
   Left err -> die (show err)

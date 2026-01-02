@@ -1,7 +1,7 @@
 module Test.Compile.Hugr where
 
 import Control.Monad (forM)
-
+import Data.HugrGraph (to_json)
 import Brat.Compiler (compileFile, CompilingHoles(..))
 import Test.Checking (expectedCheckingFails)
 import Test.Parsing (expectedParsingFails)
@@ -64,10 +64,10 @@ compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
     Right hs ->
       let outputExt = if file `elem` invalidExamples then "json.invalid" else "json"
-      in mconcat <$> (forM (M.toList hs) $ \(boxName, (bs, splices)) -> do
+      in mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
         -- ignore splices for now
         let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ "." ++ outputExt)
-        BS.writeFile outFile bs
+        BS.writeFile outFile (to_json hugr)
         pure $ "Written to " ++ outFile ++ " pending validation\n")
     Left (CompilingHoles _) -> pure "Skipped as contains holes"
 

@@ -7,12 +7,15 @@ module Data.HugrGraph(NodeId,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge, edgeList,
                       splice, inlineDFG,
-                      serialize
+                      serialize, to_json
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh, split)
 import Bwd
 import Data.Hugr hiding (const)
+
+import qualified Data.ByteString.Lazy as BS
+import Data.Aeson (encode)
 
 import Control.Monad.State (State, execState, state, get, put, modify)
 import Data.Foldable (for_)
@@ -193,6 +196,9 @@ takeOutEdges src = do
   removeFromInList (e:es) e' | e==e' = es
   removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
   removeFromInList (e:es) r = e:(removeFromInList es r)
+
+to_json :: HugrGraph -> BS.ByteString
+to_json = encode . serialize
 
 serialize :: HugrGraph -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)

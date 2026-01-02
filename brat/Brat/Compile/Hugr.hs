@@ -12,7 +12,7 @@ module Brat.Compile.Hugr (compileKernel) where
 import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..), CaptureSets)
 import Brat.Checker.Helpers (binderToValue)
-import Brat.Checker.Types (Store(..), VEnv)
+import Brat.Checker.Types (Store(..))
 import Brat.Eval (eval, evalCTy, kindType)
 import Brat.Graph hiding (lookupNode)
 import Brat.Naming hiding (root)
@@ -29,15 +29,11 @@ import qualified Data.HugrGraph as H
 import Hasochism
 
 import Control.Monad (unless)
-import Data.Aeson
-import Data.Bifunctor (first, second)
-import qualified Data.ByteString.Lazy as BS
+import Data.Bifunctor (second)
 import Data.Foldable (traverse_, for_)
-import Data.Functor ((<&>), ($>))
-import Data.List (sortBy)
+import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust)
-import Data.Ord (comparing)
 import Data.Traversable (for)
 import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
@@ -188,9 +184,6 @@ compileConst parent tm ty = do
     _ -> addNode "LoadConst" (parent, OpLoadConstant (LoadConstantOp ty))
   addEdge (Port constId 0, Port loadId 0)
   pure loadId
-
-dumpJSON :: Compile BS.ByteString
-dumpJSON = gets hugr <&> (encode . H.serialize)
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
@@ -577,8 +570,8 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
 
 compileKernel :: (Namespace, Store, Graph)
               -> String -> Name
-              -> (BS.ByteString, [(NodeId, OutPort)])
-compileKernel (nsp, store, g@(ns, es)) desc name = (hugr, holelist) where
+              -> (HugrGraph, [(NodeId, OutPort)])
+compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
   (src_tgt, outs) = case ns M.! name of
     (BratNode Id _ _) -> case [srcPort | (srcPort, _, In tgt _) <- es, tgt == name ] of
       -- All top-level functions are compiled into Box-es, which should look like this:
@@ -588,12 +581,12 @@ compileKernel (nsp, store, g@(ns, es)) desc name = (hugr, holelist) where
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
   startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
-  (hugr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
+  (hgr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
     ctr <- makeIO desc (root startHugr)
     compileBox ctr src_tgt
-    json <- dumpJSON
+    hugr <- gets hugr
     hs <- gets holes
-    pure (json, hs <>> [])
+    pure (hugr, hs <>> [])
 
   (hInTys, hOutTys) = runLocalChecking (evalCTy S0 Kerny cty <&> (\(ss :->> ts) -> (compileRo ss, compileRo ts)))
 
