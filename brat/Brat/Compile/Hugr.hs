@@ -60,12 +60,6 @@ data CompilationState = CompilationState
  , liftedOutPorts :: M.Map OutPort (PortId NodeId)
  , holes :: Bwd (NodeId, OutPort) -- where to splice in result of another Brat computation
  , store :: Store -- Kinds and values of global variables, for compiling types
- -- A map from Id nodes representing functions and values in the brat graph,
- -- to the FuncDef nodes that we create for them. Each of these will need an
- -- *extra* call, beyond what's required in Brat, to compute the value
- -- of the decl (e.g. `x :: Int` `x = 1+2` requires calling the FuncDefn to calculate 1+2).
- -- Note that in the future this could be extended to allow top-level Consts too.
- , decls :: M.Map Name NodeId
  }
 
 type Compile = State CompilationState
@@ -88,13 +82,7 @@ makeCS (g, store) hugr =
     , holes = B0
     , liftedOutPorts = M.empty
     , store = store
-    , decls = M.empty
     }
-
-registerFuncDef :: Name -> NodeId -> Compile ()
-registerFuncDef name hugrDef = do
-  st <- get
-  put (st { decls = M.insert name hugrDef (decls st) })
 
 freshNode :: String -> NodeId -> Compile NodeId
 freshNode name parent = onHugr (H.freshNode parent name)
@@ -293,25 +281,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
   compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
-    Just _ -> do
-      -- reference to a top-level decl. Every such should be in the decls map.
-      -- We need to return value of each type (perhaps to be indirectCalled by successor).
-      -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
-      hTys <- in_edges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
-
-      -- ALAN do we do this? Or rather than call a function (returning a kernel thunk),
-      -- do we make a hole so that the interpreter splices in the kernel thunk as a Hugr?
-      decls <- gets decls
-      let funcDef = decls M.! name
-      nod <- addNode ("direct_call(" ++ show funcDef ++ ")")
-                     (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
-      -- the only input
-      pure $ Just (nod, [(Port funcDef 0, 0)])
-      -- ALAN or ??? if this is right, can remove decls altogether
-      let name = undefined -- is name an idNode? Take it's input?
-      nod <- addHole parent (FunctionType [] hTys bratExts) (Ex name 0)
-      pure $ Just (nod, []) -- no edges?? Need one edge in/out per arg/return?
-      --Maybe this doesn't happen in kernels since we don't do indirect calls?
+    Just _ -> error "Kernel contained call to global; should have been a splice"
     _ -> do
       (ns, _) <- gets bratGraph
       let node = ns M.! name
@@ -606,9 +576,9 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
            [(Port constId 0, outTy)] [outTy]
 
 compileKernel :: (Namespace, Store, Graph)
-              -> VEnv -> String -> Name
+              -> String -> Name
               -> (BS.ByteString, [(NodeId, OutPort)])
-compileKernel (nsp, store, g@(ns, es)) venv desc name = (hugr, holelist) where
+compileKernel (nsp, store, g@(ns, es)) desc name = (hugr, holelist) where
   (src_tgt, outs) = case ns M.! name of
     (BratNode Id _ _) -> case [srcPort | (srcPort, _, In tgt _) <- es, tgt == name ] of
       -- All top-level functions are compiled into Box-es, which should look like this:
@@ -619,12 +589,6 @@ compileKernel (nsp, store, g@(ns, es)) venv desc name = (hugr, holelist) where
     [(_, VFun Kerny cty)] -> cty
   startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
   (hugr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
-    bodies <- for decls $ \(fnName, idNode) -> do
-      let moduleNod = undefined
-      --(funTy, body) <- analyseDecl idNode
-      ctr@Ctr {parent} <- freshNodeWithIO (show fnName ++ "_def") moduleNod
-      --setOp parent (OpDefn $ FuncDefn (show fnName) funTy [])
-      registerFuncDef idNode parent
     ctr <- makeIO desc (root startHugr)
     compileBox ctr src_tgt
     json <- dumpJSON
@@ -637,12 +601,3 @@ compileKernel (nsp, store, g@(ns, es)) venv desc name = (hugr, holelist) where
   runLocalChecking (Ret t) = t
   runLocalChecking (Req (ELup e) k) = runLocalChecking (k (M.lookup e (valueMap store)))
   runLocalChecking (Req _ _) = error "Compile monad found a command it can't handle"
-
-  -- top-level decls that are not Prims. RHS is the brat idNode
-  decls :: [(QualName, Name)]
-  decls = do -- in list monad, no Compile here
-            (fnName, wires) <- M.toList venv
-            let (Ex idNode _) = end (fst $ head wires) -- would be better to check same for all rather than just head
-            case hasPrefix ["checking","globals","decl"] idNode of
-              Just _ -> pure (fnName, idNode) -- assume all ports are 0,1,2...
-              Nothing -> []
