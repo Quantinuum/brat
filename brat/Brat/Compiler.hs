@@ -7,18 +7,25 @@ module Brat.Compiler (printAST
                      ,CompilingHoles(..)
                      ) where
 
-import Brat.Checker.Types (TypedHole)
+import Brat.Checker.Types (TypedHole, Modey(Kerny))
 import Brat.Compile.Hugr
 import Brat.Dot (toDotString)
 import Brat.Elaborator
 import Brat.Error
+import Brat.Graph(Node(BratNode), NodeType(Box))
 import Brat.Load
-import Brat.Naming (Namespace, root, split)
+import Brat.Naming (Namespace, root, split, Name)
+import Brat.Syntax.Port (OutPort)
+import Brat.Syntax.Value (Val(VFun))
+
 
 import Control.Exception (evaluate)
 import Control.Monad (when)
 import Control.Monad.Except
 import qualified Data.ByteString.Lazy as BS
+import Data.Foldable (for_)
+import Data.HugrGraph (NodeId)
+import qualified Data.Map as M
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
@@ -78,15 +85,23 @@ compileToGraph libDirs file = do
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
 
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
+-- Map from box name to (compiled bytes, list of splices)
+-- TODO: should keep Hugr as struct not ByteString
+type CompilationResult = M.Map Name (BS.ByteString, [(NodeId, OutPort)])
+
+compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
-  (newRoot, (venv, _, holes, defs, outerGraph, capSets)) <- compileToGraph libDirs file
+  (newRoot, (_, _, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   case holes of
-    [] -> Right <$> evaluate -- turns 'error' into IO 'die'
-                    (compile defs newRoot outerGraph capSets venv)
+    [] -> let boxes :: [Name] = [n | (n, BratNode (Box _ _) [] [(_, VFun Kerny _)]) <- (M.toList $ fst outerGraph)]
+          in Right <$> (evaluate -- turns 'error' into IO 'die'
+                    $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- boxes])
     hs -> pure $ Left (CompilingHoles hs)
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
-  Right bs -> BS.putStr bs
+  Right hs -> for_ (M.toList hs) $ \(n, (bs, splices)) -> do
+    putStrLn $ "Compiled box: " ++ show n
+    BS.putStr bs
+    putStrLn $ "With splices: " ++ show splices
   Left err -> die (show err)
