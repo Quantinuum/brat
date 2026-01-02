@@ -62,11 +62,11 @@ data CompilationState = CompilationState
  , holes :: Bwd Name -- for Kernel graphs, list of Splices found in order
  , store :: Store -- Kinds and values of global variables, for compiling types
  -- A map from Id nodes representing functions and values in the brat graph,
- -- to the FuncDef nodes that we create for them. The bool, if true, says that
- -- we must insert an *extra* call, beyond what's required in Brat, to compute the value
+ -- to the FuncDef nodes that we create for them. Each of these will need an
+ -- *extra* call, beyond what's required in Brat, to compute the value
  -- of the decl (e.g. `x :: Int` `x = 1+2` requires calling the FuncDefn to calculate 1+2).
  -- Note that in the future this could be extended to allow top-level Consts too.
- , decls :: M.Map Name (NodeId, Bool)
+ , decls :: M.Map Name NodeId
  }
 
 type Compile = State CompilationState
@@ -93,7 +93,7 @@ makeCS (g, cs, store) hugr =
     , decls = M.empty
     }
 
-registerFuncDef :: Name -> (NodeId, Bool) -> Compile ()
+registerFuncDef :: Name -> NodeId -> Compile ()
 registerFuncDef name hugrDef = do
   st <- get
   put (st { decls = M.insert name hugrDef (decls st) })
@@ -292,21 +292,9 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       hTys <- in_edges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
 
       decls <- gets decls
-      let (funcDef, extra_call) = decls M.! name
-      nod <- if extra_call
-            then addNode ("direct_call(" ++ show funcDef ++ ")")
-                          (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
-            -- We are loading idNode as a value (not an Eval'd thing), and it is a FuncDef directly
-            -- corresponding to a Brat TLD (not that produces said TLD when eval'd)
-            else case hTys of
-              [HTFunc poly@(PolyFuncType [] _)] ->
-                addNode ("load_thunk(" ++ show funcDef ++ ")")
-                (parent, OpLoadFunction (LoadFunctionOp poly [] (FunctionType [] [HTFunc poly] [])))
-              [HTFunc (PolyFuncType args _)] -> error $ unwords ["Unexpected type args to"
-                                                                ,show funcDef ++ ":"
-                                                                ,show args
-                                                                ]
-              _ -> error $ "Expected a function argument when loading thunk, got: " ++ show hTys
+      let funcDef = decls M.! name
+      nod <- addNode ("direct_call(" ++ show funcDef ++ ")")
+                     (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
       -- the only input
       pure $ Just (nod, [(Port funcDef 0, 0)])
     _ -> do
@@ -664,10 +652,10 @@ compileModule venv moduleNode = do
   -- Prepare FuncDef nodes for all functions. Every "noun" also requires a Function
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
-    (funTy, extra_call, body) <- analyseDecl idNode
+    (funTy, body) <- analyseDecl idNode
     ctr@Ctr {parent} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
     setOp parent (OpDefn $ FuncDefn (show fnName) funTy [])
-    registerFuncDef idNode (parent, extra_call)
+    registerFuncDef idNode parent
     pure (body ctr)
     )
   for_ bodies (\body -> do
@@ -680,10 +668,10 @@ compileModule venv moduleNode = do
     body)
  where
   -- Given the Brat-Graph Id node for the decl, work out how to compile it (later);
-  -- return the type of the Hugr FuncDefn, whether said FuncDefn requires an extra Call,
-  -- and the procedure for compiling the contents of the FuncDefn for execution later,
-  -- *after* all such FuncDefns have been registered
-  analyseDecl :: Name -> Compile (PolyFuncType, Bool, Container -> Compile ())
+  -- return the type of the Hugr FuncDefn,  and the procedure for compiling the
+  -- contents of the FuncDefn for execution later, *after* all such FuncDefns have
+  -- been registered
+  analyseDecl :: Name -> Compile (PolyFuncType, Container -> Compile ())
   analyseDecl idNode = do
     (ns, es) <- gets bratGraph
     let srcPortTys = [(srcPort, ty) | (srcPort, ty, In tgt _) <- es, tgt == idNode ]
@@ -700,7 +688,7 @@ compileModule venv moduleNode = do
             -- computation that produces this constant. We do so by making a FuncDefn
             -- that takes no arguments and produces the constant kernel graph value.
             thunkTy <- HTFunc . PolyFuncType [] . (\(ins, outs) -> FunctionType ins outs bratExts) <$> compileSig Kerny cty
-            pure (funcReturning [thunkTy], True, \Ctr {parent, input, output} -> do
+            pure (funcReturning [thunkTy], \Ctr {parent, input, output} -> do
               setOp input (OpIn (InputNode [] [("source", "analyseDecl")]))
               setOp output (OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
               wire <- compileKernBox parent (show input) (src, tgt) cty
@@ -708,7 +696,7 @@ compileModule venv moduleNode = do
           _ -> error "Box should have exactly one output of Thunk type"
       _ -> do -- a computation, or several values
         outs <- compilePorts srcPortTys -- note compiling already-erased types, is this right?
-        pure (funcReturning outs, True, compileNoun outs (map fst srcPortTys))
+        pure (funcReturning outs, compileNoun outs (map fst srcPortTys))
 
   -- top-level decls that are not Prims. RHS is the brat idNode
   decls :: [(QualName, Name)]
