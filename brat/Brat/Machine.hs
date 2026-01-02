@@ -1,9 +1,11 @@
 module Brat.Machine (runInterpreter) where
 
 import Brat.Checker.Monad (CaptureSets)
+import Brat.Checker.Types (Store)
 import Brat.Compiler (compileToGraph)
+import Brat.Compile.Hugr (compileKernel)
 import Brat.Constructors.Patterns
-import Brat.Naming (Name, Namespace)
+import Brat.Naming (Name, Namespace, split)
 import Brat.Graph (Graph, NodeType (..), Node (BratNode, KernelNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..))
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Simple (SimpleTerm(..))
@@ -11,6 +13,7 @@ import Brat.Syntax.Port (OutPort(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 
+import qualified Data.HugrGraph as HG
 import Hasochism
 
 import Data.Maybe (fromMaybe, fromJust)
@@ -22,14 +25,14 @@ import Util (zipSameLength)
 
 import Debug.Trace
 
-type GraphInfo = (Graph, CaptureSets)
+type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
 runInterpreter :: [FilePath] -> String -> String -> IO ()
 runInterpreter libDirs file runFunc = do
-    (_, (venv, _, _, _, outerGraph, capSets)) <- compileToGraph libDirs file
+    (root, (venv, _, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
-    let outTask = evalPorts (outerGraph,capSets) (B0 :< BratValues M.empty) B0 outPorts
+    let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     print outTask
     pure ()
@@ -46,13 +49,14 @@ data Frame where
     ReturnTo :: Bwd Frame -> Frame
     Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
+    DoSplices :: HG.HugrGraph -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
   deriving Show
 
 data Task where
     EvalPort :: OutPort -> Task
     Suspend :: [Frame] -> Task -> Task
     EvalNode :: Name -> [Value] -> Task
-    Use :: Value -> Task -- searches for EvalPorts
+    Use :: Value -> Task -- searches for EvalPorts or DoSplices
     Finished :: [Value] -> Task -- searches for HandleNodeOutputs, or final result
     TryNextMatch :: Task
     NoMatch :: Task
@@ -71,7 +75,7 @@ evalPorts g fz valz (p:ps) = run g (fz :< EvalPorts valz ps) (EvalPort p)
 evalPorts g fz valz [] = run g fz (Finished (valz <>> []))
 
 evalNodeInputs :: GraphInfo -> Bwd Frame -> Name -> Task
-evalNodeInputs gi@(g,_) fz name =
+evalNodeInputs gi@(g,_,_,_) fz name =
     -- might be good to check M.keys == [0,1,....] here
     let srcs = M.elems (M.fromList [(tgtPort, src) | (src, _, In _ tgtPort) <- wiresTo name g])
     in evalPorts gi fz B0 srcs
@@ -80,26 +84,35 @@ updateCache (fz :< BratValues env) port_vals = fz :< (BratValues $ foldr (uncurr
 updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
+evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph -> [(HG.NodeId, OutPort)] -> Task
+evalSplices gi fz hugr [] = run gi fz (Use (KernelV hugr))
+evalSplices gi fz hugr ((nid, outport):rest) =
+    run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
+
 run :: GraphInfo -> Bwd Frame -> Task -> Task
 run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
 
 -- Tasks that push new frames onto the stack to do things
-run gi@(g@(nodes, wires), _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
+run gi@(g@(nodes, wires), _, _, _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
     Nothing -> evalNodeInputs gi (fz :< PortOfNode p) name
-run g@((nodes, _), cs) fz t@(EvalNode n ins) = case nodes M.! n of
+run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
     nw | trace ("EVALNODE " ++ show nw) False -> undefined
-    (BratNode (Const st) _ _) -> run g fz (Finished [evalSimpleTerm st])
-    (BratNode (ArithNode op) _ _) -> run g fz (Finished [evalArith op ins])
-    (BratNode Id _ _) -> run g fz (Finished ins)
-    (BratNode (Eval func) _ _) -> run g (fz :< CallWith ins) (EvalPort func)
+    (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
+    (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
+    (BratNode Id _ _) -> run gi fz (Finished ins)
+    (BratNode (Eval func) _ _) -> run gi (fz :< CallWith ins) (EvalPort func)
+    (BratNode (Box src tgt) [] [(_, VFun Kerny _)]) ->
+        let (sub, newRoot) = split "box" root
+            (hugr, splices) = compileKernel (sub, st, g) "box" n
+        in evalSplices (g, st, newRoot, cs) fz hugr splices
     (BratNode (Box src tgt) _ _) ->
         let captureSet = fromMaybe M.empty (M.lookup n cs)
             capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
-        in run g fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
-    (BratNode (PatternMatch (c:|cs)) _ _) -> run g (fz :< Alternatives (c:cs) ins) TryNextMatch
-    (BratNode (Constructor c) _ _) -> run g fz (Finished [evalConstructor c ins])
-    nw -> run g fz (StuckOnNode n nw)
+        in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
+    (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
+    (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
+    nw -> run gi fz (StuckOnNode n nw)
 
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -108,6 +121,10 @@ run gi (fz :< f) (Suspend fs t) = run gi fz (Suspend (f:fs) t)
 run _ B0 t@(Suspend _ _) = t
 ---- Use (single value)
 run gi (fz :< EvalPorts valz rem) (Use v) = evalPorts gi fz (valz :< v) rem
+run gi (fz :< DoSplices hugr nid rest) (Use v) =
+    let (KernelV sub_hugr) = v
+        hugr' = HG.splice hugr nid sub_hugr
+    in evalSplices gi fz hugr' rest
 run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
     in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
@@ -227,14 +244,12 @@ data Value =
   | BoolV Bool
   | VecV [Value]
   | ThunkV BratThunk
-  | KernelV HugrKernel
+  | KernelV HG.HugrGraph
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
     BratClosure EvalEnv Name Name  -- Captured environment, src node, tgt node
   | BratPrim String String (CTy Brat Z)
-
-data HugrKernel deriving Show
 
 instance Show Value where
   show (IntV x) = show x
