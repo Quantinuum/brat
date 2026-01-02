@@ -52,7 +52,6 @@ type TypedPort = (PortId NodeId, HugrType)
 
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
- , capSets :: CaptureSets -- environments captured by Box nodes in previous
  , hugr :: HugrGraph
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
@@ -80,11 +79,10 @@ data Container = Ctr {
   output :: NodeId
 }
 
-makeCS :: (Graph, CaptureSets, Store) -> HugrGraph -> CompilationState
-makeCS (g, cs, store) hugr =
+makeCS :: (Graph, Store) -> HugrGraph -> CompilationState
+makeCS (g, store) hugr =
   CompilationState
     { bratGraph = g
-    , capSets = cs
     , hugr = hugr
     , compiled = M.empty
     , holes = B0
@@ -607,10 +605,10 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
   head <$> addNodeWithInputs "LitLoad" (parent, OpLoadConstant (LoadConstantOp outTy))
            [(Port constId 0, outTy)] [outTy]
 
-compileKernel :: (Namespace, Store, Graph, CaptureSets)
+compileKernel :: (Namespace, Store, Graph)
               -> VEnv -> String -> Name
               -> (BS.ByteString, [(NodeId, OutPort)])
-compileKernel (nsp, store, g@(ns, es), cs) venv desc name = (hugr, holelist) where
+compileKernel (nsp, store, g@(ns, es)) venv desc name = (hugr, holelist) where
   (src_tgt, outs) = case ns M.! name of
     (BratNode Id _ _) -> case [srcPort | (srcPort, _, In tgt _) <- es, tgt == name ] of
       -- All top-level functions are compiled into Box-es, which should look like this:
@@ -620,7 +618,7 @@ compileKernel (nsp, store, g@(ns, es), cs) venv desc name = (hugr, holelist) whe
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
   startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
-  (hugr, holelist) = flip evalState (makeCS (g,cs,store) startHugr) $ do
+  (hugr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
     bodies <- for decls $ \(fnName, idNode) -> do
       let moduleNod = undefined
       --(funTy, body) <- analyseDecl idNode
