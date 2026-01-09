@@ -1,11 +1,14 @@
 module Test.Compile.Hugr where
 
+import Control.Monad (forM)
+import Data.HugrGraph (to_json)
 import Brat.Compiler (compileFile, CompilingHoles(..))
 import Test.Checking (expectedCheckingFails)
 import Test.Parsing (expectedParsingFails)
 import Test.Util (expectFailForPaths)
 
 import qualified Data.ByteString.Lazy as BS
+import qualified Data.Map as M
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
@@ -22,7 +25,7 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ["adder"
   ,"app"
   ,"dollar_kind"
-  ,"portpulling"
+  --,"portpulling" -- compiling just kernels is fine
   ,"eatsfull" -- Compiling hopes #96
   ,"map" -- Compiling hopes #96
   ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
@@ -35,40 +38,37 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
 -- Note this does not include those with remaining holes; these are automatically skipped.
 nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   map ((++ ".brat") . ("examples" </>))
-  ["fzbz"
-  ,"ising"
-  ,"let"
-  ,"patterns"
-  ,"qft"
-  ,"infer" -- problems with undoing pattern tests
-  ,"infer2" -- problems with undoing pattern tests
-  ,"fanout" -- Contains Selectors
-  ,"vectorise" -- Generates MapFun nodes which aren't implemented yet
-  ,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet
-  ,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet
+  [--"fzbz" -- can compile just kernels
+  --,"ising" -- can compile just kernels
+  --,"let" -- can compile just kernels
+  --,"patterns" -- can compile just kernels
+  --,"qft" -- can compile just kernels
+  --,"infer" -- problems with undoing pattern tests -- can compile just kernels
+  --,"infer2" -- problems with undoing pattern tests -- can compile just kernels
+  "fanout" -- Contains Selectors
+  --,"vectorise" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
+  --,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet -- can compile just kernels
+  --,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
   -- Victims of #13
-  ,"arith"
+  --,"arith" -- can compile just kernels
   ,"cqcconf"
   ,"imports"
-  ,"ising"
   ,"klet"
   ,"magic-state-distillation" -- also makes selectors
-  ,"rus"
+  --,"rus" -- can compile just kernels
   ,"teleportation"
-  ,"vlup_covering"
+  --,"vlup_covering" -- can compile just kernels
   ]
-
--- this one seems to generate a Brat Graph containing three Box nodes with different Sources,
--- but the same Target, which reads from all three
-nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
-    Right bs -> do
+    Right hs ->
       let outputExt = if file `elem` invalidExamples then "json.invalid" else "json"
-      let outFile = outputDir </> replaceExtension (takeFileName file) outputExt
-      BS.writeFile outFile bs
-      pure $ "Written to " ++ outFile ++ " pending validation"
+      in mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
+        -- ignore splices for now
+        let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ "." ++ outputExt)
+        BS.writeFile outFile (to_json hugr)
+        pure $ "Written to " ++ outFile ++ " pending validation\n")
     Left (CompilingHoles _) -> pure "Skipped as contains holes"
 
 setupCompilationTests :: IO TestTree
@@ -76,7 +76,7 @@ setupCompilationTests = do
   tests <- findByExtension [".brat"] prefix
   examples <- findByExtension [".brat"] examplesPrefix
   createDirectoryIfMissing False outputDir
-  let compileTests = expectFailForPaths nonCompilingTests compileToOutput tests
+  let compileTests = compileToOutput <$> tests
   let examplesTests = testGroup "examples" $ expectFailForPaths nonCompilingExamples compileToOutput examples
 
   pure $ testGroup "compilation" (examplesTests:compileTests)
