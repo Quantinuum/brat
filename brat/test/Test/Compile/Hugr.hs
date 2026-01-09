@@ -25,7 +25,7 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ["adder"
   ,"app"
   ,"dollar_kind"
-  ,"portpulling"
+  --,"portpulling" -- compiling just kernels is fine
   ,"eatsfull" -- Compiling hopes #96
   ,"map" -- Compiling hopes #96
   ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
@@ -42,10 +42,10 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   --,"ising" -- can compile just kernels
   --,"let" -- can compile just kernels
   --,"patterns" -- can compile just kernels
-  "qft"
+  --,"qft" -- can compile just kernels
   --,"infer" -- problems with undoing pattern tests -- can compile just kernels
   --,"infer2" -- problems with undoing pattern tests -- can compile just kernels
-  ,"fanout" -- Contains Selectors
+  "fanout" -- Contains Selectors
   --,"vectorise" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
   --,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet -- can compile just kernels
   --,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
@@ -55,7 +55,7 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   ,"imports"
   ,"klet"
   ,"magic-state-distillation" -- also makes selectors
-  ,"rus"
+  --,"rus" -- can compile just kernels
   ,"teleportation"
   --,"vlup_covering" -- can compile just kernels
   ]

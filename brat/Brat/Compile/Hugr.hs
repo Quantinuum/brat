@@ -573,11 +573,9 @@ compileKernel :: (Namespace, Store, Graph)
               -> (HugrGraph, [(NodeId, OutPort)])
 compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
   (src_tgt, outs) = case ns M.! name of
-    (BratNode Id _ _) -> case [srcPort | (srcPort, _, In tgt _) <- es, tgt == name ] of
       -- All top-level functions are compiled into Box-es, which should look like this:
-      [Ex input 0] | Just (BratNode (Box src tgt) [] outs) <- M.lookup input ns -> ((src, tgt), outs)
     (BratNode (Box src tgt) [] outs) -> ((src, tgt), outs)
-    nt -> error $ "Can only compile Box nodes or Id from them, not " ++ show nt ++ " (for " ++ show name ++ ")"
+    nt -> error $ "Can only compile Box nodes, not " ++ show nt ++ " (for " ++ show name ++ ")"
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
   startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
