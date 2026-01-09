@@ -16,6 +16,7 @@ import Brat.Syntax.Value
 import qualified Data.HugrGraph as HG
 import Hasochism
 
+import qualified Data.ByteString.Lazy as BS
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
@@ -34,8 +35,11 @@ runInterpreter libDirs file runFunc = do
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
-    print outTask
-    pure ()
+    case outTask of
+      Finished [(KernelV hugr)] -> do
+        putStrLn "Final Hugr Graph:"
+        BS.putStr (HG.to_json hugr)
+      _ -> print outTask
 
 data Frame where
     BratValues :: EvalEnv -> Frame
@@ -87,7 +91,7 @@ updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
 evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph -> [(HG.NodeId, OutPort)] -> Task
-evalSplices gi fz hugr [] = run gi fz (Use (KernelV hugr))
+evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
 
@@ -180,8 +184,9 @@ evalConstructor CRiffle [VecV evens, VecV odds] = VecV (riffle evens odds)
  where
   riffle [] [] = []
   riffle (e:es) (o:os) = e:o:riffle es os
+evalConstructor CQubit [] = DummyV
 evalConstructor CConcatEqOdd [VecV ls, mid, VecV rs] = VecV (ls ++ mid:rs)
-evalConstructor _ _ = error "Internal error: Unhandled constructor"
+evalConstructor name _ = error $ "Internal error: Unhandled constructor " ++ show name
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
 doAllTests env [] = Just env
