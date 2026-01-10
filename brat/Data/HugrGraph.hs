@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId,
                       HugrGraph(root), -- do NOT export contents, keep abstract
-                      new, splitNamespace,
+                      new,
                       freshNode,
                       setFirstChildren,
                       setOp, getParent, getOp,
@@ -9,7 +9,7 @@ module Data.HugrGraph(NodeId,
                       edgeList, serialize
                      ) where
 
-import Brat.Naming (Namespace, Name, fresh, split)
+import Brat.Naming (Namespace, Name, fresh)
 import Bwd
 import Data.Hugr hiding (const)
 
@@ -30,10 +30,6 @@ data HugrGraph = HugrGraph {
     edges_out :: M.Map NodeId [(Int, PortId NodeId)],
     edges_in :: M.Map NodeId [(PortId NodeId, Int)]
 } deriving (Eq, Show) -- we probably want a better `show`
-
-splitNamespace :: String -> State (HugrGraph, Namespace) Namespace
-splitNamespace n = state $ \(hugr, ns) -> let (nsx, nsNew) = split n ns
-                                    in (nsx, (hugr, nsNew))
 
 freshNode :: NodeId -> String -> State (HugrGraph, Namespace) NodeId
 freshNode parent nam = state $ \(hugr@HugrGraph {root, parents}, nameSupply) ->

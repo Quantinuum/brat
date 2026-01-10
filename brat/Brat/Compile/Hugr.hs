@@ -53,6 +53,7 @@ type TypedPort = (PortId NodeId, HugrType)
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
+ , nameSupply :: Namespace
  , hugr :: HugrGraph
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
@@ -80,10 +81,11 @@ data Container = Ctr {
   output :: NodeId
 }
 
-makeCS :: (Graph, CaptureSets, Store) -> HugrGraph -> CompilationState
-makeCS (g, cs, store) hugr =
+makeCS :: (Graph, Namespace, CaptureSets, Store) -> HugrGraph -> CompilationState
+makeCS (g, ns, cs, store) hugr =
   CompilationState
     { bratGraph = g
+    , nameSupply = ns
     , capSets = cs
     , hugr = hugr
     , compiled = M.empty
@@ -99,7 +101,11 @@ registerFuncDef name hugrDef = do
   put (st { decls = M.insert name hugrDef (decls st) })
 
 freshNode :: String -> NodeId -> Compile NodeId
-freshNode name parent = onHugr (H.freshNode parent name)
+freshNode name parent = do
+  s <- get
+  let (r, (h', ns')) = runState (H.freshNode parent name) (hugr s, nameSupply s)
+  put (s {hugr=h', nameSupply=ns'})
+  pure r
 
 makeIO :: String -> NodeId -> Compile Container
 makeIO name parent = do
@@ -505,17 +511,16 @@ getOutPort parent p@(Ex srcNode srcPort) = do
 -- and return the latter.
 compileConstDfg :: NodeId -> String -> ([HugrType], [HugrType]) -> (Container -> Compile a) -> Compile (TypedPort, a)
 compileConstDfg parent desc (inTys, outTys) contents = do
-  st <- gets store
-  g <- gets bratGraph
-  cs <- gets capSets
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  nsx <- onHugr (H.splitNamespace desc)
+  st <- get
+  let (nsx,ns') = split desc (nameSupply st)
+  put (st {nameSupply = ns'})
   -- And pass that namespace into nested monad that compiles the DFG
   let boxdesc = "Box_" ++ desc
-  let h = H.new nsx boxdesc (OpDFG $ DFG funTy [])
+  let (h, nsx') = runState (H.new boxdesc (OpDFG $ DFG funTy [])) nsx
   let (a, compState) = runState (makeIO boxdesc (root h) >>= contents)
-                                (makeCS (g,cs,st) h)
+                                (makeCS (bratGraph st, nsx' ,capSets st, store st) h)
   let nestedHugr = H.serialize (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
@@ -873,11 +878,11 @@ compile :: Store
         -> VEnv
         -> BS.ByteString
 compile store ns g capSets venv =
-  let hugr = H.new ns "module" (OpMod ModuleOp)
+  let (hugr, ns') = runState (H.new "module" (OpMod ModuleOp)) ns
   in evalState
     (trackM "compileFunctions" *>
      compileModule venv (root hugr) *>
      trackM "dumpJSON" *>
      dumpJSON
     )
-    (makeCS (g, capSets, store) hugr)
+    (makeCS (g, ns', capSets, store) hugr)
