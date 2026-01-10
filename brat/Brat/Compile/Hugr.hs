@@ -54,7 +54,7 @@ data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
  , nameSupply :: Namespace
- , hugr :: HugrGraph
+ , hugr :: HugrGraph NodeId
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -72,7 +72,7 @@ data CompilationState = CompilationState
 
 type Compile = State CompilationState
 
-onHugr :: State HugrGraph a -> Compile a
+onHugr :: State (HugrGraph NodeId) a -> Compile a
 onHugr f = get >>= \s -> let (r, h') = runState f (hugr s) in put (s {hugr=h'}) >> pure r
 
 data Container = Ctr {
@@ -81,7 +81,7 @@ data Container = Ctr {
   output :: NodeId
 }
 
-makeCS :: (Graph, Namespace, CaptureSets, Store) -> HugrGraph -> CompilationState
+makeCS :: (Graph, Namespace, CaptureSets, Store) -> HugrGraph NodeId -> CompilationState
 makeCS (g, ns, cs, store) hugr =
   CompilationState
     { bratGraph = g
