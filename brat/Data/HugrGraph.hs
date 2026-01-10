@@ -6,7 +6,7 @@ module Data.HugrGraph(NodeId,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
-                      edgeList, serialize
+                      serialize
                      ) where
 
 import Brat.Naming (Namespace, Name, fresh)
