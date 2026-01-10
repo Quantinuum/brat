@@ -83,7 +83,7 @@ addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
     _ -> error "addEdge to/from node not present"
  where
   addToMap :: Ord k => k -> v -> M.Map k [v] -> M.Map k [v]
-  addToMap k v m = M.insert k (v:(fromMaybe [] $ M.lookup k m)) m
+  addToMap k v m = M.alter (Just . (v:) . fromMaybe []) k m
 
 addOrderEdge :: (NodeId, NodeId) -> State HugrGraph ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
