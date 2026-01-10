@@ -28,23 +28,21 @@ data HugrGraph = HugrGraph {
     first_children:: M.Map NodeId [NodeId],
     nodes :: M.Map NodeId HugrOp,
     edges_out :: M.Map NodeId [(Int, PortId NodeId)],
-    edges_in :: M.Map NodeId [(PortId NodeId, Int)],
-    nameSupply :: Namespace
+    edges_in :: M.Map NodeId [(PortId NodeId, Int)]
 } deriving (Eq, Show) -- we probably want a better `show`
 
-splitNamespace :: String -> State HugrGraph Namespace
-splitNamespace n = state $ \hugr -> let (nsx, nsNew) = split n (nameSupply hugr)
-                                    in (nsx, hugr {nameSupply = nsNew})
+splitNamespace :: String -> State (HugrGraph, Namespace) Namespace
+splitNamespace n = state $ \(hugr, ns) -> let (nsx, nsNew) = split n ns
+                                    in (nsx, (hugr, nsNew))
 
-freshNode :: NodeId -> String -> State HugrGraph NodeId
-freshNode parent nam = state $ \hugr@(HugrGraph {root, parents, nameSupply}) ->
+freshNode :: NodeId -> String -> State (HugrGraph, Namespace) NodeId
+freshNode parent nam = state $ \(hugr@HugrGraph {root, parents}, nameSupply) ->
   case M.lookup parent parents of
     Nothing | parent /= root-> error "parent does not exist"
     _ -> let (freshName, newSupply) = fresh nam nameSupply
-         in (NodeId freshName, hugr {
-              nameSupply = newSupply,
+         in (NodeId freshName, (hugr {
               parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
-            })
+            }, newSupply))
 
 -- ERRORS if firstChildren already set for this node
 setFirstChildren :: NodeId -> [NodeId] -> State HugrGraph ()
@@ -60,19 +58,19 @@ setOp name op = state $ \h@HugrGraph {parents, nodes} -> case M.lookup name pare
     ((), h { nodes = M.alter (\Nothing -> Just op) name nodes })
 
 -- Create a new HugrGraph with a single node (root) with specified op
-new :: Namespace -> String -> HugrOp -> HugrGraph
-new ns nam op =
+new :: String -> HugrOp -> State Namespace HugrGraph
+new nam op = state $ \ns ->
   let (name, ns') = fresh nam ns
       root = NodeId name
-  in HugrGraph {
+  in (HugrGraph {
         root,
         parents = M.empty,
         first_children = M.empty,
         nodes = M.singleton root op,
         edges_in = M.empty,
-        edges_out = M.empty,
-        nameSupply = ns'
-      }
+        edges_out = M.empty}
+      ,ns'
+      )
 
 addEdge :: (PortId NodeId, PortId NodeId) -> State HugrGraph ()
 addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
