@@ -46,18 +46,20 @@ freshNode parent nam = state $ \hugr@(HugrGraph {root, parents, nameSupply}) ->
               parents = M.alter (\Nothing -> Just parent) (NodeId freshName) parents
             })
 
+-- ERRORS if firstChildren already set for this node
 setFirstChildren :: NodeId -> [NodeId] -> State HugrGraph ()
 setFirstChildren p cs = modify $ \h -> let nch = M.alter (\Nothing -> Just cs) p (first_children h)
                                       in h {first_children = nch}
 
+-- ERRORS if op already set for this node (or node does not have parent - should not be possible)
 setOp :: NodeId -> HugrOp -> State HugrGraph ()
--- Insist the parent exists
 setOp name op = state $ \h@HugrGraph {parents, nodes} -> case M.lookup name parents of
   Nothing -> error $ "Node " ++ show name ++ " has no parent"
   Just _ ->
     -- alter + partial match is just to fail if key already present
     ((), h { nodes = M.alter (\Nothing -> Just op) name nodes })
 
+-- Create a new HugrGraph with a single node (root) with specified op
 new :: Namespace -> String -> HugrOp -> HugrGraph
 new ns nam op =
   let (name, ns') = fresh nam ns
