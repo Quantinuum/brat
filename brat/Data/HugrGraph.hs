@@ -16,7 +16,6 @@ import Data.Hugr hiding (const)
 import Control.Monad.State (State, execState, state)
 import Data.Foldable (for_)
 import Data.Bifunctor (first)
-import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
 track = const id
@@ -77,13 +76,17 @@ addEdge :: (PortId NodeId, PortId NodeId) -> State HugrGraph ()
 addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
   ((), ) $ case (M.lookup s nodes, M.lookup t nodes) of
     (Just _, Just _) -> h {
-      edges_out = addToMap s (o, tgt) edges_out,
-      edges_in = addToMap t (src, i) edges_in
+      edges_out = addToMap s (o, tgt) edges_out id,
+      edges_in = addToMap t (src, i) edges_in no_other_inedge
     }
     _ -> error "addEdge to/from node not present"
  where
-  addToMap :: Ord k => k -> v -> M.Map k [v] -> M.Map k [v]
-  addToMap k v m = M.alter (Just . (v:) . fromMaybe []) k m
+  addToMap :: Ord k => k -> v -> M.Map k [v] -> ([v] -> [v]) -> M.Map k [v]
+  addToMap k v m chk = M.alter (Just . (v:) . maybe [] chk) k m
+  no_other_inedge :: [(n, Int)] -> [(n, Int)]
+  no_other_inedge [] = []
+  no_other_inedge ((n, j):xs) | i == j = error "multiple in-edges to same port"
+                           | otherwise = (n, j) : no_other_inedge xs
 
 addOrderEdge :: (NodeId, NodeId) -> State HugrGraph ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
