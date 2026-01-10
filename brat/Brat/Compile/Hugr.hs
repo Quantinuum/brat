@@ -15,7 +15,7 @@ import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (Store(..), VEnv)
 import Brat.Eval (eval, evalCTy, kindType)
 import Brat.Graph hiding (lookupNode)
-import Brat.Naming
+import Brat.Naming hiding (root)
 import Brat.QualName
 import Brat.Syntax.Port
 import Brat.Syntax.Common
@@ -24,6 +24,8 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
+import Data.HugrGraph (HugrGraph(..), NodeId)
+import qualified Data.HugrGraph as H
 import Hasochism
 
 import Control.Monad (unless)
@@ -32,22 +34,19 @@ import Data.Bifunctor (first, second)
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>), ($>))
-import Data.List (partition, sort, sortBy)
+import Data.List (sortBy)
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromJust, isJust)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Ord (comparing)
 import Data.Traversable (for)
 import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import GHC.Base (NonEmpty(..))
-import Data.Tuple (swap)
 
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
 hugr, whose child graph is the body of the function
 -}
-
-newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 
 type TypedPort = (PortId NodeId, HugrType)
 
@@ -55,8 +54,7 @@ data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
  , capSets :: CaptureSets -- environments captured by Box nodes in previous
  , nameSupply :: Namespace
- , nodes :: M.Map NodeId (HugrOp NodeId) -- this node's id => HugrOp containing parent id
- , edges :: [(PortId NodeId, PortId NodeId)]
+ , hugr :: HugrGraph NodeId
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -72,63 +70,61 @@ data CompilationState = CompilationState
  , decls :: M.Map Name (NodeId, Bool)
  }
 
-emptyCS g cs ns store = CompilationState
-  { bratGraph = g
-  , capSets = cs
-  , nameSupply = ns
-  , nodes = M.empty
-  , edges = []
-  , compiled = M.empty
-  , holes = B0
-  , liftedOutPorts = M.empty
-  , store = store
-  , decls = M.empty
-  }
+type Compile = State CompilationState
+
+onHugr :: State (HugrGraph NodeId) a -> Compile a
+onHugr f = get >>= \s -> let (r, h') = runState f (hugr s) in put (s {hugr=h'}) >> pure r
+
+data Container = Ctr {
+  parent :: NodeId,
+  input :: NodeId,
+  output :: NodeId
+}
+
+makeCS :: (Graph, Namespace, CaptureSets, Store) -> HugrGraph NodeId -> CompilationState
+makeCS (g, ns, cs, store) hugr =
+  CompilationState
+    { bratGraph = g
+    , nameSupply = ns
+    , capSets = cs
+    , hugr = hugr
+    , compiled = M.empty
+    , holes = B0
+    , liftedOutPorts = M.empty
+    , store = store
+    , decls = M.empty
+    }
 
 registerFuncDef :: Name -> (NodeId, Bool) -> Compile ()
 registerFuncDef name hugrDef = do
   st <- get
   put (st { decls = M.insert name hugrDef (decls st) })
 
+freshNode :: String -> NodeId -> Compile NodeId
+freshNode name parent = do
+  s <- get
+  let (r, (h', ns')) = runState (H.freshNode parent name) (hugr s, nameSupply s)
+  put (s {hugr=h', nameSupply=ns'})
+  pure r
 
-freshNode :: String -> Compile NodeId
-freshNode str = do
-  st <- get
-  let ns = nameSupply st
-  let (freshName, newSupply) = fresh str ns
-  put (st { nameSupply = newSupply })
-  pure (NodeId freshName)
+makeIO :: String -> NodeId -> Compile Container
+makeIO name parent = do
+  input <- freshNode (name ++ "_Input") parent
+  output <- freshNode (name ++ "_Input") parent
+  onHugr $ H.setFirstChildren parent [input, output]
+  pure $ Ctr {parent, input, output}
+
+freshNodeWithIO :: String -> NodeId -> Compile Container
+freshNodeWithIO name parent = freshNode name parent >>= makeIO name
 
 addEdge :: (PortId NodeId, PortId NodeId) -> Compile ()
-addEdge e = do
-  st <- get
-  let es = edges st
-  put (st { edges = e:es })
+addEdge e = onHugr (H.addEdge e)
 
-addNode :: String -> HugrOp NodeId -> Compile NodeId
-addNode name op = do
-  id <- freshNode name
-  addOp (addMetadata [("id", show id)] op) id
-  pure id
-
-type Compile = State CompilationState
-
-instance FreshMonad Compile where
-  freshName x = do
-    s <- get
-    let (name, newSupply) = fresh x (nameSupply s)
-    put (s { nameSupply = newSupply })
-    pure name
-
-  x -! c = do
-    s <- get
-    let (nsx, nsNew) = split x (nameSupply s)
-    put (s { nameSupply = nsx })
-    v <- c
-    put (s { nameSupply = nsNew })
-    pure v
-
-  whoAmI = gets (fst . nameSupply)
+addNode :: String -> (NodeId, HugrOp) -> Compile NodeId
+addNode nam (parent, op) = do
+  name <- freshNode nam parent
+  setOp name (addMetadata [("id", show name)] op)
+  pure name
 
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
@@ -181,96 +177,54 @@ compileGraphTypes = traverse ((<&> compileType) . runCheckingInCompile . eval S0
 compilePorts :: [(a, Val Z)] -> Compile [HugrType]
 compilePorts = compileGraphTypes . map snd
 
-addOp :: HugrOp NodeId -> NodeId -> Compile ()
-addOp op name | track ("addOp " ++ show op ++ show name) False = undefined
-addOp op name = do
-  st <- get
-  let new_nodes = M.alter (\Nothing -> Just op) name (nodes st) -- fail if key already present
-  put (st { nodes = new_nodes })
+setOp :: NodeId -> HugrOp -> Compile ()
+setOp name op | track ("addOp " ++ show op ++ show name) False = undefined
+setOp name op = onHugr (H.setOp name op)
 
 registerCompiled :: Name -> NodeId -> Compile ()
 registerCompiled from to | track (show from ++ " |-> " ++ show to) False = undefined
 registerCompiled from to = do
   st <- get
-  put (st { compiled = M.insert from to (compiled st) })
+  let new_compiled = M.alter (\Nothing -> Just to) from (compiled st)
+  put (st { compiled = new_compiled })
 
 compileConst :: NodeId -> SimpleTerm -> HugrType -> Compile NodeId
 compileConst parent tm ty = do
-  constId <- addNode "Const" (OpConst (ConstOp parent (valFromSimple tm)))
+  constId <- addNode "Const" (parent, OpConst (ConstOp (valFromSimple tm)))
   loadId <- case ty of
     HTFunc poly@(PolyFuncType [] _) ->
-      addNode "LoadFunction" (OpLoadFunction (LoadFunctionOp parent poly [] (FunctionType [] [HTFunc poly] [])))
+      addNode "LoadFunction" (parent, OpLoadFunction (LoadFunctionOp poly [] (FunctionType [] [HTFunc poly] [])))
     HTFunc (PolyFuncType _ _) -> error "Trying to compile function with type args"
-    _ -> addNode "LoadConst" (OpLoadConstant (LoadConstantOp parent ty))
+    _ -> addNode "LoadConst" (parent, OpLoadConstant (LoadConstantOp ty))
   addEdge (Port constId 0, Port loadId 0)
   pure loadId
 
 compileArithNode :: NodeId -> ArithOp -> Val Z -> Compile NodeId
-compileArithNode parent op TNat  = addNode (show op ++ "_Nat") $ OpCustom $ case op of
-  Add -> binaryIntOp parent "iadd"
-  Sub -> binaryIntOp parent "isub"
-  Mul-> binaryIntOp parent "imul"
-  Div -> intOp parent "idiv_u" [hugrInt, hugrInt] [hugrInt] [TANat intWidth, TANat intWidth]
+compileArithNode parent op TNat  = addNode (show op ++ "_Nat") (parent, OpCustom $ case op of
+  Add -> binaryIntOp "iadd"
+  Sub -> binaryIntOp "isub"
+  Mul-> binaryIntOp "imul"
+  Div -> intOp "idiv_u" [hugrInt, hugrInt] [hugrInt] [TANat intWidth, TANat intWidth]
   Pow -> error "TODO: Pow"  -- Not defined in extension
-compileArithNode parent op TInt  = addNode (show op ++ "_Int") $ OpCustom $ case op of
-  Add -> binaryIntOp parent "iadd"
-  Sub -> binaryIntOp parent "isub"
-  Mul-> binaryIntOp parent "imul"
-  Div -> intOp parent "idiv_u" [hugrInt, hugrInt] [hugrInt] [TANat intWidth, TANat intWidth]
+ )
+compileArithNode parent op TInt = addNode (show op ++ "_Int") (parent, OpCustom $ case op of
+  Add -> binaryIntOp "iadd"
+  Sub -> binaryIntOp "isub"
+  Mul-> binaryIntOp "imul"
+  Div -> intOp "idiv_u" [hugrInt, hugrInt] [hugrInt] [TANat intWidth, TANat intWidth]
   Pow -> error "TODO: Pow"  -- Not defined in extension
-compileArithNode parent op TFloat  = addNode (show op ++ "_Float") $ OpCustom $ case op of
-  Add -> binaryFloatOp parent "fadd"
-  Sub -> binaryFloatOp parent "fsub"
-  Mul-> binaryFloatOp parent "fmul"
-  Div-> binaryFloatOp parent "fdiv"
+ )
+compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCustom $ case op of
+  Add -> binaryFloatOp "fadd"
+  Sub -> binaryFloatOp "fsub"
+  Mul-> binaryFloatOp "fmul"
+  Div-> binaryFloatOp "fdiv"
   Pow -> error "TODO: Pow"  -- Not defined in extension
+ )
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
-renameAndSortHugr :: M.Map NodeId (HugrOp NodeId) -> [(PortId NodeId, PortId NodeId)] -> Hugr Int
-renameAndSortHugr nodes edges = indexMetadata $ fmap update (Hugr (fst <$> sorted_nodes) (edges ++ orderEdges)) where
-  indexMetadata :: Hugr Int -> Hugr Int
-  indexMetadata (Hugr ops edges) = Hugr [addMetadata [("index", show ix)] op | (ix, op) <- zip [0..] ops] edges
-
-
-  sorted_nodes = let ([root], rest) = partition (\(n, nid) -> nid == getParent n) (swap <$> M.assocs nodes) in
-                   root : sort rest
-
-  names2Pos = M.fromList $ zip (snd <$> sorted_nodes) ([0..] :: [Int])
-  parentOf n = getParent (nodes M.! n)
-
-  update :: NodeId -> Int
-  update name = case M.lookup name names2Pos of
-                  Just ans -> ans
-                  Nothing -> error ("Couldn't find node " ++ show name ++ "???")
-
-  orderEdges :: [(PortId NodeId, PortId NodeId)]
-  orderEdges =
-    -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
-    -- require an extra order edge from the source to the sibling that is ancestor of the target
-    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edges,
-            parentOf n1 /= parentOf n2 ,
-            requiresOrderEdge (nodes M.! n1),
-            requiresOrderEdge (nodes M.! n2) ] in
-    [(Port src orderEdgeOffset, Port tgt orderEdgeOffset) | (src, tgt) <- walkUp <$> interEdges]
-
-  requiresOrderEdge :: HugrOp NodeId -> Bool
-  requiresOrderEdge (OpMod _) = False
-  requiresOrderEdge (OpDefn _) = False
-  requiresOrderEdge (OpConst _) = False
-  requiresOrderEdge _ = True
-
-  -- Walk up the hierarchy from the tgt until we hit a node at the same level as src
-  walkUp :: (NodeId, NodeId) -> (NodeId, NodeId)
-  walkUp (src, tgt) | parentOf src == parentOf tgt = (src, tgt)
-  walkUp (_, tgt) | parentOf tgt == tgt = error "Tgt was not descendant of Src-parent"
-  walkUp (src, tgt) = walkUp (src, parentOf tgt)
-
-
 dumpJSON :: Compile BS.ByteString
-dumpJSON = do
-  ns <- gets nodes
-  es <- gets edges
-  pure $ encode (renameAndSortHugr ns es)
+dumpJSON = gets hugr <&> (encode . H.serialize)
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
@@ -298,74 +252,105 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
     Just clauses -> compileClauses parent ins clauses
     -- If there are no more clauses left to test, then the Hugr panics
     Nothing -> let sig = FunctionType (snd <$> ins) outTys ["BRAT"] in
-      addNodeWithInputs "Panic" (OpCustom (CustomOp parent "BRAT" "panic" sig [])) ins outTys
+      addNodeWithInputs "Panic" (parent, OpCustom (CustomOp "BRAT" "panic" sig [])) ins outTys
 
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
     BratNode (Box src tgt) _ _ -> do
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType (snd <$> ins) outTys bratExts) []))
-      compileBox (src, tgt) dfgId
+      ctr@Ctr {parent=dfgId} <- freshNodeWithIO "DidMatch" parent
+      setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) []))
+      compileBox ctr (src, tgt)
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
     _ -> error "RHS should be a box node"
 
-compileBox :: (Name, Name) -> NodeId -> Compile ()
+compileBox :: Container  -> (Name, Name) -> Compile ()
 -- note: we used to compile only KernelNode's here, this may not be right
-compileBox (src, tgt) parent = for_ [src, tgt] (compileWithInputs parent)
+compileBox (Ctr parent srcN tgtN) (src, tgt) = do
+  -- Compile Source
+  node <- gets ((M.! src) . fst . bratGraph)
+  trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
+  let src_outs = case node of
+               (BratNode Source [] outs) -> outs
+               (KernelNode Source [] outs) -> outs
+  srcTys <- compilePorts src_outs
+  setOp srcN (OpIn (InputNode srcTys [("source", "Source"), ("parent", show parent)]))
+  registerCompiled src srcN
+  compileTarget parent tgtN tgt
+
+compileTarget :: NodeId -> NodeId -> Name -> Compile ()
+compileTarget parent tgtN tgt = do
+  node <- gets ((M.! tgt) . fst . bratGraph)
+  trackM ("compileTarget (" ++ show parent ++ ") " ++ show tgt ++ " " ++ show node)
+  let tgt_ins = case node of
+               (BratNode Target ins []) -> ins
+               (KernelNode Target ins []) -> ins
+  tgtTys <- compilePorts tgt_ins
+  setOp tgtN (OpOut (OutputNode tgtTys [("source", "Target")]))
+  edges <- compileInEdges parent tgt
+  -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
+  for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
+  pure ()
+
+in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
+in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
+
+compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
+compileInEdges parent name = do
+  in_edges <- in_edges name
+  catMaybes <$> for in_edges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
-compileWithInputs parent name = gets compiled >>= (\case
+compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   Just nid -> pure (Just nid)
   Nothing -> do
-    (_, es) <- gets bratGraph
-    let in_edges = [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
-    compileNode in_edges >>= \case
+    compileNode >>= \case
       Nothing -> pure Nothing
       Just (tgtNodeId, edges) -> do
         registerCompiled name tgtNodeId
         for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtNodeId tgtPort))
-        pure $ Just tgtNodeId) . M.lookup name
+        pure $ Just tgtNodeId
  where
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
-  compileNode :: [((OutPort, Val Z), Int)] -> Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode in_edges | isJust (hasPrefix ["checking", "globals", "decl"] name) = do
-    -- reference to a top-level decl. Every such should be in the decls map.
-    -- We need to return value of each type (perhaps to be indirectCalled by successor).
-    -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
-    let hTys = map (compileType . snd . fst) $ sortBy (comparing snd) in_edges
+  compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
+  compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
+    Just _ -> do
+      -- reference to a top-level decl. Every such should be in the decls map.
+      -- We need to return value of each type (perhaps to be indirectCalled by successor).
+      -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
+      hTys <- in_edges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
 
-    decls <- gets decls
-    let (funcDef, extra_call) = decls M.! name
-    nod <- if extra_call
-           then addNode ("direct_call(" ++ show funcDef ++ ")")
-                        (OpCall (CallOp parent (FunctionType [] hTys bratExts)))
-           -- We are loading idNode as a value (not an Eval'd thing), and it is a FuncDef directly
-           -- corresponding to a Brat TLD (not that produces said TLD when eval'd)
-           else case hTys of
-             [HTFunc poly@(PolyFuncType [] _)] ->
-               addNode ("load_thunk(" ++ show funcDef ++ ")")
-               (OpLoadFunction (LoadFunctionOp parent poly [] (FunctionType [] [HTFunc poly] [])))
-             [HTFunc (PolyFuncType args _)] -> error $ unwords ["Unexpected type args to"
-                                                               ,show funcDef ++ ":"
-                                                               ,show args
-                                                               ]
-             _ -> error $ "Expected a function argument when loading thunk, got: " ++ show hTys
-    -- the only input
-    pure $ Just (nod, [(Port funcDef 0, 0)])
-  compileNode in_edges = do
-    (ns, _) <- gets bratGraph
-    let node = ns M.! name
-    trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
-    nod_edge_info <- case node of
-      (BratNode thing ins outs) -> compileNode' thing ins outs
-      (KernelNode thing ins outs) -> compileNode' thing ins outs
-    case nod_edge_info of
-      Nothing -> pure Nothing
-      Just (node, tgtOffset, extra_edges) -> do
-        trans_edges <- catMaybes <$> for in_edges (\((src, _), tgtPort) ->
-            getOutPort parent src <&> fmap (, tgtPort + tgtOffset))
-        pure $ Just (node, extra_edges ++ trans_edges)
+      decls <- gets decls
+      let (funcDef, extra_call) = decls M.! name
+      nod <- if extra_call
+            then addNode ("direct_call(" ++ show funcDef ++ ")")
+                          (parent, OpCall (CallOp (FunctionType [] hTys bratExts)))
+            -- We are loading idNode as a value (not an Eval'd thing), and it is a FuncDef directly
+            -- corresponding to a Brat TLD (not that produces said TLD when eval'd)
+            else case hTys of
+              [HTFunc poly@(PolyFuncType [] _)] ->
+                addNode ("load_thunk(" ++ show funcDef ++ ")")
+                (parent, OpLoadFunction (LoadFunctionOp poly [] (FunctionType [] [HTFunc poly] [])))
+              [HTFunc (PolyFuncType args _)] -> error $ unwords ["Unexpected type args to"
+                                                                ,show funcDef ++ ":"
+                                                                ,show args
+                                                                ]
+              _ -> error $ "Expected a function argument when loading thunk, got: " ++ show hTys
+      -- the only input
+      pure $ Just (nod, [(Port funcDef 0, 0)])
+    _ -> do
+      (ns, _) <- gets bratGraph
+      let node = ns M.! name
+      trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
+      nod_edge_info <- case node of
+        (BratNode thing ins outs) -> compileNode' thing ins outs
+        (KernelNode thing ins outs) -> compileNode' thing ins outs
+      case nod_edge_info of
+        Nothing -> pure Nothing
+        Just (node, tgtOffset, extra_edges) -> do
+          trans_edges <- compileInEdges parent name <&> map (second (+tgtOffset))
+          pure $ Just (node, extra_edges ++ trans_edges)
 
   default_edges :: NodeId -> Maybe (NodeId, Int, [(PortId NodeId, Int)])
   default_edges nid = Just (nid, 0, [])
@@ -385,7 +370,7 @@ compileWithInputs parent name = gets compiled >>= (\case
           (ns, _) <- gets bratGraph
           case M.lookup outNode ns of
             Just (BratNode (Prim (ext,op)) _ [(_, VFun Kerny _)]) -> do
-              addNode (show suffix) (OpCustom (CustomOp parent ext op sig []))
+              addNode (show suffix) (parent, OpCustom (CustomOp ext op sig []))
             x -> error $ "Expected a Prim kernel node but got " ++ show x
         -- All other evaled things are turned into holes to be substituted later
         Nothing -> do
@@ -394,7 +379,7 @@ compileWithInputs parent name = gets compiled >>= (\case
             let h = holes st
             put (st { holes = h :< name})
             pure (length h)
-          addNode ("hole " ++ show hole) (OpCustom (holeOp parent hole sig))
+          addNode ("hole " ++ show hole) (parent, OpCustom (holeOp hole sig))
     -- A reference to a primitive op which exists in hugr.
     -- This should only have one outgoing wire which leads to an `Id` node for
     -- the brat representation of the function, and that wire should have a
@@ -406,15 +391,18 @@ compileWithInputs parent name = gets compiled >>= (\case
       let [(_, VFun Braty cty)] = outs
       boxSig@(inputTys, outputTys) <- compileSig Braty cty
       let boxFunTy = FunctionType inputTys outputTys bratExts
-      ((Port loadConst _, _ty), ()) <- compileConstDfg parent n boxSig $ \dfgId -> do
-        ins <- addNodeWithInputs ("Inputs" ++ n) (OpIn (InputNode dfgId inputTys [("source", "Prim")])) [] inputTys
-        outs <- addNodeWithInputs n (OpCustom (CustomOp dfgId ext op boxFunTy [])) ins outputTys
-        addNodeWithInputs ("Outputs" ++ n) (OpOut (OutputNode dfgId outputTys [("source", "Prim")])) outs []
+      ((Port loadConst _, _ty), ()) <- compileConstDfg parent n boxSig $
+       \Ctr{parent, input, output} -> do
+        setOp input (OpIn (InputNode inputTys [("source", "Prim")]))
+        let ins = zip (Port input <$> [0..]) inputTys
+        outs <- addNodeWithInputs n (parent, OpCustom (CustomOp ext op boxFunTy [])) ins outputTys
+        setOp output (OpOut (OutputNode outputTys [("source", "Prim")]))
+        for_ (zip (fst <$> outs) (Port output <$> [0..])) addEdge
         pure ()
       pure $ default_edges loadConst
 
     -- Check if the node has prefix "globals", hence should be a direct call
-    Eval (Ex outNode outPort) -> do
+    Eval tgt@(Ex outNode _) -> do
       ins <- compilePorts ins
       outs <- compilePorts outs
       (ns, _) <- gets bratGraph
@@ -423,13 +411,13 @@ compileWithInputs parent name = gets compiled >>= (\case
         -- Callee is a Prim node, insert Hugr Op; first look up outNode in the BRAT graph to get the Prim data
         Just suffix -> default_edges <$> case M.lookup outNode ns of
           Just (BratNode (Prim (ext,op)) _ _) -> do
-            addNode (show suffix) (OpCustom (CustomOp parent ext op (FunctionType ins outs [ext]) []))
+            addNode (show suffix) (parent, OpCustom (CustomOp ext op (FunctionType ins outs [ext]) []))
           x -> error $ "Expected a Prim node but got " ++ show x
         Nothing -> case hasPrefix ["checking", "globals"] outNode of
           -- Callee is a user-defined global def that, since it does not require an "extra" call, can be turned from IndirectCall to direct.
           Just _ | (funcDef, False) <- fromJust (M.lookup outNode decls) -> do
                 callerId <- addNode ("direct_call(" ++ show funcDef ++ ")")
-                                    (OpCall (CallOp parent (FunctionType ins outs bratExts)))
+                                    (parent, OpCall (CallOp (FunctionType ins outs bratExts)))
                 -- Add the static edge from the FuncDefn node to the port *after*
                 -- all of the dynamic arguments to the Call node.
                 -- This is because in hugr, static edges (like the graph arg to a
@@ -438,36 +426,33 @@ compileWithInputs parent name = gets compiled >>= (\case
           -- Either not global, or we must evaluate the global -- so an indirect call of a graph on a wire
           -- (If it's a global, compileWithInputs will generate extra no-args Call,
           -- since extra_call==True; we just turned the (Eval+)LoadFunction case into a direct Call above)
-          _ -> compileWithInputs parent outNode >>= \case
-            Just calleeId -> do
+          _ -> getOutPort parent tgt >>= \case
+            Just funcPort@(Port calleeId _) -> do
               callerId <- addNode ("indirect_call(" ++ show calleeId ++ ")")
-                                  (OpCallIndirect (CallIndirectOp parent (FunctionType ins outs bratExts {-[]-})))
+                                  (parent, OpCallIndirect (CallIndirectOp (FunctionType ins outs bratExts {-[]-})))
               -- for an IndirectCall, the callee (thunk, function value) is the *first*
               -- Hugr input. So move all the others along, and add that extra edge.
-              pure $ Just (callerId, 1, [(Port calleeId outPort, 0)])
+              pure $ Just (callerId, 1, [(funcPort, 0)])
             Nothing -> error "Callee has been erased"
 
     -- We need to figure out if this thunk contains a brat- or a kernel-computation
     (Box src tgt) -> case outs of
       [(_, VFun Kerny cty)] -> default_edges . nodeId . fst <$>
-           compileKernBox parent name (compileBox (src, tgt)) cty
+           compileKernBox parent (show name) (src, tgt) cty
       [(_, VFun Braty cty)] -> do
         cs <- gets (M.findWithDefault M.empty name . capSets)
         (partialNode, captures) <- compileBratBox parent name (cs, src, tgt) cty
         pure $ Just (partialNode, 1, captures) -- 1 is arbitrary, Box has no real inputs
       outs -> error $ "Unexpected outs of box: " ++ show outs
 
-    Source -> default_edges <$> do
-      outs <- compilePorts outs
-      addNode "Input" (OpIn (InputNode parent outs [("source", "Source"), ("parent", show parent)]))
-    Target -> default_edges <$> do
-      ins <- compilePorts ins
-      addNode "Output" (OpOut (OutputNode parent ins [("source", "Target")]))
+    Source -> error "Source found outside of compileBox"
+      
+    Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
       let [(_,ty)] = ins -- fail if more than one input
-      addNode "Id" (OpNoop (NoopOp parent (compileType ty)))
+      addNode "Id" (parent, OpNoop (NoopOp (compileType ty)))
 
     Constructor c -> default_edges <$> do
       ins <- compilePorts ins
@@ -478,10 +463,12 @@ compileWithInputs parent name = gets compiled >>= (\case
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
-      dfgId <- addNode "DidMatch_DFG" (OpDFG (DFG parent (FunctionType ins outs bratExts) []))
-      inputNode <- addNode "PatternMatch.Input" (OpIn (InputNode dfgId ins [("source", "PatternMatch"), ("parent", show dfgId)]))
+      (Ctr dfgId inputNode outputNode) <- freshNodeWithIO "PatternMatch" parent
+      setOp dfgId (OpDFG (DFG (FunctionType ins outs bratExts) []))
+      setOp inputNode (OpIn (InputNode ins [("source", "PatternMatch"), ("parent", show dfgId)]))
       ccOuts <- compileClauses dfgId (zip (Port inputNode <$> [0..]) ins) cs
-      addNodeWithInputs "PatternMatch.Output" (OpOut (OutputNode dfgId (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)])) ccOuts []
+      setOp outputNode (OpOut (OutputNode (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)]))
+      for_ (zip (fst <$> ccOuts) (Port outputNode <$> [0..])) addEdge
       pure dfgId
     ArithNode op -> default_edges <$> compileArithNode parent op (snd $ head ins)
     Selector _c -> error "Todo: selector"
@@ -490,7 +477,7 @@ compileWithInputs parent name = gets compiled >>= (\case
       let [_, elemTy] = ins
       outs <- compilePorts outs
       let sig = FunctionType ins outs bratExts
-      addNode "Replicate" (OpCustom (CustomOp parent "BRAT" "Replicate" sig [TAType elemTy]))
+      addNode "Replicate" (parent, OpCustom (CustomOp "BRAT" "Replicate" sig [TAType elemTy]))
     x -> error $ show x ++ " should have been compiled outside of compileNode"
 
 compileConstructor :: NodeId -> QualName -> QualName -> FunctionType -> Compile NodeId
@@ -499,9 +486,9 @@ compileConstructor parent tycon con sig
       -- A boolean value is a tag which takes no inputs and produces an empty tuple
       -- This is the same thing that happens in Brat.Checker.Clauses to make the
       -- discriminator (makeRowTag)
-      addNode "bool.tag" (OpTag (TagOp parent (if b then 1 else 0) [[], []] [("hint", "bool")]))
+      addNode "bool.tag" (parent, OpTag (TagOp (if b then 1 else 0) [[], []] [("hint", "bool")]))
   | otherwise = let name = "Constructor " ++ show tycon ++ "::" ++ show con in
-                  addNode name (constructorOp parent tycon con sig)
+                  addNode name (parent, constructorOp tycon con sig)
  where
   isBool :: QualName -> Maybe Bool
   isBool CFalse = Just False
@@ -522,26 +509,23 @@ getOutPort parent p@(Ex srcNode srcPort) = do
 -- Execute a compilation (which takes a DFG parent) in a nested monad;
 -- produce a Const node containing the resulting Hugr, and a LoadConstant,
 -- and return the latter.
-compileConstDfg :: NodeId -> String -> ([HugrType], [HugrType]) -> (NodeId -> Compile a) -> Compile (TypedPort, a)
+compileConstDfg :: NodeId -> String -> ([HugrType], [HugrType]) -> (Container -> Compile a) -> Compile (TypedPort, a)
 compileConstDfg parent desc (inTys, outTys) contents = do
-  st <- gets store
-  g <- gets bratGraph
-  cs <- gets capSets
   let funTy = FunctionType inTys outTys bratExts
   -- First, we fork off a new namespace
-  (a, cs) <- desc -! do
-    ns <- gets nameSupply
-    pure $ flip runState (emptyCS g cs ns st) $ do
-      -- make a DFG node at the root. We can't use `addNode` since the
-      -- DFG needs itself as parent
-      dfg_id <- freshNode ("Box_" ++ show desc)
-      addOp (OpDFG $ DFG dfg_id funTy []) dfg_id
-      contents dfg_id
-  let nestedHugr = renameAndSortHugr (nodes cs) (edges cs)
+  st <- get
+  let (nsx,ns') = split desc (nameSupply st)
+  put (st {nameSupply = ns'})
+  -- And pass that namespace into nested monad that compiles the DFG
+  let boxdesc = "Box_" ++ desc
+  let (h, nsx') = runState (H.new boxdesc (OpDFG $ DFG funTy [])) nsx
+  let (a, compState) = runState (makeIO boxdesc (root h) >>= contents)
+                                (makeCS (bratGraph st, nsx' ,capSets st, store st) h)
+  let nestedHugr = H.serialize (hugr compState)
   let ht = HTFunc $ PolyFuncType [] funTy
 
-  constNode <- addNode ("ConstTemplate_" ++ desc) (OpConst (ConstOp parent (HVFunction nestedHugr)))
-  lcPort <- head <$> addNodeWithInputs ("LoadTemplate_" ++ desc) (OpLoadConstant (LoadConstantOp parent ht))
+  constNode <- addNode ("ConstTemplate_" ++ desc) (parent, OpConst (ConstOp (HVFunction nestedHugr)))
+  lcPort <- head <$> addNodeWithInputs ("LoadTemplate_" ++ desc) (parent, OpLoadConstant (LoadConstantOp ht))
             [(Port constNode 0, ht)] [ht]
   pure (lcPort, a)
 
@@ -561,8 +545,10 @@ compileBratBox parent name (venv, src, tgt) cty = do
   let allInputTys = parmTys ++ inputTys
   let boxInnerSig = FunctionType allInputTys outputTys bratExts
 
-  (templatePort, _) <- compileConstDfg parent ("BB" ++ show name) (allInputTys, outputTys) $ \dfgId -> do
-    src_id <- addNode ("LiftedCapturesInputs" ++ show name) (OpIn (InputNode dfgId allInputTys [("source", "compileBratBox")]))
+  (templatePort, _) <- compileConstDfg parent ("BB" ++ show name) (allInputTys, outputTys) $
+   -- ideally would name the Input "LiftedCapturedInputs"
+   \Ctr {parent, input = src_id, output} -> do
+    setOp src_id (OpIn (InputNode allInputTys [("source", "compileBratBox")]))
     -- Now map ports in the BRAT Graph to their Hugr equivalents.
           -- Each captured value is read from an element of src_id, starting from 0
     let lifted = [(src, Port src_id i) | ((src, _ty), i) <- zip params [0..]]
@@ -571,39 +557,39 @@ compileBratBox parent name (venv, src, tgt) cty = do
     st <- get
     put $ st {liftedOutPorts = M.fromList lifted}
     -- no need to return any holes
-    compileWithInputs dfgId tgt
+    compileTarget parent output tgt
 
   -- Finally, we add a `Partial` node to supply the captured params.
-  partialNode <- addNode "Partial" (OpCustom $ partialOp parent boxInnerSig (length params))
+  partialNode <- addNode "Partial" (parent, OpCustom $ partialOp boxInnerSig (length params))
   addEdge (fst templatePort, Port partialNode 0)
   edge_srcs <- for (map fst params) $ getOutPort parent
   pure (partialNode, zip (map fromJust edge_srcs) [1..])
     -- error on Nothing, the Partial is expecting a value
 
-compileKernBox :: NodeId -> Name -> (NodeId -> Compile ()) -> CTy Kernel Z -> Compile TypedPort
-compileKernBox parent name contents cty = do
+compileKernBox :: NodeId -> String -> (Name, Name) -> CTy Kernel Z -> Compile TypedPort
+compileKernBox parent desc src_tgt cty = do
   -- compile kernel nodes only into a Hugr with "Holes"
   -- when we see a Splice, we'll record the func-port onto a list
   -- return a Hugr with holes
   boxInnerSig@(inTys, outTys) <- compileSig Kerny cty
   let boxTy = HTFunc $ PolyFuncType [] (FunctionType inTys outTys bratExts)
-  (templatePort, holelist) <- compileConstDfg parent ("KB" ++ show name) boxInnerSig $ \dfg_id -> do
-    contents dfg_id
+  (templatePort, holelist) <- compileConstDfg parent ("KB" ++ desc) boxInnerSig $ \ctr -> do
+    compileBox ctr src_tgt
     gets holes
 
   -- For each hole in the template (index 0 i.e. earliest, first)
   -- compile the kernel that should be spliced in and record its signature.
   ns <- gets (fst . bratGraph)
   hole_ports <- for (holelist <>> []) (\splice -> do
-    let (KernelNode (Splice (Ex kernel_src port)) ins outs) = ns M.! splice
+    let (KernelNode (Splice kernel_src) ins outs) = ns M.! splice
     ins <- compilePorts ins
     outs <- compilePorts outs
-    kernel_src <- compileWithInputs parent kernel_src <&> fromJust
-    pure (Port kernel_src port, HTFunc (PolyFuncType [] (FunctionType ins outs bratExts))))
+    kernel_src <- getOutPort parent kernel_src <&> fromJust
+    pure (kernel_src, HTFunc (PolyFuncType [] (FunctionType ins outs bratExts))))
 
   -- Add a substitute node to fill the holes in the template
   let hole_sigs = [ body poly | (_, HTFunc poly) <- hole_ports ]
-  head <$> addNodeWithInputs ("subst_" ++ show name) (OpCustom (substOp parent (FunctionType inTys outTys bratExts) hole_sigs)) (templatePort : hole_ports) [boxTy]
+  head <$> addNodeWithInputs ("subst_" ++ desc) (parent, OpCustom (substOp (FunctionType inTys outTys bratExts) hole_sigs)) (templatePort : hole_ports) [boxTy]
 
 
 -- We get a bunch of TypedPorts which are associated with Srcs in the BRAT graph.
@@ -702,7 +688,7 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
 makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [TypedPort]
 makeRowTag hint parent tag sor@(SoR sumRows) ins =
   if sumRows !! tag == (snd <$> ins)
-  then addNodeWithInputs (hint ++ "_Tag") (OpTag (TagOp parent tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!tag))])) ins [compileSumOfRows sor]
+  then addNodeWithInputs (hint ++ "_Tag") (parent, OpTag (TagOp tag sumRows [("hint", hint), ("tag", show tag), ("row", show (sumRows!!tag))])) ins [compileSumOfRows sor]
   else error $ "In makeRowTag " ++ hint ++ ", Elements " ++ show (snd <$> ins) ++ " do not match tag " ++ show tag ++ " of " ++ show sumRows
 
 getSumVariants :: HugrType -> [[HugrType]]
@@ -713,7 +699,7 @@ getSumVariants ty = error $ "Expected a sum type, got " ++ show ty
 
 -- This should only be called by the logic which creates conditionals, because
 -- wires that exist in the brat graph are already going to be added at the end.
-addNodeWithInputs :: String -> HugrOp NodeId -> [TypedPort]
+addNodeWithInputs :: String -> (NodeId, HugrOp) -> [TypedPort]
                    -> [HugrType] -- The types of the outputs
                    -> Compile [TypedPort] -- The output wires
 addNodeWithInputs name op inWires outTys = do
@@ -728,28 +714,29 @@ makeConditional :: String    -- Label
                 -> [(String, NodeId -> [TypedPort] -> Compile [TypedPort])] -- Must be ordered
                 -> Compile [TypedPort]
 makeConditional lbl parent discrim otherInputs cases = do
-  condId <- freshNode "Conditional"
+  condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
-  outTyss <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
-  unless
-    (allRowsEqual outTyss)
-    (error "Conditional output types didn't match")
-  let condOp = OpConditional (Conditional parent rows (snd <$> otherInputs) (head outTyss) [("label", lbl)])
-  addOp condOp condId
+  (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  let outTys = if allRowsEqual (fst <$> outTyss_cases)
+               then fst (head outTyss_cases)
+               else (error "Conditional output types didn't match")
+  let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
+  setOp condId condOp
+  onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)
   addEdge (fst discrim, Port condId 0)
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
-  pure $ zip (Port condId <$> [0..]) (head outTyss)
+  pure $ zip (Port condId <$> [0..]) outTys
  where
-  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile [HugrType]
+  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile ([HugrType], NodeId)
   makeCase parent name ix tys f = do
-    caseId <- freshNode name
-    inpId <- addNode ("Input_" ++ name) (OpIn (InputNode caseId tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
+    (Ctr caseId inpId outId) <- freshNodeWithIO name parent
+    setOp inpId (OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
     outs <- f caseId (zipWith (\offset ty -> (Port inpId offset, ty)) [0..] tys)
     let outTys = snd <$> outs
-    outId <- addNode ("Output" ++ name) (OpOut (OutputNode caseId outTys [("source", "makeCase")]))
+    setOp outId (OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-    addOp (OpCase (ix, Case parent (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)])) caseId
-    pure outTys
+    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
+    pure (outTys, caseId)
 
   allRowsEqual :: [[HugrType]] -> Bool
   allRowsEqual [] = True
@@ -764,8 +751,8 @@ compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) =
   let sumOut = HTSum (SG (GeneralSum [[ty], snd <$> outputs]))
   let sig = FunctionType [ty] [sumOut] ["BRAT"]
   testId <- addNode ("PrimCtorTest " ++ show c)
-            (OpCustom (CustomOp
-                       parent
+            (parent
+            ,OpCustom (CustomOp
                        "BRAT"
                        ("PrimCtorTest::" ++ show tycon ++ "::" ++ show c)
                        sig
@@ -775,19 +762,19 @@ compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) =
   pure (Port testId 0, sumOut)
 compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
   -- Make a Const node that holds the value we test against
-  constId <- addNode "LitConst" (OpConst (ConstOp parent (valFromSimple tm)))
-  loadPort <- head <$> addNodeWithInputs "LitLoad" (OpLoadConstant (LoadConstantOp parent ty))
+  constId <- addNode "LitConst" (parent, OpConst (ConstOp (valFromSimple tm)))
+  loadPort <- head <$> addNodeWithInputs "LitLoad" (parent, OpLoadConstant (LoadConstantOp ty))
                        [(Port constId 0, ty)] [ty]
   -- Connect to a test node
   let sumOut = HTSum (SG (GeneralSum [[ty], []]))
   let sig = FunctionType [ty, ty] [sumOut] ["BRAT"]
   head <$> addNodeWithInputs ("PrimLitTest " ++ show tm)
-           (OpCustom (CustomOp parent "BRAT" ("PrimLitTest::" ++ show ty) sig []))
+           (parent, OpCustom (CustomOp "BRAT" ("PrimLitTest::" ++ show ty) sig []))
            [port, loadPort]
            [sumOut]
 
-constructorOp :: NodeId -> QualName -> QualName -> FunctionType -> HugrOp NodeId
-constructorOp parent tycon c sig = OpCustom (CustomOp parent "BRAT" ("Ctor::" ++ show tycon ++ "::" ++ show c) sig [])
+constructorOp :: QualName -> QualName -> FunctionType -> HugrOp
+constructorOp tycon c sig = OpCustom (CustomOp "BRAT" ("Ctor::" ++ show tycon ++ "::" ++ show c) sig [])
 
 undoPrimTest :: NodeId
              -> [TypedPort] -- The inputs we have to put back together
@@ -798,27 +785,27 @@ undoPrimTest parent inPorts outTy (PrimCtorTest c tycon _ _) = do
   let sig = FunctionType (snd <$> inPorts) [outTy] ["BRAT"]
   head <$> addNodeWithInputs
            ("UndoCtorTest " ++ show c)
-           (constructorOp parent tycon c sig)
+           (parent, constructorOp tycon c sig)
            inPorts
            [outTy]
 undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
   unless (null inPorts) $ error "Unexpected inPorts"
-  constId <- addNode "LitConst" (OpConst (ConstOp parent (valFromSimple tm)))
-  head <$> addNodeWithInputs "LitLoad" (OpLoadConstant (LoadConstantOp parent outTy))
+  constId <- addNode "LitConst" (parent, OpConst (ConstOp (valFromSimple tm)))
+  head <$> addNodeWithInputs "LitLoad" (parent, OpLoadConstant (LoadConstantOp outTy))
            [(Port constId 0, outTy)] [outTy]
 
 -- Create a module and FuncDecl nodes inside it for all of the functions given as argument
-compileModule :: VEnv
+compileModule :: VEnv -> NodeId
               -> Compile ()
-compileModule venv = do
-  moduleNode <- mkModuleNode
+compileModule venv moduleNode = do
   -- Prepare FuncDef nodes for all functions. Every "noun" also requires a Function
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
     (funTy, extra_call, body) <- analyseDecl idNode
-    defNode <- addNode (show fnName ++ "_def") (OpDefn $ FuncDefn moduleNode (show fnName) funTy [])
+    ctr@Ctr {parent=defNode} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
+    setOp defNode (OpDefn $ FuncDefn (show fnName) funTy [])
     registerFuncDef idNode (defNode, extra_call)
-    pure (body defNode)
+    pure (body ctr)
     )
   for_ bodies (\body -> do
     st <- get
@@ -833,7 +820,7 @@ compileModule venv = do
   -- return the type of the Hugr FuncDefn, whether said FuncDefn requires an extra Call,
   -- and the procedure for compiling the contents of the FuncDefn for execution later,
   -- *after* all such FuncDefns have been registered
-  analyseDecl :: Name -> Compile (PolyFuncType, Bool, NodeId -> Compile ())
+  analyseDecl :: Name -> Compile (PolyFuncType, Bool, Container -> Compile ())
   analyseDecl idNode = do
     (ns, es) <- gets bratGraph
     let srcPortTys = [(srcPort, ty) | (srcPort, ty, In tgt _) <- es, tgt == idNode ]
@@ -843,7 +830,7 @@ compileModule venv = do
         case outs of
           [(_, VFun Braty cty)] -> do
             (inTys, outTys) <- compileSig Braty cty
-            pure (PolyFuncType [] (FunctionType inTys outTys bratExts), False, compileBox (src, tgt))
+            pure (PolyFuncType [] (FunctionType inTys outTys bratExts), False, flip compileBox (src, tgt))
           [(_, VFun Kerny cty)] -> do
             -- We're compiling, e.g.
             --   f :: { Qubit -o Qubit }
@@ -852,19 +839,15 @@ compileModule venv = do
             -- computation that produces this constant. We do so by making a FuncDefn
             -- that takes no arguments and produces the constant kernel graph value.
             thunkTy <- HTFunc . PolyFuncType [] . (\(ins, outs) -> FunctionType ins outs bratExts) <$> compileSig Kerny cty
-            pure (funcReturning [thunkTy], True, \parent ->
-              withIO parent thunkTy $ compileKernBox parent input (compileBox (src, tgt)) cty)
+            pure (funcReturning [thunkTy], True, \Ctr {parent, input, output} -> do
+              setOp input (OpIn (InputNode [] [("source", "analyseDecl")]))
+              setOp output (OpOut (OutputNode [thunkTy] [("source", "analyseDecl")]))
+              wire <- compileKernBox parent (show input) (src, tgt) cty
+              addEdge (fst wire, Port output 0))
           _ -> error "Box should have exactly one output of Thunk type"
       _ -> do -- a computation, or several values
         outs <- compilePorts srcPortTys -- note compiling already-erased types, is this right?
         pure (funcReturning outs, True, compileNoun outs (map fst srcPortTys))
-
-  withIO :: NodeId -> HugrType -> Compile TypedPort -> Compile ()
-  withIO parent output c = do
-    addNode "input" (OpIn (InputNode parent [] [("source", "analyseDecl")]))
-    output <- addNode "output" (OpOut (OutputNode parent [output] [("source", "analyseDecl")]))
-    wire <- c
-    addEdge (fst wire, Port output 0)
 
   -- top-level decls that are not Prims. RHS is the brat idNode
   decls :: [(QualName, Name)]
@@ -875,19 +858,13 @@ compileModule venv = do
               Just _ -> pure (fnName, idNode) -- assume all ports are 0,1,2...
               Nothing -> []
 
-  mkModuleNode :: Compile NodeId
-  mkModuleNode = do
-    id <- freshNode "module"
-    addOp (OpMod $ ModuleOp id) id
-    pure id
-
   funcReturning :: [HugrType] -> PolyFuncType
   funcReturning outs = PolyFuncType [] (FunctionType [] outs bratExts)
 
-compileNoun :: [HugrType] -> [OutPort] -> NodeId -> Compile ()
-compileNoun outs srcPorts parent = do
-  addNode "input" (OpIn (InputNode parent [] [("source", "compileNoun")]))
-  output <- addNode "output" (OpOut (OutputNode parent outs [("source", "compileNoun")]))
+compileNoun :: [HugrType] -> [OutPort] -> Container -> Compile ()
+compileNoun outs srcPorts Ctr {parent, input, output} = do
+  setOp input (OpIn (InputNode [] [("source", "compileNoun")]))
+  setOp output (OpOut (OutputNode outs [("source", "compileNoun")]))
   for_ (zip [0..] srcPorts) (\(outport, Ex src srcPort) ->
     compileWithInputs parent src >>= \case
       Just nodeId -> addEdge (Port nodeId srcPort, Port output outport) $> ()
@@ -900,11 +877,12 @@ compile :: Store
         -> CaptureSets
         -> VEnv
         -> BS.ByteString
-compile store ns g capSets venv
-  = evalState
+compile store ns g capSets venv =
+  let (hugr, ns') = runState (H.new "module" (OpMod ModuleOp)) ns
+  in evalState
     (trackM "compileFunctions" *>
-     compileModule venv *>
+     compileModule venv (root hugr) *>
      trackM "dumpJSON" *>
      dumpJSON
     )
-    (emptyCS g capSets ns store)
+    (makeCS (g, ns', capSets, store) hugr)
