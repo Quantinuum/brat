@@ -13,8 +13,8 @@ import Brat.Naming (Namespace, Name, fresh, split)
 import Bwd
 import Data.Hugr hiding (const)
 
-import Control.Monad.State (State, execState, state)
-import Data.Foldable (for_)
+import Control.Monad.State (State, execState, modify, state)
+import Data.Foldable (foldl', for_)
 import Data.Bifunctor (first)
 import qualified Data.Map as M
 
@@ -47,13 +47,13 @@ freshNode parent nam = state $ \hugr@(HugrGraph {root, parents, nameSupply}) ->
             })
 
 setFirstChildren :: NodeId -> [NodeId] -> State HugrGraph ()
-setFirstChildren p cs = state $ \h -> let nch = M.alter (\Nothing -> Just cs) p (first_children h)
-                                      in ((), h {first_children = nch})
+setFirstChildren p cs = modify $ \h -> let nch = M.alter (\Nothing -> Just cs) p (first_children h)
+                                      in h {first_children = nch}
 
 setOp :: NodeId -> HugrOp -> State HugrGraph ()
 -- Insist the parent exists
 setOp name op = state $ \h@HugrGraph {parents, nodes} -> case M.lookup name parents of
-  Nothing -> error "name has no parent"
+  Nothing -> error $ "Node " ++ show name ++ " has no parent"
   Just _ ->
     -- alter + partial match is just to fail if key already present
     ((), h { nodes = M.alter (\Nothing -> Just op) name nodes })
@@ -142,8 +142,7 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
     first_children k = M.findWithDefault [] k fc
     nodeStackAndIndices :: StackAndIndices
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
-                              init = foldl addNode just_root (first_children root)
-                          in foldl addNode init (M.keys parents)
+                          in foldl' addNode just_root (first_children root ++ M.keys parents)
     
     addNode :: StackAndIndices -> NodeId -> StackAndIndices
     addNode ins n = case M.lookup n (snd ins) of

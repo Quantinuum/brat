@@ -797,9 +797,9 @@ compileModule venv moduleNode = do
   -- to compute its value.
   bodies <- for decls (\(fnName, idNode) -> do
     (funTy, extra_call, body) <- analyseDecl idNode
-    ctr@Ctr {parent} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
-    setOp parent (OpDefn $ FuncDefn (show fnName) funTy [])
-    registerFuncDef idNode (parent, extra_call)
+    ctr@Ctr {parent=defNode} <- freshNodeWithIO (show fnName ++ "_def") moduleNode
+    setOp defNode (OpDefn $ FuncDefn (show fnName) funTy [])
+    registerFuncDef idNode (defNode, extra_call)
     pure (body ctr)
     )
   for_ bodies (\body -> do
