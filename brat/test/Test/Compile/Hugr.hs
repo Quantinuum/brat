@@ -18,7 +18,7 @@ outputDir = prefix </> "output"
 
 -- examples that we expect to compile, but then to fail validation
 invalidExamples :: [FilePath]
-invalidExamples = map ((++ ".brat") . ("examples" </>))
+invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ["adder"
   ,"app"
   ,"dollar_kind"
@@ -29,6 +29,7 @@ invalidExamples = map ((++ ".brat") . ("examples" </>))
   ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
   ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ,"thunks"]
+  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
@@ -57,6 +58,9 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   ,"vlup_covering"
   ]
 
+-- This is https://github.com/Quantinuum/brat/issues/101
+nonCompilingTests = ["test/compilation/closures.brat"]
+
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
     Right bs -> do
@@ -71,7 +75,7 @@ setupCompilationTests = do
   tests <- findByExtension [".brat"] prefix
   examples <- findByExtension [".brat"] examplesPrefix
   createDirectoryIfMissing False outputDir
-  let compileTests = compileToOutput <$> tests
+  let compileTests = expectFailForPaths nonCompilingTests compileToOutput tests
   let examplesTests = testGroup "examples" $ expectFailForPaths nonCompilingExamples compileToOutput examples
 
   pure $ testGroup "compilation" (examplesTests:compileTests)

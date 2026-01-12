@@ -14,6 +14,19 @@ import Data.Text (Text, pack)
 
 import Brat.Syntax.Simple
 
+orderEdgeOffset :: Int
+orderEdgeOffset = -1
+
+data PortId node = Port
+  { nodeId :: node
+  , offset :: Int
+  }
+ deriving (Eq, Functor, Show)
+
+instance ToJSON node => ToJSON (PortId node) where
+  toJSON (Port node offset) = toJSON (node, offset')
+    where offset' = if offset == orderEdgeOffset then Nothing else Just offset
+
 -- We should be able to work out exact extension requirements for our functions,
 -- but instead we'll overapproximate.
 bratExts :: [ExtensionId]
@@ -62,6 +75,9 @@ data HugrType
   | HTOpaque {-extension :: -}String {-type id :: -}String [TypeArg] TypeBound
   | HTFunc PolyFuncType
  deriving (Eq, Show)
+
+class JSONParent n where
+  toJSONp :: n -> Value -> Value
 
 instance ToJSON HugrType where
   toJSON HTQubit = object ["t" .= ("Q" :: Text)]
@@ -225,33 +241,26 @@ valFromSimple Unit = hvUnit
 -------------------------------------- OPS -------------------------------------
 ---------------------  (Depends on HugrValue and HugrType) ---------------------
 
-data ModuleOp node = ModuleOp { parent :: node } deriving (Eq, Functor, Show)
+data ModuleOp = ModuleOp deriving (Eq, Show)
 
-instance Eq a => Ord (ModuleOp a) where
-  compare _ _ = EQ
+instance JSONParent ModuleOp where
+  toJSONp ModuleOp parent = object ["parent" .= parent
+                                   ,"op" .= ("Module" :: Text)
+                                   ]
 
-instance ToJSON node => ToJSON (ModuleOp node) where
-  toJSON (ModuleOp parent) = object ["parent" .= parent
-                                    ,"op" .= ("Module" :: Text)
-                                    ]
-
-data FuncDefn node = FuncDefn
- { parent :: node
- , name :: String
+data FuncDefn = FuncDefn
+ { name :: String
  , signature_ :: PolyFuncType
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq a => Ord (FuncDefn a) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (FuncDefn node) where
-  toJSON (FuncDefn { .. }) = object ["parent" .= parent
-                                    ,"op" .= ("FuncDefn" :: Text)
-                                    ,"name" .= name
-                                    ,"signature" .= signature_
-                                    ,"metadata" .= metadata
-                                    ]
+instance JSONParent FuncDefn where
+  toJSONp (FuncDefn { .. }) parent = object ["parent" .= parent
+                                            ,"op" .= ("FuncDefn" :: Text)
+                                            ,"name" .= name
+                                            ,"signature" .= signature_
+                                            ,"metadata" .= metadata
+                                            ]
 
 data CustomConst where
   CC :: forall a. (Eq a, Show a, ToJSON a) => String -> a -> CustomConst
@@ -269,67 +278,51 @@ instance ToJSON CustomConst where
 
 type ExtensionName = String
 
-data ConstOp node = ConstOp
- { parent :: node
- , const :: HugrValue
- } deriving (Eq, Functor, Show)
+data ConstOp = ConstOp
+ { const :: HugrValue
+ } deriving (Eq, Show)
 
-instance Eq a => Ord (ConstOp a) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (ConstOp node) where
-  toJSON (ConstOp {..}) = object ["parent" .= parent
-                                 ,"op" .= ("Const" :: Text)
-                                 ,"v" .= const
-                                 ]
+instance JSONParent ConstOp where
+  toJSONp (ConstOp {..}) parent = object ["parent" .= parent
+                                         ,"op" .= ("Const" :: Text)
+                                         ,"v" .= const
+                                         ]
 
 
 
-data InputNode node = InputNode
- { parent :: node
- , types  :: [HugrType]
+data InputNode = InputNode
+ { types  :: [HugrType]
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq a => Ord (InputNode a) where
-  compare _ _ = EQ
+instance JSONParent InputNode where
+  toJSONp (InputNode types metadata) parent = object ["parent" .= parent
+                                                     ,"op" .= ("Input" :: Text)
+                                                     ,"types" .= types
+                                                     ,"metadata" .= metadata
+                                                     ]
 
-instance ToJSON node => ToJSON (InputNode node) where
-  toJSON (InputNode parent types metadata) = object ["parent" .= parent
-                                                    ,"op" .= ("Input" :: Text)
-                                                    ,"types" .= types
-                                                    ,"metadata" .= metadata
-                                                    ]
-
-data OutputNode node = OutputNode
- { parent :: node
- , types  :: [HugrType]
+data OutputNode = OutputNode
+ { types  :: [HugrType]
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq a => Ord (OutputNode a) where
-  compare _ _ = EQ
+instance JSONParent OutputNode where
+  toJSONp (OutputNode { .. }) parent = object ["parent" .= parent
+                                              ,"op" .= ("Output" :: Text)
+                                              ,"types" .= types
+                                              ,"metadata" .= metadata
+                                              ]
 
-instance ToJSON node => ToJSON (OutputNode node) where
-  toJSON (OutputNode { .. }) = object ["parent" .= parent
-                                      ,"op" .= ("Output" :: Text)
-                                      ,"types" .= types
-                                      ,"metadata" .= metadata
-                                      ]
-
-data Conditional node = Conditional
- { parent :: node
- , sum_rows :: [[HugrType]]
+data Conditional = Conditional
+ { sum_rows :: [[HugrType]]
  , other_inputs :: [HugrType]
  , outputs :: [HugrType]
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq a => Ord (Conditional a) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (Conditional node) where
-  toJSON (Conditional { .. })
+instance JSONParent Conditional where
+  toJSONp (Conditional { .. }) parent
    = object ["op" .= ("Conditional" :: Text)
             ,"parent" .= parent
             ,"sum_rows" .= sum_rows
@@ -339,21 +332,17 @@ instance ToJSON node => ToJSON (Conditional node) where
             ,"metadata" .= metadata
             ]
 
-data Case node = Case
-  { parent :: node
-  , signature_ :: FunctionType
+data Case = Case
+  { signature_ :: FunctionType
   , metadata :: [(String, String)]
-  } deriving (Eq, Functor, Show)
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (Case node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (Case node) where
-  toJSON (Case { .. }) = object ["op" .= ("Case" :: Text)
-                                ,"parent" .= parent
-                                ,"signature" .= signature_
-                                ,"metadata" .= metadata
-                                ]
+instance JSONParent Case where
+  toJSONp (Case { .. }) parent = object ["op" .= ("Case" :: Text)
+                                        ,"parent" .= parent
+                                        ,"signature" .= signature_
+                                        ,"metadata" .= metadata
+                                        ]
 
 {-
 data Const = Const
@@ -363,34 +352,26 @@ data Const = Const
  }
 -}
 
-data DFG node = DFG
- { parent :: node
- , signature_ :: FunctionType
+data DFG = DFG
+ { signature_ :: FunctionType
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq node => Ord (DFG node) where
-  compare _ _ = EQ
+instance JSONParent DFG where
+  toJSONp (DFG { .. }) parent = object ["op" .= ("DFG" :: Text)
+                                       ,"parent" .= parent
+                                       ,"signature" .= signature_
+                                       ,"metadata" .= metadata
+                                       ]
 
-instance ToJSON node => ToJSON (DFG node) where
-  toJSON (DFG { .. }) = object ["op" .= ("DFG" :: Text)
-                               ,"parent" .= parent
-                               ,"signature" .= signature_
-                               ,"metadata" .= metadata
-                               ]
-
-data TagOp node = TagOp
- { parent :: node
- , tag :: Int
+data TagOp = TagOp
+ { tag :: Int
  , variants :: [[HugrType]]
  , metadata :: [(String, String)]
- } deriving (Eq, Functor, Show)
+ } deriving (Eq, Show)
 
-instance Eq node => Ord (TagOp node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (TagOp node) where
-  toJSON (TagOp parent tag variants metadata)
+instance JSONParent TagOp where
+  toJSONp (TagOp tag variants metadata) parent
    = object ["parent" .= parent
             ,"op" .= ("Tag" :: Text)
             ,"tag" .= tag
@@ -398,41 +379,33 @@ instance ToJSON node => ToJSON (TagOp node) where
             ,"metadata" .= metadata
             ]
 
-data MakeTupleOp node = MakeTupleOp
- { parent :: node
- , tys :: [HugrType]
- } deriving (Eq, Functor, Show)
+data MakeTupleOp = MakeTupleOp
+ { tys :: [HugrType]
+ } deriving (Eq, Show)
 
-instance Eq node => Ord (MakeTupleOp node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (MakeTupleOp node) where
-  toJSON (MakeTupleOp parent tys)
+instance JSONParent MakeTupleOp where
+  toJSONp (MakeTupleOp tys) parent
    = object ["parent" .= parent
             ,"op" .= ("MakeTuple" :: Text)
             ,"tys" .= tys
             ]
 
-data CustomOp node = CustomOp
-  { parent :: node
-  , extension :: String
+data CustomOp = CustomOp
+  { extension :: String
   , op_name :: String
   , signature_ :: FunctionType
   , args :: [TypeArg]
-  } deriving (Eq, Functor, Show)
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (CustomOp node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (CustomOp node) where
-  toJSON (CustomOp { .. }) = object ["parent" .= parent
-                                    ,"op" .= ("CustomOp" :: Text)
-                                    ,"description" .= ("" :: Text)
-                                    ,"extension" .= pack extension
-                                    ,"args" .= args
-                                    ,"op_name" .= pack op_name
-                                    ,"signature" .= signature_
-                                    ]
+instance JSONParent CustomOp where
+  toJSONp (CustomOp { .. }) parent = object ["parent" .= parent
+                                            ,"op" .= ("CustomOp" :: Text)
+                                            ,"description" .= ("" :: Text)
+                                            ,"extension" .= pack extension
+                                            ,"args" .= args
+                                            ,"op_name" .= pack op_name
+                                            ,"signature" .= signature_
+                                            ]
 
 -- In BRAT, we're not using the type parameter machinery of hugr for
 -- polymorphism, so calls can just take simple signatures.
@@ -442,16 +415,12 @@ instance ToJSON node => ToJSON (CustomOp node) where
 --
 -- TODO: Instead of using hugr type args, we should be using coercions for
 -- polymorphic function arguments.
-data CallOp node = CallOp
-  { parent :: node
-  , signature_ :: FunctionType
-  } deriving (Eq, Functor, Show)
+data CallOp = CallOp
+  { signature_ :: FunctionType
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (CallOp node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (CallOp node) where
-  toJSON (CallOp parent signature_) =
+instance JSONParent CallOp where
+  toJSONp (CallOp signature_) parent =
     object ["parent" .= parent
            ,"op" .= ("Call" :: Text)
            ,"func_sig" .= PolyFuncType [] signature_
@@ -459,35 +428,31 @@ instance ToJSON node => ToJSON (CallOp node) where
            ,"instantiation" .= signature_
            ]
 
-intOp :: node -> String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp node
-intOp parent opName ins outs = CustomOp parent "arithmetic.int_ops" opName (FunctionType ins outs ["arithmetic.int_ops"])
+intOp :: String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp
+intOp opName ins outs = CustomOp "arithmetic.int_ops" opName (FunctionType ins outs ["arithmetic.int_ops"])
 
-binaryIntOp :: node -> String -> CustomOp node
-binaryIntOp parent name
- = intOp parent name [hugrInt, hugrInt] [hugrInt] [TANat intWidth]
+binaryIntOp :: String -> CustomOp
+binaryIntOp name
+ = intOp name [hugrInt, hugrInt] [hugrInt] [TANat intWidth]
 
-floatOp :: node -> String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp node
-floatOp parent opName ins outs = CustomOp parent "arithmetic.float_ops" opName (FunctionType ins outs ["arithmetic.float_ops"])
+floatOp :: String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp
+floatOp opName ins outs = CustomOp "arithmetic.float_ops" opName (FunctionType ins outs ["arithmetic.float_ops"])
 
-binaryFloatOp :: node -> String -> CustomOp node
-binaryFloatOp parent name = floatOp parent name [hugrFloat, hugrFloat] [hugrFloat] []
+binaryFloatOp :: String -> CustomOp
+binaryFloatOp name = floatOp name [hugrFloat, hugrFloat] [hugrFloat] []
 
-data CallIndirectOp node = CallIndirectOp
-  { parent :: node
-  , signature_ :: FunctionType
-  } deriving (Eq, Functor, Show)
+data CallIndirectOp = CallIndirectOp
+  { signature_ :: FunctionType
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (CallIndirectOp node) where
-  compare _ _ = EQ
+instance JSONParent CallIndirectOp where
+  toJSONp (CallIndirectOp signature_) parent = object ["parent" .= parent
+                                                      ,"signature" .= signature_
+                                                      ,"op" .= ("CallIndirect" :: Text)
+                                                      ]
 
-instance ToJSON node => ToJSON (CallIndirectOp node) where
-  toJSON (CallIndirectOp parent signature_) = object ["parent" .= parent
-                                                     ,"signature" .= signature_
-                                                     ,"op" .= ("CallIndirect" :: Text)
-                                                     ]
-
-holeOp :: node -> Int -> FunctionType -> CustomOp node
-holeOp parent idx sig = CustomOp parent "BRAT" "Hole" sig
+holeOp :: Int -> FunctionType -> CustomOp
+holeOp idx sig = CustomOp "BRAT" "Hole" sig
                         [TANat idx, TAType (HTFunc (PolyFuncType [] sig))]
 
 -- TYPE ARGS:
@@ -500,12 +465,11 @@ holeOp parent idx sig = CustomOp parent "BRAT" "Hole" sig
 --  * Many graphs with types given by innerSigs (to go in the holes)
 -- OUTPUT:
 --  * A single graph whose signature is the same as outerSig
-substOp :: node
-        -> {- outerSig :: -}FunctionType
+substOp :: {- outerSig :: -}FunctionType
         -> {- innerSigs :: -}[FunctionType]{- length n -}
-        -> CustomOp node
-substOp parent outerSig innerSigs
-  = CustomOp parent "BRAT" "Substitute" sig [toArg outerSig, TASequence (toArg <$> innerSigs)]
+        -> CustomOp
+substOp outerSig innerSigs
+  = CustomOp "BRAT" "Substitute" sig [toArg outerSig, TASequence (toArg <$> innerSigs)]
  where
   fnExts (FunctionType _ _ exts) = S.fromList exts
   combinedExts = S.toList $ foldr S.union (fnExts outerSig) (fnExts <$> innerSigs)
@@ -519,11 +483,10 @@ toFunc ty = HTFunc (PolyFuncType [] ty)
 toSeq :: [HugrType] -> TypeArg
 toSeq tys = TASequence (TAType <$> tys)
 
-partialOp :: node  -- Parent
-          -> FunctionType  -- Signature of the function that is partially evaluated
+partialOp :: FunctionType  -- Signature of the function that is partially evaluated
           -> Int  -- Number of arguments that are evaluated
-          -> CustomOp node
-partialOp parent funcSig numSupplied = CustomOp parent "BRAT" "Partial" sig args
+          -> CustomOp
+partialOp funcSig numSupplied = CustomOp "BRAT" "Partial" sig args
  where
   sig :: FunctionType
   sig = FunctionType
@@ -536,139 +499,95 @@ partialOp parent funcSig numSupplied = CustomOp parent "BRAT" "Partial" sig args
   otherInputs = drop numSupplied (input funcSig)
 
 
-data LoadConstantOp node = LoadConstantOp
-  { parent :: node
-  , datatype :: HugrType
-  } deriving (Eq, Functor, Show)
+data LoadConstantOp = LoadConstantOp
+  { datatype :: HugrType
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (LoadConstantOp node) where
-  compare _ _ = EQ
+instance JSONParent LoadConstantOp where
+  toJSONp (LoadConstantOp {..}) parent = object ["parent" .= parent
+                                                ,"op" .= ("LoadConstant" :: Text)
+                                                ,"datatype" .= datatype
+                                                ]
 
-instance ToJSON node => ToJSON (LoadConstantOp node) where
-  toJSON (LoadConstantOp {..}) = object ["parent" .= parent
-                                        ,"op" .= ("LoadConstant" :: Text)
-                                        ,"datatype" .= datatype
-                                        ]
-
-data LoadFunctionOp node = LoadFunctionOp
-  { parent :: node
-  , func_sig :: PolyFuncType
+data LoadFunctionOp = LoadFunctionOp
+  { func_sig :: PolyFuncType
   , type_args :: [TypeArg]
   , signature :: FunctionType
-  } deriving (Eq, Functor, Show)
+  } deriving (Eq, Show)
 
-instance Eq node => Ord (LoadFunctionOp node) where
-  compare _ _ = EQ
+instance JSONParent LoadFunctionOp where
+  toJSONp (LoadFunctionOp {..}) parent = object ["parent" .= parent
+                                                ,"op" .= ("LoadFunction" :: Text)
+                                                ,"func_sig" .= func_sig
+                                                ,"type_args" .= type_args
+                                                ,"signature" .= signature
+                                                ]
 
-instance ToJSON node => ToJSON (LoadFunctionOp node) where
-  toJSON (LoadFunctionOp {..}) = object ["parent" .= parent
-                                        ,"op" .= ("LoadFunction" :: Text)
-                                        ,"func_sig" .= func_sig
-                                        ,"type_args" .= type_args
-                                        ,"signature" .= signature
+data NoopOp = NoopOp
+  { ty :: HugrType
+  } deriving (Eq, Show)
+
+instance JSONParent NoopOp where
+  toJSONp (NoopOp {..}) parent = object ["parent" .= parent
+                                        ,"op" .= ("Noop" :: Text)
+                                        ,"ty" .= ty
                                         ]
 
-data NoopOp node = NoopOp
-  { parent :: node
-  , ty :: HugrType
-  } deriving (Eq, Functor, Show)
-
-instance Eq node => Ord (NoopOp node) where
-  compare _ _ = EQ
-
-instance ToJSON node => ToJSON (NoopOp node) where
-  toJSON (NoopOp {..}) = object ["parent" .= parent
-                                ,"op" .= ("Noop" :: Text)
-                                ,"ty" .= ty
-                                ]
-
 -- In the order they must be printed in - roots, inputs, outputs
-data HugrOp node
+data HugrOp
   -- OpConditional should be compiled last so we can sort out its parent
-  = OpMod (ModuleOp node)
-  | OpIn (InputNode node)
-  | OpOut (OutputNode node)
+  = OpMod ModuleOp
+  | OpIn InputNode
+  | OpOut OutputNode
   -- the rest
-  | OpDefn (FuncDefn node)
-  | OpDFG (DFG node)
-  | OpConst (ConstOp node)
-  | OpConditional (Conditional node)
-  -- Make sure that the cases are printed out in the correct order
-  | OpCase (Int, Case node)
-  | OpTag (TagOp node)
-  | OpMakeTuple (MakeTupleOp node)
-  | OpCustom (CustomOp node)
-  | OpCall (CallOp node)
-  | OpCallIndirect (CallIndirectOp node)
-  | OpLoadConstant (LoadConstantOp node)
-  | OpLoadFunction (LoadFunctionOp node)
-  | OpNoop (NoopOp node)
- deriving (Eq, Functor, Ord, Show)
+  | OpDefn FuncDefn
+  | OpDFG DFG
+  | OpConst ConstOp
+  | OpConditional Conditional
+  | OpCase Case
+  | OpTag TagOp
+  | OpMakeTuple MakeTupleOp
+  | OpCustom CustomOp
+  | OpCall CallOp
+  | OpCallIndirect CallIndirectOp
+  | OpLoadConstant LoadConstantOp
+  | OpLoadFunction LoadFunctionOp
+  | OpNoop NoopOp
+ deriving (Eq, Show)
 
-addMetadata :: [(String, String)] -> HugrOp node -> HugrOp node
+addMetadata :: [(String, String)] -> HugrOp -> HugrOp
 addMetadata md (OpDFG (DFG { .. })) = OpDFG (DFG { metadata = metadata ++ md, .. })
-addMetadata md (OpCase (i, (Case { .. }))) = OpCase (i, (Case { metadata = metadata ++ md, .. }))
+addMetadata md (OpCase (Case { .. })) = OpCase (Case { metadata = metadata ++ md, .. })
 addMetadata md (OpIn (InputNode { .. })) = OpIn (InputNode { metadata = metadata ++ md, .. })
 addMetadata md (OpTag (TagOp { .. })) = OpTag (TagOp { metadata = metadata ++ md, .. })
 addMetadata md (OpDefn (FuncDefn { .. })) = OpDefn (FuncDefn { metadata = metadata ++ md, .. })
 addMetadata md (OpConditional (Conditional { .. })) = OpConditional (Conditional { metadata = metadata ++ md, .. })
 addMetadata _ op = op
 
-instance ToJSON node => ToJSON (HugrOp node) where
-  toJSON (OpMod op) = toJSON op
-  toJSON (OpDefn op) = toJSON op
-  toJSON (OpConst op) = toJSON op
-  toJSON (OpDFG op) = toJSON op
-  toJSON (OpIn op) = toJSON op
-  toJSON (OpOut op) = toJSON op
-  toJSON (OpCase (_, op)) = toJSON op
-  toJSON (OpConditional op) = toJSON op
-  toJSON (OpTag op) = toJSON op
-  toJSON (OpMakeTuple op) = toJSON op
-  toJSON (OpCustom op) = toJSON op
-  toJSON (OpCall op) = toJSON op
-  toJSON (OpCallIndirect op) = toJSON op
-  toJSON (OpLoadConstant op) = toJSON op
-  toJSON (OpLoadFunction op) = toJSON op
-  toJSON (OpNoop op) = toJSON op
+instance JSONParent HugrOp where
+  toJSONp (OpMod op) parent = toJSONp op parent
+  toJSONp (OpDefn op) parent = toJSONp op parent
+  toJSONp (OpConst op) parent = toJSONp op parent
+  toJSONp (OpDFG op) parent = toJSONp op parent
+  toJSONp (OpIn op) parent = toJSONp op parent
+  toJSONp (OpOut op) parent = toJSONp op parent
+  toJSONp (OpCase op) parent = toJSONp op parent
+  toJSONp (OpConditional op) parent = toJSONp op parent
+  toJSONp (OpTag op) parent = toJSONp op parent
+  toJSONp (OpMakeTuple op) parent = toJSONp op parent
+  toJSONp (OpCustom op) parent = toJSONp op parent
+  toJSONp (OpCall op) parent = toJSONp op parent
+  toJSONp (OpCallIndirect op) parent = toJSONp op parent
+  toJSONp (OpLoadConstant op) parent = toJSONp op parent
+  toJSONp (OpLoadFunction op) parent = toJSONp op parent
+  toJSONp (OpNoop op) parent = toJSONp op parent
 
-getParent :: HugrOp node -> node
-getParent (OpMod (ModuleOp { parent = parent })) = parent
-getParent (OpDefn (FuncDefn { parent = parent })) = parent
-getParent (OpConst (ConstOp { parent = parent })) = parent
-getParent (OpDFG (DFG { parent = parent })) = parent
-getParent (OpConditional (Conditional { parent = parent })) = parent
-getParent (OpCase (_, Case { parent = parent })) = parent
-getParent (OpIn (InputNode { parent = parent })) = parent
-getParent (OpOut (OutputNode { parent = parent })) = parent
-getParent (OpTag (TagOp { parent = parent })) = parent
-getParent (OpMakeTuple (MakeTupleOp { parent = parent })) = parent
-getParent (OpCustom (CustomOp { parent = parent })) = parent
-getParent (OpCall (CallOp { parent = parent })) = parent
-getParent (OpCallIndirect (CallIndirectOp { parent = parent })) = parent
-getParent (OpLoadConstant (LoadConstantOp { parent = parent })) = parent
-getParent (OpLoadFunction (LoadFunctionOp { parent = parent })) = parent
-getParent (OpNoop (NoopOp { parent = parent })) = parent
+data Hugr node = Hugr ([(node, HugrOp)], [(PortId node, PortId node)]) deriving (Eq, Show)
 
-data Hugr node = Hugr [HugrOp node] [(PortId node, PortId node)]
-  deriving (Eq, Functor, Show)
-
-instance ToJSON node => ToJSON (Hugr node) where
-  toJSON (Hugr ns es) = object ["version" .= ("v1" :: Text)
-                               ,"nodes" .= ns
-                               ,"edges" .= es
-                               ,"encoder" .= ("BRAT" :: Text)
-                               ]
-
-orderEdgeOffset :: Int
-orderEdgeOffset = -1
-
-data PortId node = Port
-  { nodeId :: node
-  , offset :: Int
-  }
- deriving (Eq, Functor, Show)
-
-instance ToJSON node => ToJSON (PortId node) where
-  toJSON (Port node offset) = toJSON (node, offset')
-    where offset' = if offset == orderEdgeOffset then Nothing else Just offset
+instance ToJSON (Hugr Int) where
+  toJSON (Hugr (nodes, edges)) = object
+    ["version" .= ("v1" :: Text)
+    ,"nodes" .= [toJSONp op (toJSON parent) | (parent, op) <- nodes]
+    ,"edges" .= edges
+    ,"encoder" .= ("BRAT" :: Text)
+    ]
