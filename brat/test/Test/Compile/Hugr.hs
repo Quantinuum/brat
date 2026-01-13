@@ -58,8 +58,7 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   ,"vlup_covering"
   ]
 
--- this one seems to generate a Brat Graph containing three Box nodes with different Sources,
--- but the same Target, which reads from all three
+-- This is https://github.com/Quantinuum/brat/issues/101
 nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
