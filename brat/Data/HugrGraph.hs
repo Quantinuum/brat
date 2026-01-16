@@ -101,13 +101,18 @@ getParent HugrGraph {parents} n = parents M.! n
 getOp :: Ord n => HugrGraph n -> n -> HugrOp
 getOp HugrGraph {nodes} n = nodes M.! n
 
--- Replaces the specified node of the first Hugr, with the second Hugr,
--- given a key-translation function for any non-root key of the second Hugr
--- to a valid (unused) key in the first
+-- Replaces the specified node of the host Hugr (in the State monad), with a new Hugr
+-- (as a subtree), given a key-translation function for any non-root key of the new Hugr
+-- to a valid (unused) key in the host. (The most general form of splicing.)
+-- We expect the new Hugr to be DFG-rooted with the same signature as the hole
+-- being replaced, although this is not enforced.
 splice :: forall m n. (Ord n, Ord m) => n -> HugrGraph m -> (m -> n) -> State (HugrGraph n) ()
 splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) >>= isHole) of
   Just (_, sig) -> case M.lookup (root add) (nodes add) of
-    Just (OpDFG (DFG sig' _)) | sig == sig' -> {-inlineDFG hole-} host {
+    -- We could inline the DFG here, which could be done more efficiently (iterating through
+    -- nodes of `add` but not the host), but for now we just splice in the DFG in place
+    -- of the hole with its subtree beneath it.
+    Just (OpDFG (DFG sig' _)) | sig == sig' -> host {
         -- prefer host entry for parent of (`hole` == root of `add`)
         parents = union (parents host) (M.mapKeys k $ M.map k $ parents add),
         -- override host `nodes` for `hole` with new (DFG)
@@ -128,8 +133,9 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
 
     union = M.unionWith (\_ _ -> error "keys not disjoint")
 
--- Replace the specified hole of a host Hugr (with NodeId keys) with a new Hugr, also
--- with NodeId keys, by prefixing the new Hugr's keys with the NodeId of the hole
+-- Replace the specified hole of the host Hugr (in the State monad), with a new Hugr,
+-- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
+-- the hole
 splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
 splice_prepend hole add = splice hole add (keyMap M.!)
  where
@@ -141,8 +147,9 @@ splice_prepend hole add = splice hole add (keyMap M.!)
   -- parent is definitive list of non-root nodes
   keyMap = M.fromList $ [(k, prefixRoot k) | k <- M.keys (parents add)]
 
--- Replace the specified hole of a host Hugr (with NodeId keys) with a new Hugr, of any
--- key type, generating fresh NodeIds from a Namespace for the new nodes
+-- Replace the specified hole of a host Hugr (in the State monad, with NodeId keys) with
+-- a new Hugr of any key type, using a Namespace to generate a fresh NodeId for each node
+-- of the new Hugr
 splice_new :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
 splice_new hole add = modify $ \(host, ns) ->
   let
@@ -152,6 +159,8 @@ splice_new hole add = modify $ \(host, ns) ->
    host_out = execState (splice hole add (keyMap M.!)) host
   in (host_out, ns_out)
 
+-- Inline a DFG node in the Hugr, i.e. make the children of the DFG become children
+-- of the DFG's parent, removing the DFG and (only) its Input+Output children
 inlineDFG :: Ord n => n -> State (HugrGraph n) ()
 inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
   (Just (OpDFG _)) -> do
