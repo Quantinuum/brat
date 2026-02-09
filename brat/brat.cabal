@@ -69,6 +69,7 @@ library
                        Brat.Checker.SolvePatterns,
                        Brat.Checker.Types,
                        Brat.Compile.Hugr,
+                       Brat.Compile.Model,
                        Brat.Constructors,
                        Brat.Constructors.Patterns,
                        Brat.Error,
@@ -88,6 +89,7 @@ library
                        Control.Monad.Freer,
                        Data.Hugr,
                        Data.HugrGraph,
+                       Data.Hugr.Model,
                        Hasochism,
                        Util
 

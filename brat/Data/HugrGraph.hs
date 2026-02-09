@@ -1,13 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId,
-                      HugrGraph(root), -- do NOT export contents, keep abstract
+                      HugrGraph(..), -- do NOT export contents, keep abstract
                       new, splitNamespace,
                       freshNode,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge, edgeList,
                       splice, inlineDFG,
-                      serialize, to_json
+                      serialize, to_json,
+                      getChildren
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh, split)
@@ -240,20 +241,29 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
     first_children k = M.findWithDefault [] k fc
     nodeStackAndIndices :: StackAndIndices
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
-                              init = foldl addNode just_root (first_children root)
-                          in foldl addNode init (M.keys parents)
+                          in foldl' addNode just_root (first_children root ++ M.keys parents)
 
-    addNode :: StackAndIndices -> NodeId -> StackAndIndices
+    addNode :: StackAndIndices n -> n -> StackAndIndices n
     addNode ins n = case M.lookup n (snd ins) of
       (Just _) -> ins
       Nothing -> let
         parent = parents M.! n -- guaranteed as root is always in `ins`
         with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
        in case M.lookup n indices of
-            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children 
+            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children
             Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
                        -- finally add first_children immediately after n
                        in foldl addNode with_n (first_children n)
 
     transNode :: NodeId -> Int
     transNode = ((snd nodeStackAndIndices) M.!)
+
+--------------------------------------------------------------------------------
+------------------------------------ Querying ----------------------------------
+--------------------------------------------------------------------------------
+getChildren :: HugrGraph -> NodeId -> [NodeId]
+getChildren hg node = M.keys $ M.filter (== node) (parents hg)
+
+
+-- nodeInputs :: HugrGraph -> NodeId -> [NodeId]
+-- nodeInputs hg
