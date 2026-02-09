@@ -1,14 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId,
-                      HugrGraph, -- do NOT export contents, keep abstract
-                      new,
+                      HugrGraph(..), -- do NOT export contents, keep abstract
+                      new, splitNamespace,
                       freshNode,
                       getRoot, getNodes,
                       setFirstChildren,
                       setOp, getParent, getOp,
-                      addEdge, addOrderEdge,
+                      addEdge, addOrderEdge, edgeList,
                       splice, splice_new, splice_prepend, inlineDFG,
-                      serialize, to_json
+                      serialize, to_json,
+                      getChildren
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
@@ -299,3 +300,13 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
 
     transNode :: n -> Int
     transNode = ((snd nodeStackAndIndices) M.!)
+
+--------------------------------------------------------------------------------
+------------------------------------ Querying ----------------------------------
+--------------------------------------------------------------------------------
+getChildren :: HugrGraph n -> n -> [n]
+getChildren hg node = M.keys $ M.filter (== node) (parents hg)
+
+
+-- nodeInputs :: HugrGraph -> NodeId -> [NodeId]
+-- nodeInputs hg
