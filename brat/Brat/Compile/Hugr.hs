@@ -313,7 +313,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
         Nothing -> addHole parent sig outPort
 
     Source -> error "Source found outside of compileBox"
-      
+
     Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
