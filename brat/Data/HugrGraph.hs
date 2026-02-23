@@ -9,7 +9,8 @@ module Data.HugrGraph(NodeId,
                       addEdge, addOrderEdge, edgeList,
                       splice, splice_new, splice_prepend, inlineDFG,
                       serialize, to_json,
-                      getChildren
+                      getChildren,
+                      inEdges, outEdges
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
@@ -20,9 +21,10 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Aeson (encode)
 
 import Control.Monad.State (State, execState, state, get, put, modify)
+import Data.Bifunctor (first)
 import Data.Foldable (foldl', for_)
 import Data.Functor ((<&>))
-import Data.Bifunctor (first)
+import Data.List (foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
@@ -286,7 +288,7 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
                           in foldl' addNode just_root (first_children root ++ M.keys parents)
 
-    addNode :: StackAndIndices n -> n -> StackAndIndices n
+    addNode :: StackAndIndices -> NodeId -> StackAndIndices
     addNode ins n = case M.lookup n (snd ins) of
       (Just _) -> ins
       Nothing -> let
@@ -307,6 +309,11 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
 getChildren :: HugrGraph n -> n -> [n]
 getChildren hg node = M.keys $ M.filter (== node) (parents hg)
 
+inEdges :: HugrGraph n -> n -> [(PortId n, Int)]
+inEdges hg n = (edges_in hg) M.! n
+
+outEdges :: HugrGraph n -> n -> [(Int, PortId n)]
+outEdges hg n = (edges_out hg) M.! n
 
 -- nodeInputs :: HugrGraph -> NodeId -> [NodeId]
 -- nodeInputs hg

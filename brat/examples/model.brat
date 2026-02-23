@@ -1,0 +1,2 @@
+id(Qubit) -o Qubit
+id = { x => x }

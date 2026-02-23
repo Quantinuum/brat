@@ -13,6 +13,7 @@ import Brat.Syntax.Common
 import Brat.Syntax.Value
 
 import Data.Hugr
+import qualified Brat.Compile.Model as Model
 import qualified Data.HugrGraph as HG
 import Hasochism
 
@@ -33,10 +34,11 @@ runInterpreter libDirs file runFunc = do
     let venv = M.map fst declEnv
     --print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
-    let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
+    let (modelNS, newRoot) = split "v" root
+    let outTask = evalPorts (outerGraph, st, newRoot, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> Right hugr
+      Finished [(KernelV hugr)] -> Right (Model.toModelString modelNS hugr)
       _ -> Left $ T.pack $ show outTask
 
 data Frame where
