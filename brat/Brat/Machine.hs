@@ -31,13 +31,13 @@ type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 runInterpreter :: [FilePath] -> String -> String -> IO ()
 runInterpreter libDirs file runFunc = do
     (root, (venv, _, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
-    print (show outerGraph)
+    --print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     case outTask of
       Finished [(KernelV hugr)] -> do
-        putStrLn "Final Hugr Graph:"
+        --putStrLn "Final Hugr Graph:"
         BS.putStr (HG.to_json hugr)
       _ -> print outTask
 
@@ -96,14 +96,14 @@ evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
 
 run :: GraphInfo -> Bwd Frame -> Task -> Task
-run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
+--run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
 
 -- Tasks that push new frames onto the stack to do things
 run gi@(g@(nodes, wires), _, _, _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
     Nothing -> evalNodeInputs gi (fz :< PortOfNode p) name
 run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
-    nw | trace ("EVALNODE " ++ show nw) False -> undefined
+    --nw | trace ("EVALNODE " ++ show nw) False -> undefined
     (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
     (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
     (BratNode Id _ _) -> run gi fz (Finished ins)
@@ -149,7 +149,7 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
     let MatchSequence matchInputs matchTests matchOutputs = ms
         testInputs = M.fromList (fromJust $ zipSameLength [src | (NamedPort src _,_ty) <- matchInputs] ins)
         outEnv = doAllTests testInputs matchTests
-    in case trace ("outEnv: " ++ show outEnv ++ "\nmatchOutputs: " ++ show matchOutputs) outEnv of
+    in case {- trace ("outEnv: " ++ show outEnv ++ "\nmatchOutputs: " ++ show matchOutputs) -} outEnv of
         Nothing -> run gi (fz :< Alternatives cs ins) TryNextMatch
         Just env ->
             let vals = [miniEval gi env src | (NamedPort src _, _) <- matchOutputs]
