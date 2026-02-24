@@ -135,7 +135,8 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
   children <- traverse (convertNode hg)
               (delete inp $ delete out (getChildren hg nodeId))
   pure (M.Region
-       { sources = sourceVars
+       { kind = M.DFG
+       , sources = sourceVars
        , targets = targetVars
        , children = catMaybes children
        , regionMetas = regionMetas

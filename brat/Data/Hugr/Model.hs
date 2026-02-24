@@ -72,7 +72,8 @@ instance Serialise RegionKind where
   serialise MOD = "mod"
 
 data Region = Region
-  { sources :: [LinkName]
+  { kind :: RegionKind
+  , sources :: [LinkName]
   , targets :: [LinkName]
   , children :: [Node]
   , regionMetas :: [Term]
@@ -81,7 +82,7 @@ data Region = Region
 
 instance Serialise Region where
   serialise (Region { .. }) = "("
-                              -- <> serialise kind
+                              <> serialise kind
                               <+> printPortLists sources targets
                               <//> printSignature regionSignature
                               </> concatLines (printMeta <$> regionMetas)
@@ -162,7 +163,7 @@ data Node = Node
 
 printPortLists :: [LinkName] -> [LinkName] -> Doc
 printPortLists [] [] = mempty
-printPortLists ins outs = brackets (printList ins) <> brackets (printList outs)
+printPortLists ins outs = brackets (printList ins) <+> brackets (printList outs)
  where
   printList :: [LinkName] -> Doc
   printList xs = mconcat (doc <$> xs)
