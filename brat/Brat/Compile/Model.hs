@@ -32,30 +32,30 @@ data ModelState = State
 type Model = State ModelState -- out nodes that have been compiled
 
 setOutVar :: NodeId -> [(Int, M.LinkName)] -> Model ()
-setOutVar key val | trace ("setOutVar " ++ show key ++ " " ++ show val) False = undefined
+--setOutVar key val | trace ("setOutVar " ++ show key ++ " " ++ show val) False = undefined
 setOutVar key val = do
   ms <- get
   let newVal = case Map.lookup key (outVars ms) of
-        Just orig -> Map.union val orig
-        Nothing -> Map.insert
+        Just orig -> Map.toList (Map.union (Map.fromList val) (Map.fromList orig))
+        Nothing -> val
   put (ms { outVars = Map.insert key newVal (outVars ms) })
 
 setInpVar :: NodeId -> [(Int, M.LinkName)] -> Model ()
-setInpVar key val | trace ("setInpVar " ++ show key ++ " " ++ show val) False = undefined
+--setInpVar key val | trace ("setInpVar " ++ show key ++ " " ++ show val) False = undefined
 setInpVar key val = do
   ms <- get
   let newVal = case Map.lookup key (inpVars ms) of
-        Just orig -> Map.union val orig
-        Nothing -> Map.insert
+        Just orig -> Map.toList (Map.union (Map.fromList val) (Map.fromList orig))
+        Nothing -> val
   put (ms { inpVars = Map.insert key newVal (inpVars ms) })
 
 -- The thing had better be defined!
 -- TODO: Allow it not to be?
-getInpVars :: NodeId -> Model (Int, M.LinkName)
-getInpVars nid = gets (Map.! nid) inpVars
+getInpVars :: NodeId -> Model [(Int, M.LinkName)]
+getInpVars nid = gets (fromMaybe [] . (Map.lookup nid) . inpVars)
 
-getOutVars :: NodeId -> Model (Int, M.LinkName)
-getOutVars nid = gets (Map.! nid) outVars
+getOutVars :: NodeId -> Model [(Int, M.LinkName)]
+getOutVars nid = gets (fromMaybe [] . (Map.lookup nid) . outVars)
 
 freshName :: Model M.LinkName
 freshName = do
