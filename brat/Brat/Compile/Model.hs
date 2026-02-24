@@ -57,19 +57,15 @@ getInpVars nid = gets (fromMaybe [] . (Map.lookup nid) . inpVars)
 getOutVars :: NodeId -> Model [(Int, M.LinkName)]
 getOutVars nid = gets (fromMaybe [] . (Map.lookup nid) . outVars)
 
-getDangling :: NodeId -> Int -> Model M.LinkName
+getDangling :: NodeId -> Int -> Model (Maybe M.LinkName)
 getDangling nid port = do
   vars <- getOutVars nid
-  case lookup port vars of
-    Nothing -> error $ "Dangling wire not found :( " ++ show nid ++ " " ++ show port
-    Just link -> pure link
+  pure (lookup port vars)
 
-getHungry :: NodeId -> Int -> Model M.LinkName
+getHungry :: NodeId -> Int -> Model (Maybe M.LinkName)
 getHungry nid port = do
   vars <- getInpVars nid
-  case lookup port vars of
-    Nothing -> error $ "Hungry wire not found :( " ++ show nid ++ " " ++ show port
-    Just link -> pure link
+  pure (lookup port vars)
 
 freshName :: Model Name
 freshName = do
@@ -77,6 +73,20 @@ freshName = do
   let (name, ns') = fresh (show (nameCount st)) (ns st)
   put (st { ns = ns', nameCount = nameCount st + 1 })
   pure name
+
+makeInputLink :: NodeId -> Int -> Model M.LinkName
+makeInputLink nid port = do
+  name <- freshName
+  let link = '%':show name
+  setInpVar nid [(port, ('%':show name))]
+  pure link
+
+makeOutputLink :: NodeId -> Int -> Model M.LinkName
+makeOutputLink nid port = do
+  name <- freshName
+  let link = '%':show name
+  setOutVar nid [(port, ('%':show name))]
+  pure link
 
 freshInputLinks :: NodeId -> [a] -> Model [M.LinkName]
 freshInputLinks nodeId xs = do
@@ -143,6 +153,22 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
        , regionSignature = regionSignature
        })
 
+-- Get the links corresponding to the inputs and outputs of a Model Node
+nodeInputs :: HugrGraph -> NodeId -> Model [M.LinkName] -- inputs
+nodeInputs hg nodeId =
+  for (inEdges hg nodeId) $ \(Port srcNode srcIx, tgtIx) -> do
+    getDangling srcNode srcIx >>= \case
+      Just link -> pure link
+      Nothing -> makeInputLink nodeId tgtIx
+
+nodeOutputs :: HugrGraph -> NodeId -> Model [M.LinkName]
+nodeOutputs hg nodeId =
+  for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) -> do
+    getHungry tgtNode tgtIx >>= \case
+      Just link -> pure link
+      Nothing -> makeOutputLink nodeId srcIx
+
+
 -- build a node and all of it's descendants
 -- TODO: If nodes are deleted here, we need to keep a map of where the missing edges should end up
 convertNode :: HugrGraph -> NodeId -> Model (Maybe M.Node)
@@ -168,11 +194,8 @@ convertNode hg nodeId = case getOp hg nodeId of
          }
       x -> error $ "Non-dfg function " ++ show x
   (OpDFG (DFG sig meta)) -> do
-    let ins = if null (input sig) then [] else inEdges hg nodeId
-    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) ->
-      getDangling srcNode srcIx
-    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
-      getHungry tgtNode tgtIx
+    inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
+    outWires <- nodeOutputs hg nodeId
     region <- dfgToRegion hg (nodeId, sig, meta)
     pure (Just (M.Node
          { op = M.Dfg
@@ -183,10 +206,8 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeSignature = M.regionSignature region
          }))
   (OpConditional (Conditional { .. })) -> do
-    inWires <- for (inEdges hg nodeId) $ \(Port srcNode srcIx, tgtIx) ->
-      getDangling srcNode srcIx
-    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
-      getHungry tgtNode tgtIx
+    inWires <- nodeInputs hg nodeId
+    outWires <- nodeOutputs hg nodeId
 
     let discrim = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sum_rows ]
     let signature = M.Apply "core.fn"
@@ -209,10 +230,8 @@ convertNode hg nodeId = case getOp hg nodeId of
          }))
 
   (OpTag (TagOp tag sumTy meta)) -> do
-    let ins = if null (sumTy !! tag) then [] else inEdges hg nodeId
-    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) -> getDangling srcNode srcIx
-    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
-      getHungry tgtNode tgtIx
+    inWires <- if null (sumTy !! tag) then pure [] else nodeInputs hg nodeId
+    outWires <- nodeOutputs hg nodeId
     let op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat tag)])
     let inTys = M.List (M.Item . convertType <$> sumTy !! tag)
     let outTy = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sumTy ]
@@ -226,11 +245,8 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeSignature = Just signature
          }))
   (OpCustom (CustomOp ext op sig args)) -> do
-    let ins = if null (input sig) then [] else inEdges hg nodeId
-    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) ->
-      getDangling srcNode srcIx
-    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
-      getHungry tgtNode tgtIx
+    inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
+    outWires <- nodeOutputs hg nodeId
     pure (Just (M.Node
          { op = M.Custom (M.Apply (ext ++ "." ++ op) [])
          , inputs = inWires
