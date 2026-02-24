@@ -8,7 +8,7 @@ import Data.ByteString.Builder (Builder, word8)
 import Data.Traversable (for)
 import Data.List (delete)
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes, fromJust, fromMaybe)
 
 import Brat.Naming (Name, Namespace, fresh, root)
 import Data.Hugr
@@ -57,7 +57,21 @@ getInpVars nid = gets (fromMaybe [] . (Map.lookup nid) . inpVars)
 getOutVars :: NodeId -> Model [(Int, M.LinkName)]
 getOutVars nid = gets (fromMaybe [] . (Map.lookup nid) . outVars)
 
-freshName :: Model M.LinkName
+getDangling :: NodeId -> Int -> Model M.LinkName
+getDangling nid port = do
+  vars <- getOutVars nid
+  case lookup port vars of
+    Nothing -> error $ "Dangling wire not found :( " ++ show nid ++ " " ++ show port
+    Just link -> pure link
+
+getHungry :: NodeId -> Int -> Model M.LinkName
+getHungry nid port = do
+  vars <- getInpVars nid
+  case lookup port vars of
+    Nothing -> error $ "Hungry wire not found :( " ++ show nid ++ " " ++ show port
+    Just link -> pure link
+
+freshName :: Model Name
 freshName = do
   st <- get
   let (name, ns') = fresh (show (nameCount st)) (ns st)
@@ -86,13 +100,14 @@ convertType :: HugrType -> M.Term
 convertType HTQubit = M.Var "prelude.qubit"
 convertType HTUSize = M.Var "prelude.usize"
 --convertType HTArray = _
---convertType (HTSum sum) _
+convertType (HTSum (SU (UnitSum n))) = M.Apply "core.adt" [M.List [] | _ <- [1..n]]
+convertType (HTSum (SG (GeneralSum rows))) = M.Apply "core.adt" [M.List (M.Item . convertType <$> row) | row <- rows ]
 --convertType (HTOpaque ext typ args bound) = _
 --convertType (HTFunc polyFuncType) = _
 convertType x = error $ "convertType " ++ show x
 
 convertValue :: HugrValue -> M.Term
-convertValue (HVFunction hugr) = M.Func (convertHugr undefined hugr)
+-- convertValue (HVFunction hugr) = undefined
 convertValue (HVTuple vs) = M.Tuple (M.Item . convertValue <$> vs)
 convertValue hv@(HVExtension ext ty (CC tag cts)) = error $ show hv
 
@@ -105,22 +120,20 @@ convertSig fn@(FunctionType { .. }) = M.Apply "core.fn" [inpTm, outTm]
 -- TODO: Rewrite this so that we don't rely on HugrGraph internals
 hugrToModel :: HugrGraph -> Model M.Region
 hugrToModel hg@(HugrGraph { ..  }) =
-  case nodes Map.! root of
+  case getOp hg root of
     OpDFG (DFG sig meta) -> dfgToRegion hg (root, sig, meta)
     _ -> error "TODO: Non-DFG root op"
 
 -- Invariant: NodeId points to a DFG
 dfgToRegion :: HugrGraph -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
 dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
-  let [inp, out] = first_children Map.! nodeId
-  sourceVars <- freshInputLinks nodeId (input sig)
-  targetVars <- freshOutputLinks nodeId (output sig)
-  for (zip [0..] sourceVars) $ \(ix, var) -> setInpVar inp [(ix, var)]
-  for (zip [0..] targetVars) $ \(ix, var) -> setOutVar out [(ix, var)]
+  let [inp, out] = fromMaybe (error "no kids") $ Map.lookup nodeId first_children
+  sourceVars <- freshOutputLinks inp (input sig)
+  targetVars <- freshInputLinks out (output sig)
   let regionMetas = convertMeta meta
   let regionSignature = Just (convertSig sig)
   children <- traverse (convertNode hg)
-              (delete inp $ delete out (getChildren hg root))
+              (delete inp $ delete out (getChildren hg nodeId))
   pure (M.Region
        { sources = sourceVars
        , targets = targetVars
@@ -132,30 +145,16 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
 -- build a node and all of it's descendants
 -- TODO: If nodes are deleted here, we need to keep a map of where the missing edges should end up
 convertNode :: HugrGraph -> NodeId -> Model (Maybe M.Node)
-convertNode hg nodeId = case nodes hg Map.! nodeId of
+convertNode hg nodeId = case getOp hg nodeId of
   (OpMod ModuleOp) -> pure Nothing -- Compilation should just produce hugrs, no modules
   -- We should write these edges to point to the parent
-  (OpIn (InputNode tys meta)) -> error "Input node"
-{-
-                                       do
-    let parent = getParent hg nodeId
-    parentInputs <- getInpVars parent
-    for (zip [0..] parentInputs) $ \(ix, link) -> setOutVar nodeId [(ix, link)]
-    -- TODO: Something about metadata
-    pure Nothing
--}
+  (OpIn (InputNode tys meta)) -> error $ "Input node with parent " -- ++ show (getOp hg (getParent hg nodeId))
   (OpOut _) -> error "Output node"
-{-  do
-    let parent = getParent hg nodeId
-    parentOutputs <- getOutVars parent
-    for (zip [0..] parentOutputs) $ \(ix, link) -> setInpVar nodeId [(ix, link)]
-    -- TODO: Something about metadata
-    pure Nothing
--}
+  (OpCase _) -> error "Case node"
   (OpNoop _) -> pure Nothing
   -- TODO: Not making the child here? And associating it with the symbol?
   (OpDefn (FuncDefn name sig fmeta)) -> case getChildren hg nodeId of
-    [bodyId] -> case nodes hg Map.! bodyId of
+    [bodyId] -> case getOp hg bodyId of
       -- TODO: Check the sigs are equal
       (OpDFG (DFG sig meta)) -> do
         reg <- dfgToRegion hg (bodyId, sig, meta)
@@ -168,13 +167,12 @@ convertNode hg nodeId = case nodes hg Map.! nodeId of
          }
       x -> error $ "Non-dfg function " ++ show x
   (OpDFG (DFG sig meta)) -> do
+    let ins = if null (input sig) then [] else inEdges hg nodeId
+    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) ->
+      getDangling srcNode srcIx
+    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
+      getHungry tgtNode tgtIx
     region <- dfgToRegion hg (nodeId, sig, meta)
-    inWires <- for (inEdges hg nodeId) $ \(node, ix) -> do
-      nodeEdges <- getCompiled (H.nodeId node)
-      pure (fromJust (lookup ix nodeEdges))
-    outWires <- for (outEdges hg nodeId) $ \(ix, node) -> do
-      nodeEdges <- getCompiled (H.nodeId node)
-      pure (fromJust (lookup ix nodeEdges))
     pure (Just (M.Node
          { op = M.Dfg
          , inputs = inWires
@@ -183,11 +181,66 @@ convertNode hg nodeId = case nodes hg Map.! nodeId of
          , nodeMetas = []
          , nodeSignature = M.regionSignature region
          }))
+  (OpConditional (Conditional { .. })) -> do
+    inWires <- for (inEdges hg nodeId) $ \(Port srcNode srcIx, tgtIx) ->
+      getDangling srcNode srcIx
+    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
+      getHungry tgtNode tgtIx
+
+    let discrim = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sum_rows ]
+    let signature = M.Apply "core.fn"
+                    [M.List (M.Item discrim : [M.Item (convertType ty) | ty <- other_inputs])
+                    ,M.List [M.Item (convertType ty) | ty <- outputs ++ other_inputs]
+                    ]
+
+    -- All of the children should be case nodes
+    regions <- for (getChildren hg nodeId) $ \caseId -> case getOp hg caseId of
+      (OpCase (Case sig meta)) -> dfgToRegion hg (caseId, sig, meta)
+      x -> error ("Non case child of conditional: " ++ show x)
+
+    pure (Just (M.Node
+         { op = M.Conditional
+         , inputs = inWires
+         , outputs = outWires
+         , regions = regions
+         , nodeMetas = []
+         , nodeSignature = Just signature
+         }))
+
+  (OpTag (TagOp tag sumTy meta)) -> do
+    let ins = if null (sumTy !! tag) then [] else inEdges hg nodeId
+    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) -> getDangling srcNode srcIx
+    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
+      getHungry tgtNode tgtIx
+    let op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat tag)])
+    let inTys = M.List (M.Item . convertType <$> sumTy !! tag)
+    let outTy = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sumTy ]
+    let signature = M.Apply "core.fn" [inTys, outTy]
+    pure (Just (M.Node
+         { op = op
+         , inputs = inWires
+         , outputs = outWires
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just signature
+         }))
+  (OpCustom (CustomOp ext op sig args)) -> do
+    let ins = if null (input sig) then [] else inEdges hg nodeId
+    inWires <- for ins $ \(Port srcNode srcIx, tgtIx) ->
+      getDangling srcNode srcIx
+    outWires <- for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) ->
+      getHungry tgtNode tgtIx
+    pure (Just (M.Node
+         { op = M.Custom (M.Apply (ext ++ "." ++ op) [])
+         , inputs = inWires
+         , outputs = outWires
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just (convertSig sig)
+         }))
+
 {-
 convertOp hg (OpConst (ConstOp hv)) = convertValue hv
-convertOp hg (OpConditional Conditional
-convertOp hg (OpCase Case
-convertOp hg (OpTag TagOp
 convertOp hg (OpMakeTuple MakeTupleOp
 convertOp hg (OpCustom CustomOp
 convertOp hg (OpCall CallOp
@@ -196,9 +249,6 @@ convertOp hg (OpLoadConstant LoadConstantOp
 convertOp hg (OpLoadFunction LoadFunctionOp
 -}
 
--- Maybe this could be unified with hugrToModel?
-convertHugr :: M.Term -> Hugr a -> M.Region
-convertHugr = undefined
 
 
 {- TODO: Ditch BS, encode bytes in Doc?
@@ -212,4 +262,4 @@ printPackage hg = "(hugr 0)\n(mod)" <> (M.serialise hugrToModel)
 -}
 
 toModelString :: Namespace -> HugrGraph -> String
-toModelString ns hg = M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns Map.empty)))
+toModelString ns hg = M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns 0 Map.empty Map.empty)))
