@@ -27,7 +27,7 @@ printDoc :: Doc -> String
 printDoc (Leaf str) = str
 printDoc Nowt = ""
 printDoc (a :<> b) = printDoc a ++ printDoc b
-printDoc (Line n d) = "\n" ++ replicate n ' ' ++ printDoc d
+printDoc (Line n d) = "\n" ++ unlines ((replicate n ' ' ++) <$> lines (printDoc d))
 
 parens :: Doc -> Doc
 parens x = "(" <> x <> ")"
@@ -39,9 +39,11 @@ doc :: String -> Doc
 doc = Leaf
 
 (</>) :: Doc -> Doc -> Doc
+a </> Nowt = a
 a </> b = a :<> (Line 0 b)
 
 (<//>) :: Doc -> Doc -> Doc
+a <//> Nowt = a
 a <//> b = a :<> (Line 1 b)
 
 (<+>) :: Doc -> Doc -> Doc
@@ -84,9 +86,10 @@ instance Serialise Region where
   serialise (Region { .. }) = "("
                               <> serialise kind
                               <+> printPortLists sources targets
-                              <//> printSignature regionSignature
-                              </> concatLines (printMeta <$> regionMetas)
-                              </> concatLines (serialise <$> children)
+                              <//> (printSignature regionSignature
+                                    </> concatLines (printMeta <$> regionMetas)
+                                    </> concatLines (serialise <$> children)
+                                    )
                               <> ")"
 
 data Visibility = Private | Public
@@ -179,9 +182,10 @@ instance Serialise Node where
   serialise (Node { .. }) = "("
                             <> serialise op
                             <+> printPortLists inputs outputs
-                            <//> printSignature nodeSignature
-                            </> concatLines (printMeta <$> nodeMetas)
-                            </> concatLines (serialise <$> regions)
+                            <//> (printSignature nodeSignature
+                                  </> concatLines (printMeta <$> nodeMetas)
+                                  </> concatLines (serialise <$> regions)
+                                  )
                             <> ")"
 
 data Term
@@ -197,7 +201,7 @@ instance Serialise Term where
    serialise Wildcard = "_"
    serialise (Var x) = doc x
    serialise (Apply sym []) = doc sym
-   serialise (Apply sym tms) = parens (doc sym <+> mconcat (serialise <$> tms))
+   serialise (Apply sym tms) = parens (doc sym <+> (foldr1 (<+>) (serialise <$> tms)))
    serialise (List pts) = brackets (printListParts pts)
    serialise (Literal lit) = serialise lit -- TODO: Make Literal type
    serialise (Tuple pts) = parens (printTupleParts pts)
@@ -212,8 +216,8 @@ instance Serialise SeqPart where
    serialise (Splice tm) = serialise tm <> "..."
 
 printListParts :: [SeqPart] -> Doc
-printListParts (Splice (List ys):xs) = printListParts ys <> printListParts xs
-printListParts (x:xs) = serialise x <> printListParts xs
+printListParts (Splice (List ys):xs) = printListParts ys <+> printListParts xs
+printListParts (x:xs) = serialise x <+> printListParts xs
 printListParts [] = mempty
 
 printTupleParts :: [SeqPart] -> Doc
