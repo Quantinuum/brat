@@ -36,8 +36,12 @@ data HugrGraph = HugrGraph {
     parents :: M.Map NodeId NodeId, -- definitive list of (valid) nodes, excluding root
     first_children:: M.Map NodeId [NodeId],
     nodes :: M.Map NodeId HugrOp,
-    edges_out :: M.Map NodeId [(Int, PortId NodeId)],
-    edges_in :: M.Map NodeId [(PortId NodeId, Int)],
+    edges_out :: M.Map NodeId [(Int -- Source port from this node
+                               ,PortId NodeId -- Target
+                               )],
+    edges_in :: M.Map NodeId [(PortId NodeId -- Source
+                              ,Int -- Target port into this node
+                              )], -- Map
     nameSupply :: Namespace
 } deriving (Eq, Show) -- we probably want a better `show`
 
