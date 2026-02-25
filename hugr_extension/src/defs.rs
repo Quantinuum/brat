@@ -4,12 +4,13 @@ use crate::{closure_type, ctor::BratCtor};
 use enum_iterator::Sequence;
 use hugr::{
     extension::{
-        prelude::USIZE_T,
+        prelude::{QB_T, USIZE_T},
         simple_op::{MakeOpDef, OpLoadError},
         ExtensionId, OpDef, SignatureError, SignatureFromArgs, SignatureFunc,
     },
     ops::NamedOp,
     std_extensions::arithmetic::int_types::INT_TYPES,
+    std_extensions::arithmetic::float_types::FLOAT64_TYPE,
     std_extensions::collections::list_type,
     types::{
         type_param::TypeParam, FuncValueType, PolyFuncTypeRV, Signature, Type,
@@ -42,6 +43,9 @@ pub enum BratOpDef {
     PrimCtorTest(BratCtor),
     Lluf,
     Replicate,
+    CRx,
+    CRy,
+    CRz,
 }
 
 impl NamedOp for BratOpDef {
@@ -58,6 +62,9 @@ impl NamedOp for BratOpDef {
             PrimCtorTest(ctor) => format_smolstr!("PrimCtorTest::{}", ctor.name()),
             Lluf => "Lluf".into(),
             Replicate => "Replicate".into(),
+            CRx => "CRx".into(),
+            CRy => "CRy".into(),
+            CRz => "CRz".into(),
         }
     }
 }
@@ -78,6 +85,9 @@ impl FromStr for BratOpDef {
             ["PrimCtorTest", ctor] => Ok(BratOpDef::PrimCtorTest(BratCtor::from_str(ctor)?)),
             ["Lluf"] => Ok(BratOpDef::Lluf),
             ["Replicate"] => Ok(BratOpDef::Replicate),
+            ["CRx"] => Ok(BratOpDef::CRx),
+            ["CRy"] => Ok(BratOpDef::CRy),
+            ["CRz"] => Ok(BratOpDef::CRz),
             _ => Err(ParseError::VariantNotFound),
         }
     }
@@ -150,7 +160,10 @@ impl MakeOpDef for BratOpDef {
                     vec![list_type(Type::new_var_use(0, TypeBound::Copyable))],
                 ),
             )
-            .into(),
+                .into(),
+            CRx => Signature::new(vec![QB_T, QB_T, FLOAT64_TYPE], vec![QB_T, QB_T]).into(),
+            CRy => Signature::new(vec![QB_T, QB_T, FLOAT64_TYPE], vec![QB_T, QB_T]).into(),
+            CRz => Signature::new(vec![QB_T, QB_T, FLOAT64_TYPE], vec![QB_T, QB_T]).into(),
         }
     }
 
