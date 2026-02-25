@@ -1,22 +1,25 @@
 module Brat.Machine (runInterpreter) where
 
 import Brat.Checker.Monad (CaptureSets)
-import Brat.Checker.Types (Store)
+import Brat.Checker.Types (Store, initStore)
 import Brat.Compiler (compileToGraph)
-import Brat.Compile.Hugr (compileKernel)
+--import Brat.Compile.Hugr (compileKernel, makeIO, makeCS, addEdge, addNode, CompilationState(hugr), Container(..))
+import Brat.Compile.Hugr
 import Brat.Constructors.Patterns
 import Brat.Naming (Name, Namespace, split)
-import Brat.Graph (Graph, NodeType (..), Node (BratNode, KernelNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..))
+import qualified Brat.Naming as Naming
+import Brat.Graph (Graph, NodeType (..), Node (BratNode, KernelNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Port (OutPort(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 
+import Data.Hugr
 import qualified Data.HugrGraph as HG
 import Hasochism
 
-import Control.Monad.State (execState)
+import Control.Monad.State (execState, gets, evalState)
 import qualified Data.ByteString.Lazy as BS
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -116,7 +119,7 @@ updateCache (fz :< BratValues env) port_vals = fz :< (BratValues $ foldr (uncurr
 updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
-evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId-> [(HG.NodeId, OutPort)] -> Task
+evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId -> [(HG.NodeId, OutPort)] -> Task
 evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
@@ -145,8 +148,8 @@ run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
     (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
     (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
     (BratNode (Dummy k) _ _) -> run gi fz (Finished [DummyV])
+    (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
     nw -> run gi fz (StuckOnNode n nw)
-
 
 -- Tasks that unwind the stack looking for what to do with the result
 ----Suspend
@@ -161,6 +164,8 @@ run gi (fz :< DoSplices hugr nid rest) (Use v) =
 run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
     in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
+run gi@(g,st,ns,cs) (fz :< CallWith inputs) (Use (ThunkV (BratPrim ext op cty)))
+ | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
 
 ---- Finished (list of values)
 run gi (fz :< AwaitNodeInputs req@(Ex name offset)) (Finished inputs) =
@@ -184,6 +189,55 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
 run gi (fz :< BratValues _) t = run gi fz t
 run gi B0 t = t
 run gi fz t = run gi fz (Suspend [] t)
+
+runPrim :: Namespace -> (String, String) -> [Value] -> Maybe [Value]
+runPrim _ ("arith","i2f") [IntV v] = Just [FloatV (fromIntegral v)]
+runPrim ns ("tket", op) [FloatV th] | op `elem` ["CRx", "CRy", "CRz"] = Just [KernelV (makeParametrisedGateHugr ns op th 2)]
+runPrim _ _ _ = Nothing
+
+makeParametrisedGateHugr :: Namespace -> {- Op name: -} String -> {- angle arg: -} Double -> Int -> HG.HugrGraph HG.NodeId
+makeParametrisedGateHugr ns op th nqubits =
+  let (ns', newRoot) = split "" ns in
+   hugr $ flip execState (makeCS (emptyGraph, newRoot, initStore) (dfgHugr ns')) $ do
+     parent <- gets (HG.root . hugr)
+     Ctr {parent,input,output} <- makeIO "" parent
+     onHugr $ HG.setOp input (OpIn (InputNode [HTQubit, HTQubit] []))
+     onHugr $ HG.setOp output (OpOut (OutputNode [HTQubit, HTQubit] []))
+     -- TODO: Make this a rotation (using hvRotation) when we use the actual TKET
+     -- ops, we're just targeting dummy ops in the BRAT extension for the sake of
+     -- getting things going until hugr is updated.
+     constTh <- addNode "k_th" (parent, OpConst (ConstOp (hvFloat th)))
+     th <- addNode "th" (parent, OpLoadConstant (LoadConstantOp hugrFloat))
+     gate <- addNode "gate" (parent, addMetadata [("Our","Gate")] $ OpCustom gateOp)
+     addEdge (Port input 0, Port gate 0)
+     addEdge (Port input 1, Port gate 1)
+     addEdge (Port constTh 0, Port th 0)
+     addEdge (Port th 0, Port gate 2)
+     addEdge (Port gate 0, Port output 0)
+     addEdge (Port gate 1, Port output 1)
+ where
+  dfgHugr :: Namespace -> HG.HugrGraph HG.NodeId
+  dfgHugr = evalState (HG.new "" (OpDFG (DFG signature [])))
+
+  signature = FunctionType
+   { input = [HTQubit | _ <- [1..nqubits]]
+   , output = [HTQubit | _ <- [1..nqubits]]
+   , extensions = bratExts
+   }
+
+  gateOp = CustomOp
+   { extension = "BRAT" -- TODO: Make this "tket.quantum"
+   , op_name = op
+   , signature_ = FunctionType
+                  { input = [HTQubit | _ <- [1..nqubits]]
+                             ++ [hugrFloat] -- TODO: Make this hugrRotation
+                  , output = [HTQubit | _ <- [1..nqubits]]
+                  , extensions = bratExts
+                  }
+   , args = []
+   }
+
+
 
 miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
 miniEval _ env x | Just v <- M.lookup x env = v

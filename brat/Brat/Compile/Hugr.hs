@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Brat.Compile.Hugr (compileKernel) where
+module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), addEdge, addNode, Container(..), onHugr) where
 
 import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..), CaptureSets)
