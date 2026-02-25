@@ -58,7 +58,28 @@ data Frame where
     Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
-  deriving Show
+
+divider = replicate 78 '-'
+
+instance Show Frame where
+  show f = unlines $
+   [""
+   ,divider
+   ] ++ showFrame f
+
+showFrame :: Frame -> [String]
+showFrame (BratValues env) = ["BratValues", show env]
+showFrame (EvalPorts vz ports) = ["EvalPorts", show vz, "<-- You are here -->", show ports]
+showFrame (AwaitNodeInputs out) = ["AwaitNodeInputs", show out ++ "<-- You are here"]
+showFrame (SelectFromNodeOutputs out) = ["SelectFromNodeOutputs", show out]
+showFrame (CallWith vz) = ["CallWith", show vz]
+showFrame (ReturnTo fz) = "ReturnTo" : (("> " ++) <$> showFrames fz)
+showFrame (Alternatives matches vz) = ["Alternatives", show matches, show vz]
+showFrame (PerformMatchTests tests srcs node) = ["PerformMatchTests", show tests, show srcs, show node] -- TODO
+showFrame (DoSplices hg src hugrs) = ["DoSplices", show hg, show src, show hugrs]
+
+showFrames :: Bwd Frame -> [String]
+showFrames = foldMap (\f -> divider : showFrame f)
 
 data Task where
     EvalPort :: OutPort -> Task
