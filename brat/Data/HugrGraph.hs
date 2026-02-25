@@ -113,17 +113,13 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
     -- nodes of `add` but not the host), but for now we just splice in the DFG in place
     -- of the hole with its subtree beneath it.
     Just (OpDFG (DFG sig' _)) | sig == sig' -> host {
-        -- prefer host entry for parent of (`hole` == root of `add`)
-        parents = union (parents host) (M.mapKeys k $ M.map k $ parents add),
-        -- override host `nodes` for `hole` with new (DFG)
+        parents = disj_union (parents host) (M.mapKeys k $ M.map k $ parents add),
+        -- union prefers left --> override host `nodes` for `hole` with new (DFG)
         nodes = M.union (M.mapKeys k (nodes add)) (nodes host),
-        edges_in  = union (edges_in host)  $ M.fromList [(k tgt, [(Port (k srcNode) srcPort, tgtPort)
-                                                                 | (Port srcNode srcPort, tgtPort) <- in_edges ])
-                                                        | (tgt, in_edges ) <- M.assocs (edges_in add)],
-        edges_out = union (edges_out host) $ M.fromList [(k src, [(srcPort, Port (k tgtNode) tgtPort)
-                                                                 | (srcPort, Port tgtNode tgtPort) <- out_edges])
-                                                        | (src, out_edges) <- M.assocs (edges_out add)],
-        first_children = union (first_children host) (M.mapKeys k $ M.map (k <$>) $ first_children add)
+        edges_in  = disj_union (edges_in host) new_edges_in,
+        edges_out = disj_union (edges_out host) new_edges_out,
+        first_children = disj_union (first_children host)
+                                    (M.mapKeys k $ M.map (k <$>) $ first_children add)
       }
     other -> error $ "Expected DFG with sig " ++ show sig ++ "\nBut found: " ++ show other
   other -> error $ "Expected a hole, found " ++ show other
@@ -131,7 +127,15 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
     k :: m -> n
     k n = if n == root add then hole else non_root_k n
 
-    union = M.unionWith (\_ _ -> error "keys not disjoint")
+    new_edges_in = M.fromList [(k tgt, [(Port (k srcNode) srcPort, tgtPort)
+                                       | (Port srcNode srcPort, tgtPort) <- in_edges ])
+                              | (tgt, in_edges ) <- M.assocs (edges_in add)]
+
+    new_edges_out = M.fromList [(k src, [(srcPort, Port (k tgtNode) tgtPort)
+                                       | (srcPort, Port tgtNode tgtPort) <- out_edges])
+                              | (src, out_edges) <- M.assocs (edges_out add)]
+
+    disj_union = M.unionWith (\_ _ -> error "keys not disjoint")
 
 -- Replace the specified hole of the host Hugr (in the State monad), with a new Hugr,
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
