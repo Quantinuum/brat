@@ -92,7 +92,7 @@ freshNode name parent = do
 makeIO :: String -> NodeId -> Compile Container
 makeIO name parent = do
   input <- freshNode (name ++ "_Input") parent
-  output <- freshNode (name ++ "_Input") parent
+  output <- freshNode (name ++ "_Output") parent
   onHugr $ H.setFirstChildren parent [input, output]
   pure $ Ctr {parent, input, output}
 
