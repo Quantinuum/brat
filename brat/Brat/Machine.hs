@@ -46,8 +46,11 @@ data Frame where
     -- Optionally "what to do when all ports evaled" - Node weight, name+offset requested
     -- then state of evaluating inputs: (values computed, ports whose values still needed)
     EvalPorts :: Bwd Value -> [OutPort] -> Frame
-    PortOfNode :: OutPort -> Frame
-    HandleNodeOutputs :: OutPort -> Frame
+    -- We're waiting for a task to deliver us all of the inputs for this node,
+    -- then we can deliver the outputs.
+    AwaitNodeInputs :: OutPort -> Frame
+    -- Also responsible for caching all node outputs
+    SelectFromNodeOutputs :: OutPort -> Frame
     -- have arguments to function, waiting for the function:
     CallWith :: [Value] -> Frame
     ReturnTo :: Bwd Frame -> Frame
@@ -61,7 +64,7 @@ data Task where
     Suspend :: [Frame] -> Task -> Task
     EvalNode :: Name -> [Value] -> Task
     Use :: Value -> Task -- searches for EvalPorts or DoSplices
-    Finished :: [Value] -> Task -- searches for HandleNodeOutputs, or final result
+    Finished :: [Value] -> Task -- searches for SelectFromNodeOutputs, or final result
     TryNextMatch :: Task
     NoMatch :: Task
     StuckOnNode :: Name -> Node -> Task
@@ -69,6 +72,7 @@ data Task where
 
 lookupOutport :: Bwd Frame -> OutPort -> Maybe Value
 lookupOutport B0 _ = Nothing
+-- TODO: Highly suspect that we keep looking beyond the most local cache
 lookupOutport (_ :< BratValues env) p | Just v <- M.lookup p env = Just v
 lookupOutport (fz :< _) p = lookupOutport fz p
 
@@ -101,7 +105,7 @@ run :: GraphInfo -> Bwd Frame -> Task -> Task
 -- Tasks that push new frames onto the stack to do things
 run gi@(g@(nodes, wires), _, _, _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
-    Nothing -> evalNodeInputs gi (fz :< PortOfNode p) name
+    Nothing -> evalNodeInputs gi (fz :< AwaitNodeInputs p) name
 run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
     --nw | trace ("EVALNODE " ++ show nw) False -> undefined
     (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
@@ -137,9 +141,9 @@ run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
 
 ---- Finished (list of values)
-run gi (fz :< PortOfNode req@(Ex name offset)) (Finished inputs) =
-    run gi (fz :< HandleNodeOutputs req) (EvalNode name inputs)
-run gi (fz :< HandleNodeOutputs req@(Ex name offset)) (Finished outputs) =
+run gi (fz :< AwaitNodeInputs req@(Ex name offset)) (Finished inputs) =
+    run gi (fz :< SelectFromNodeOutputs req) (EvalNode name inputs)
+run gi (fz :< SelectFromNodeOutputs req@(Ex name offset)) (Finished outputs) =
     run gi (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
 run gi (B0 :< ReturnTo fz) (Finished vals) = run gi fz (Finished vals)
 
