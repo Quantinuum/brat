@@ -12,20 +12,22 @@ declare -a FAILED_TEST_MSGS
 UNEXPECTED_PASSES=
 NUM_FAILURES=0
 
-for json in $(find test/compilation/output -maxdepth 1 -name "*.json"); do
-    echo Validating "$json"
-    RESULT=$(cat "$json" | hugr_validator 2>&1)
-    if [ $? -ne 0 ]; then
-        FAILED_TEST_NAMES[NUM_FAILURES]=$json
-        FAILED_TEST_MSGS[NUM_FAILURES]=$RESULT
-        NUM_FAILURES=$((NUM_FAILURES + 1))
-    fi
-done
+for dir in test/compilation/output test/hugr/output; do
+    for json in $(find $dir -maxdepth 1 -name "*.json"); do
+        echo Validating "$json"
+        RESULT=$(cat "$json" | hugr_validator 2>&1)
+        if [ $? -ne 0 ]; then
+            FAILED_TEST_NAMES[NUM_FAILURES]=$json
+            FAILED_TEST_MSGS[NUM_FAILURES]=$RESULT
+            NUM_FAILURES=$((NUM_FAILURES + 1))
+        fi
+    done
 
-for invalid_json in $(find test/compilation/output -maxdepth 1 -name "*.json.invalid"); do
-    if (hugr_validator < $invalid_json 2>/dev/null > /dev/null); then
-        UNEXPECTED_PASSES="$UNEXPECTED_PASSES $invalid_json"
-    fi
+    for invalid_json in $(find test/compilation/output -maxdepth 1 -name "*.json.invalid"); do
+        if (hugr_validator < $invalid_json 2>/dev/null > /dev/null); then
+            UNEXPECTED_PASSES="$UNEXPECTED_PASSES $invalid_json"
+        fi
+    done
 done
 
 RED='\033[0;31m'
