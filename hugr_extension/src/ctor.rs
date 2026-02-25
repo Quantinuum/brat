@@ -1,8 +1,8 @@
 use enum_iterator::Sequence;
 use hugr::{
-    ops::NamedOp,
-    std_extensions::{arithmetic::int_types, collections},
-    types::{type_param::TypeParam, CustomType, PolyFuncType, Signature, Type, TypeArg, TypeBound},
+    extension::prelude,
+    std_extensions::collections,
+    types::{type_param::TypeParam, PolyFuncType, Signature, Type, TypeBound},
 };
 use smol_str::{format_smolstr, SmolStr};
 use std::str::FromStr;
@@ -29,15 +29,6 @@ pub enum VecCtor {
     cons,
 }
 
-impl NamedOp for BratCtor {
-    fn name(&self) -> SmolStr {
-        match self {
-            BratCtor::Nat(ctor) => format_smolstr!("Nat::{}", ctor.name()),
-            BratCtor::Vec(ctor) => format_smolstr!("Vec::{}", ctor.name()),
-        }
-    }
-}
-
 impl FromStr for BratCtor {
     type Err = ParseError;
 
@@ -47,6 +38,15 @@ impl FromStr for BratCtor {
             ["Nat", ctor] => Ok(BratCtor::Nat(NatCtor::from_str(ctor)?)),
             ["Vec", ctor] => Ok(BratCtor::Vec(VecCtor::from_str(ctor)?)),
             _ => Err(ParseError::VariantNotFound),
+        }
+    }
+}
+
+impl BratCtor {
+    pub(crate) fn name(&self) -> SmolStr {
+        match self {
+            BratCtor::Nat(ctor) => format_smolstr!("Nat::{}", Into::<&str>::into(ctor)),
+            BratCtor::Vec(ctor) => format_smolstr!("Vec::{}", Into::<&str>::into(ctor)),
         }
     }
 }
@@ -88,8 +88,8 @@ impl Ctor for NatCtor {
 
 impl Ctor for VecCtor {
     fn signature(self) -> PolyFuncType {
-        let tp = TypeParam::Type { b: TypeBound::Any };
-        let ta = Type::new_var_use(0, TypeBound::Any);
+        let tp = TypeParam::RuntimeType(TypeBound::Linear);
+        let ta = Type::new_var_use(0, TypeBound::Linear);
         match self {
             VecCtor::nil => {
                 PolyFuncType::new(vec![tp], Signature::new(vec![], vec![vec_type(&ta)]))
@@ -103,22 +103,12 @@ impl Ctor for VecCtor {
 }
 
 /// The Hugr representation of Brat nats.
+// Isn't this just usize?
 fn nat_type() -> Type {
-    const WIDTH: u64 = 6; // 2^6 = 64 bits
-    Type::new_extension(CustomType::new(
-        int_types::INT_TYPE_ID,
-        [TypeArg::BoundedNat { n: WIDTH }],
-        int_types::EXTENSION_ID,
-        TypeBound::Eq,
-    ))
+    prelude::usize_t()
 }
 
 /// The Hugr representation of Brat vectors.
 fn vec_type(elem: &Type) -> Type {
-    Type::new_extension(CustomType::new(
-        collections::LIST_TYPENAME,
-        [TypeArg::Type { ty: elem.clone() }],
-        collections::EXTENSION_NAME,
-        elem.least_upper_bound(),
-    ))
+    collections::list::list_type(elem.clone())
 }
