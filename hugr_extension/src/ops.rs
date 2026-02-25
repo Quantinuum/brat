@@ -3,7 +3,7 @@ use hugr::{
         simple_op::{MakeExtensionOp, MakeOpDef, OpLoadError},
         SignatureError,
     },
-    ops::{custom::ExtensionOp, NamedOp, OpTrait},
+    ops::{custom::ExtensionOp, OpTrait},
     types::{Signature, Type, TypeArg, TypeEnum, TypeRow},
 };
 use smol_str::{format_smolstr, SmolStr};
@@ -48,8 +48,8 @@ pub enum BratOp {
     Replicate(TypeArg),
 }
 
-impl NamedOp for BratOp {
-    fn name(&self) -> SmolStr {
+impl MakeExtensionOp for BratOp {
+    fn op_id(&self) -> SmolStr {
         use BratOp::*;
         match self {
             Hole { .. } => "Hole".into(),
@@ -64,9 +64,7 @@ impl NamedOp for BratOp {
             Replicate(_) => "Replicate".into(),
         }
     }
-}
 
-impl MakeExtensionOp for BratOp {
     fn from_extension_op(ext_op: &ExtensionOp) -> Result<Self, OpLoadError> {
         let def = BratOpDef::from_def(ext_op.def())?;
         let sig = ext_op
@@ -74,7 +72,10 @@ impl MakeExtensionOp for BratOp {
             .ok_or(OpLoadError::InvalidArgs(SignatureError::InvalidTypeArgs))?;
         match def {
             BratOpDef::Hole => match *ext_op.args() {
-                [TypeArg::BoundedNat { n: idx }, ..] => Ok(BratOp::Hole { idx, sig }),
+                [TypeArg::BoundedNat(idx), ..] => Ok(BratOp::Hole {
+                    idx,
+                    sig: (*sig).clone(),
+                }),
                 _ => Err(SignatureError::InvalidTypeArgs.into()),
             },
             BratOpDef::Substitute => match sig.input().as_ref() {
@@ -131,7 +132,9 @@ impl MakeExtensionOp for BratOp {
                 }),
                 _ => Err(OpLoadError::InvalidArgs(SignatureError::InvalidTypeArgs)),
             },
-            BratOpDef::Panic => Ok(BratOp::Panic { sig }),
+            BratOpDef::Panic => Ok(BratOp::Panic {
+                sig: (*sig).clone(),
+            }),
             BratOpDef::Ctor(ctor) => Ok(BratOp::Ctor {
                 ctor,
                 args: ext_op.args().to_vec(),
@@ -148,26 +151,20 @@ impl MakeExtensionOp for BratOp {
     fn type_args(&self) -> Vec<TypeArg> {
         match self {
             BratOp::Hole { idx, sig } => vec![
-                TypeArg::BoundedNat { n: *idx },
-                TypeArg::Type {
-                    ty: Type::new_function(sig.clone()),
-                },
+                TypeArg::BoundedNat(*idx),
+                TypeArg::Runtime(Type::new_function(sig.clone())),
             ],
             BratOp::Substitute {
                 func_sig,
                 hole_sigs,
             } => vec![
-                TypeArg::Type {
-                    ty: Type::new_function(func_sig.clone()),
-                },
-                TypeArg::Sequence {
-                    elems: hole_sigs
+                TypeArg::Runtime(Type::new_function(func_sig.clone())),
+                TypeArg::List(
+                    hole_sigs
                         .iter()
-                        .map(|sig| TypeArg::Type {
-                            ty: Type::new_function(sig.clone()),
-                        })
+                        .map(|sig| TypeArg::Runtime(Type::new_function(sig.clone())))
                         .collect(),
-                },
+                ),
             ],
             BratOp::Partial { inputs, output_sig } => vec![
                 arg_from_row(inputs),
@@ -186,18 +183,13 @@ impl MakeExtensionOp for BratOp {
 }
 
 fn arg_from_row(row: &TypeRow) -> TypeArg {
-    TypeArg::Sequence {
-        elems: row
-            .iter()
-            .map(|ty| TypeArg::Type { ty: ty.clone() })
-            .collect(),
-    }
+    TypeArg::List(row.iter().map(|ty| TypeArg::Runtime(ty.clone())).collect())
 }
 
 fn row_from_args(args: &[TypeArg]) -> Result<Vec<Type>, SignatureError> {
     args.iter()
         .map(|arg| match arg {
-            TypeArg::Type { ty } => Ok(ty.clone()),
+            TypeArg::Runtime(ty) => Ok(ty.clone()),
             _ => Err(SignatureError::InvalidTypeArgs),
         })
         .collect()
@@ -207,8 +199,7 @@ fn sig_from_closure_ty(ty: &Type) -> Result<Signature, SignatureError> {
     let TypeEnum::Extension(closure_ty) = ty.as_type_enum() else {
         return Err(SignatureError::InvalidTypeArgs);
     };
-    let [TypeArg::Sequence { elems: ins }, TypeArg::Sequence { elems: outs }] = closure_ty.args()
-    else {
+    let [TypeArg::List(ins), TypeArg::List(outs)] = closure_ty.args() else {
         return Err(SignatureError::InvalidTypeArgs);
     };
     Ok(Signature::new(row_from_args(ins)?, row_from_args(outs)?))
