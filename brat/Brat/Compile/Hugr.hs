@@ -48,7 +48,8 @@ type TypedPort = (PortId NodeId, HugrType)
 
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
- , hugr :: HugrGraph
+ , nameSupply :: Namespace
+ , hugr :: HugrGraph NodeId
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -60,7 +61,7 @@ data CompilationState = CompilationState
 
 type Compile = State CompilationState
 
-onHugr :: State HugrGraph a -> Compile a
+onHugr :: State (HugrGraph NodeId) a -> Compile a
 onHugr f = get >>= \s -> let (r, h') = runState f (hugr s) in put (s {hugr=h'}) >> pure r
 
 data Container = Ctr {
@@ -69,10 +70,11 @@ data Container = Ctr {
   output :: NodeId
 }
 
-makeCS :: (Graph, Store) -> HugrGraph -> CompilationState
-makeCS (g, store) hugr =
+makeCS :: (Graph, Namespace, Store) -> HugrGraph NodeId -> CompilationState
+makeCS (g, ns, store) hugr =
   CompilationState
     { bratGraph = g
+    , nameSupply = ns
     , hugr = hugr
     , compiled = M.empty
     , holes = B0
@@ -81,7 +83,11 @@ makeCS (g, store) hugr =
     }
 
 freshNode :: String -> NodeId -> Compile NodeId
-freshNode name parent = onHugr (H.freshNode parent name)
+freshNode name parent = do
+  s <- get
+  let (r, (h', ns')) = runState (H.freshNode parent name) (hugr s, nameSupply s)
+  put (s {hugr=h', nameSupply=ns'})
+  pure r
 
 makeIO :: String -> NodeId -> Compile Container
 makeIO name parent = do
@@ -570,7 +576,7 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
 
 compileKernel :: (Namespace, Store, Graph)
               -> String -> Name
-              -> (HugrGraph, [(NodeId, OutPort)])
+              -> (HugrGraph NodeId, [(NodeId, OutPort)])
 compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
   (src_tgt, outs) = case ns M.! name of
       -- All top-level functions are compiled into Box-es, which should look like this:
@@ -578,8 +584,8 @@ compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
     nt -> error $ "Can only compile Box nodes, not " ++ show nt ++ " (for " ++ show name ++ ")"
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
-  startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
-  (hgr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
+  (startHugr, nsp') = runState (H.new desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])) nsp
+  (hgr, holelist) = flip evalState (makeCS (g, nsp', store) startHugr) $ do
     ctr <- makeIO desc (root startHugr)
     compileBox ctr src_tgt
     hugr <- gets hugr

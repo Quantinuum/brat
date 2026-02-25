@@ -24,7 +24,7 @@ import Brat.QualName
 import Brat.Error
 import Control.Monad.Freer
 import qualified Data.Set as S
-import Debug.Trace
+--import Debug.Trace
 import Test.Util
 import Test.Tasty.HUnit (testCase)
 

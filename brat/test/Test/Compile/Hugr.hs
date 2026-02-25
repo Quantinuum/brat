@@ -60,6 +60,9 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   --,"vlup_covering" -- can compile just kernels
   ]
 
+-- This is https://github.com/Quantinuum/brat/issues/101
+nonCompilingTests = ["test/compilation/closures.brat"]
+
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
     Right hs ->

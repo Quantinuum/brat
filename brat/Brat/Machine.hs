@@ -16,6 +16,7 @@ import Brat.Syntax.Value
 import qualified Data.HugrGraph as HG
 import Hasochism
 
+import Control.Monad.State (execState)
 import qualified Data.ByteString.Lazy as BS
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -56,7 +57,7 @@ data Frame where
     ReturnTo :: Bwd Frame -> Frame
     Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
-    DoSplices :: HG.HugrGraph -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
+    DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
   deriving Show
 
 data Task where
@@ -94,7 +95,7 @@ updateCache (fz :< BratValues env) port_vals = fz :< (BratValues $ foldr (uncurr
 updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
-evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph -> [(HG.NodeId, OutPort)] -> Task
+evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId-> [(HG.NodeId, OutPort)] -> Task
 evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
@@ -134,7 +135,7 @@ run _ B0 t@(Suspend _ _) = t
 run gi (fz :< EvalPorts valz rem) (Use v) = evalPorts gi fz (valz :< v) rem
 run gi (fz :< DoSplices hugr nid rest) (Use v) =
     let (KernelV sub_hugr) = v
-        hugr' = HG.splice hugr nid sub_hugr
+        hugr' = execState (HG.splice_prepend nid sub_hugr) hugr
     in evalSplices gi fz hugr' rest
 run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
@@ -267,7 +268,7 @@ data Value =
   | BoolV Bool
   | VecV [Value]
   | ThunkV BratThunk
-  | KernelV HG.HugrGraph
+  | KernelV (HG.HugrGraph HG.NodeId)
   | DummyV
 
 data BratThunk =
