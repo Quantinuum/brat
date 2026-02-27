@@ -149,7 +149,7 @@ executable lsp-brat
   main-is:             Driver.hs
   other-modules:       Brat.LSP.Find, Brat.LSP.Holes, Brat.LSP.State
   hs-source-dirs:      lsp
-  build-depends:       base <5, brat, lsp, lsp-types, text, lens, hslogger, text-rope, mtl, filepath
+  build-depends:       base <5, brat, containers, lsp, lsp-types, text, lens, hslogger, text-rope, mtl, filepath
   default-extensions:  RecordWildCards
 
 test-suite tests

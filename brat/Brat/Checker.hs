@@ -15,12 +15,11 @@ import Control.Monad.Freer
 import Data.Bifunctor
 import Data.Foldable (for_)
 import Data.Functor (($>), (<&>))
-import Data.List ((\\), intercalate)
+import Data.List ((\\))
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
-import qualified Data.Set as S
 import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
@@ -59,15 +58,7 @@ standardise k val = eval S0 val >>= (\case
   (_, val) -> pure val) . (k,)
 
 mergeEnvs :: [Env a] -> Checking (Env a)
-mergeEnvs = foldM combineDisjointEnvs M.empty
- where
-  combineDisjointEnvs :: M.Map QualName v -> M.Map QualName v -> Checking (M.Map QualName v)
-  combineDisjointEnvs l r =
-    let commonKeys = S.intersection (M.keysSet l) (M.keysSet r)
-    in if S.null commonKeys
-       then pure $ M.union l r
-       else typeErr ("Variable(s) defined twice: " ++
-    intercalate "," (map show $ S.toList commonKeys))
+mergeEnvs es = throwLeft $ foldM combineDisjointEnvs M.empty es
 
 
 singletonEnv :: (?my :: Modey m) => String -> (Src, BinderType m) -> Checking (Env (EnvData m))
