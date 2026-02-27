@@ -86,8 +86,7 @@ compileToGraph libDirs file = do
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
 
--- Map from box name to (compiled bytes, list of splices)
--- TODO: should keep Hugr as struct not ByteString
+-- Map from box name to (compiled graph, list of splices)
 type CompilationResult = M.Map Name (HugrGraph NodeId, [(NodeId, OutPort)])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
