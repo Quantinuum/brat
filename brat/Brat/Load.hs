@@ -47,13 +47,12 @@ type FlatMod = ((FEnv, String) -- data at the node: declarations, and file conte
 
 type DeclEnv = M.Map QualName (EnvData Brat, VDecl)
 
--- Result of checking/compiling a module
-type VMod = (DeclEnv -- for all decls in all modules, QualName to node in (some lost) Graph, and VDecl
-            ,[TypedHole]          -- for just the last module
-            ,Store  -- Ends declared & defined in the module
-            ,Graph  -- all functions in this module, nodes identified from first VEnv
-            ,CaptureSets -- for nodes in this module's Graph only
-            )
+-- Result of checking a program - all imported files
+type VMod = (DeclEnv, -- for all decls in all modules, QualName to node and VDecl
+             [TypedHole], -- } all
+             Store,       -- } these
+             Graph,       -- } are for
+             CaptureSets) -- } all modules
 
 
 -- N.B. This should only be passed local functions
@@ -126,8 +125,8 @@ withAliases :: [TypeAlias] -> Checking a -> Checking a
 withAliases [] m = m
 withAliases (a:as) m = loadAlias a >>= \a -> localAlias a $ withAliases as m
 
-loadStmtsWithEnv :: Namespace -> (DeclEnv, Store) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
-loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
+loadStmtsWithEnv :: Namespace -> VMod -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
+loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
   -- hacky mess - cleanup!
   (decls, aliases) <- desugarEnv =<< elabEnv stmts
   -- Note the duplicates here works for anything Eq, but is O(n^2).
@@ -163,9 +162,6 @@ loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcCont
   let vdecls = map fst entries
   -- Now generate environment mapping usernames to nodes in the graph
   let newDecls :: DeclEnv = M.fromList [(name, (overs, vdecl)) | ((name, vdecl), (_, overs)) <- entries]
-  -- ALAN this feels wrong ATM because every loadStmtsWithEnv is given the same
-  -- Namespace. It's passing tests but perhaps no-one ever imports a file where
-  -- the importee has a function with the same name as one in the importer.
   declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names) $
     TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)) $
       combineDisjointEnvs oldDeclEnv newDecls
@@ -173,7 +169,7 @@ loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcCont
   ((), (holes, newStore, graph, capSets)) <- run (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
     if M.null remaining then pure () else error $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
-  pure (declEnv, holes, oldStore <> newStore, kcGraph <> graph, capSets)
+  pure (declEnv, oldHoles <> holes, oldStore <> newStore, oldGraph <> kcGraph <> graph, oldCaps <> capSets)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]
              -> (QualName, VDecl)
@@ -223,11 +219,13 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
       pure (deps ++ [main])
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
   -- keep VEnv as we fold but discard holes, graph and captures except from the last file in the list
-  liftEither $ foldM
-    (\(declenv, _, store, _, _) -> loadStmtsWithEnv ns (declenv, store))
-    emptyMod
-    allStmts'
+  liftEither $ fst <$> foldM loadStmtsSplitNS (emptyMod, ns) allStmts'
   where
+    loadStmtsSplitNS :: (VMod, Namespace) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr (VMod, Namespace)
+    loadStmtsSplitNS (mod, ns) file@(fname, _, _, _) =
+      let (subns, ns') = split (takeBaseName fname) ns
+      in (, ns') <$> loadStmtsWithEnv subns mod file
+
     emptyMod :: VMod
     emptyMod = (M.empty, [], initStore, (M.empty, []), M.empty)
 
