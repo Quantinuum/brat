@@ -36,7 +36,7 @@ runInterpreter :: [FilePath] -> String -> String -> IO ()
 runInterpreter libDirs file runFunc = do
     (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     --print (show outerGraph)
-    let outPorts = [op | (NamedPort op _, _ty) <- declEnv M.! (plain runFunc)]
+    let outPorts = [op | (NamedPort op _, _ty) <- fst $ declEnv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     case outTask of

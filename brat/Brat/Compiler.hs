@@ -35,7 +35,7 @@ printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
   (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  forM (M.toList declEnv) $ \(name, src_tys) ->
+  forM (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
     putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
   putStrLn ""
   putStrLn "Holes:"
@@ -96,7 +96,7 @@ compileFile libDirs file = do
   (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   case holes of
     [] -> do
-      box_decls <- concat <$> forM (M.keys declEnv) (findBoxes declEnv outerGraph)
+      box_decls <- concat <$> forM (M.keys declEnv) (findBoxes (M.map fst declEnv) outerGraph)
       Right <$> (evaluate -- turns 'error' into IO 'die'
             $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)

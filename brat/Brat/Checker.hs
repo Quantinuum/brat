@@ -59,15 +59,7 @@ standardise k val = eval S0 val >>= (\case
   (_, val) -> pure val) . (k,)
 
 mergeEnvs :: [Env a] -> Checking (Env a)
-mergeEnvs = foldM combineDisjointEnvs M.empty
- where
-  combineDisjointEnvs :: M.Map QualName v -> M.Map QualName v -> Checking (M.Map QualName v)
-  combineDisjointEnvs l r =
-    let commonKeys = S.intersection (M.keysSet l) (M.keysSet r)
-    in if S.null commonKeys
-       then pure $ M.union l r
-       else typeErr ("Variable(s) defined twice: " ++
-    intercalate "," (map show $ S.toList commonKeys))
+mergeEnvs es = throwLeft $ foldM combineDisjointEnvs M.empty es
 
 
 singletonEnv :: (?my :: Modey m) => String -> (Src, BinderType m) -> Checking (Env (EnvData m))

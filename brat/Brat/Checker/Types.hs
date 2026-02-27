@@ -5,6 +5,7 @@ module Brat.Checker.Types (Overs, Unders
                           ,ChkConnectors, SynConnectors
                           ,Mode(..), Modey(..)
                           ,Env, VEnv, KEnv, EnvData
+                          ,combineDisjointEnvs
                           ,IsSkolem(..), Store(..), EndType(..)
                           ,emptyEnv
                           ,TypedHole(..), HoleTag(..), HoleData(..)
@@ -13,6 +14,7 @@ module Brat.Checker.Types (Overs, Unders
                           ) where
 
 import Brat.Checker.Quantity
+import Brat.Error
 import Brat.FC (FC)
 import Brat.Naming (Name)
 import Brat.QualName (QualName)
@@ -22,6 +24,8 @@ import Hasochism (N(..))
 
 import Data.Kind (Type)
 import qualified Data.Map as M
+import qualified Data.Set as S
+import Data.List (intercalate)
 
 -- Inputs against which a term is checked
 type family Overs (m :: Mode) (k :: Kind) :: Type where
@@ -60,6 +64,14 @@ type KEnv = Env (EnvData Kernel)
 
 emptyEnv :: Env a
 emptyEnv = M.empty
+
+combineDisjointEnvs :: Env e -> Env e -> Either ErrorMsg (Env e)
+combineDisjointEnvs l r =
+  let commonKeys = S.intersection (M.keysSet l) (M.keysSet r)
+  in if S.null commonKeys
+      then pure $ M.union l r
+      else Left $ TypeErr ("Variable(s) defined twice: " ++
+        intercalate "," (map show $ S.toList commonKeys))
 
 data HoleTag :: Mode -> Kind -> Type where
   NBHole :: HoleTag Brat Noun
