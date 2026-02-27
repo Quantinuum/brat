@@ -51,8 +51,6 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   --,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
   -- Victims of #13
   --,"arith" -- can compile just kernels
-  ,"cqcconf"
-  ,"imports"
   ,"klet"
   ,"magic-state-distillation" -- also makes selectors
   --,"rus" -- can compile just kernels
