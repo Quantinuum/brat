@@ -15,8 +15,9 @@ import Brat.Load
 import Brat.Naming (root, split)
 
 import Control.Exception (evaluate)
-import Control.Monad (when)
+import Control.Monad (forM, when)
 import Control.Monad.Except
+import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import System.Exit (die)
@@ -26,7 +27,8 @@ printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
   (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  print $ M.toList $ M.map snd declEnv
+  forM (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
+    putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
   putStrLn ""
   putStrLn "Holes:"
   mapM_ print holes
