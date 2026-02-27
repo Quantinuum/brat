@@ -7,7 +7,7 @@ module Brat.Load (loadFilename
 import Brat.Checker
 import Brat.Checker.Helpers (ensureEmpty, next, showMode, wire)
 import Brat.Checker.Monad
-import Brat.Checker.Types (Store, TypedHole, VEnv, initStore)
+import Brat.Checker.Types (EnvData, Store, TypedHole, initStore, combineDisjointEnvs)
 import Brat.Elaborator (elabEnv)
 import Brat.Error
 import Brat.FC hiding (end)
@@ -27,6 +27,7 @@ import Hasochism
 import Control.Monad (filterM, foldM, forM, forM_, unless)
 import Control.Monad.Except
 import Control.Monad.Trans.Class (lift)
+import Data.Bifunctor (first)
 import Data.Functor ( (<&>), ($>) )
 import Data.List (sort)
 import Data.List.HT (viewR)
@@ -44,17 +45,16 @@ type FlatMod = ((FEnv, String) -- data at the node: declarations, and file conte
                ,Import -- name of this node
                ,[Import]) -- other nodes on which this depends
 
+type DeclEnv = M.Map QualName (EnvData Brat, VDecl)
+
 -- Result of checking/compiling a module
-type VMod = (VEnv
-            ,[(QualName, VDecl)] -- all symbols from all modules
+type VMod = (DeclEnv -- for all decls in all modules, QualName to node in (some lost) Graph, and VDecl
             ,[TypedHole]          -- for just the last module
             ,Store  -- Ends declared & defined in the module
             ,Graph  -- all functions in this module, nodes identified from first VEnv
             ,CaptureSets -- for nodes in this module's Graph only
             )
 
-emptyMod :: VMod
-emptyMod = (M.empty, [], [], initStore, (M.empty, []), M.empty)
 
 -- N.B. This should only be passed local functions
 -- If the decl is a function with pattern matching clauses, return the Name of
@@ -126,20 +126,20 @@ withAliases :: [TypeAlias] -> Checking a -> Checking a
 withAliases [] m = m
 withAliases (a:as) m = loadAlias a >>= \a -> localAlias a $ withAliases as m
 
-loadStmtsWithEnv :: Namespace -> (VEnv, [(QualName, VDecl)], Store) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
-loadStmtsWithEnv ns (venv, oldDecls, oldEndData) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
+loadStmtsWithEnv :: Namespace -> (DeclEnv, Store) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
+loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
   -- hacky mess - cleanup!
   (decls, aliases) <- desugarEnv =<< elabEnv stmts
   -- Note the duplicates here works for anything Eq, but is O(n^2).
   -- TODO Since decl names can be ordered/hashed, we could be much faster.
-  let (declNames, _) = unzip oldDecls
+  let declNames = M.keys oldDeclEnv
   let dups = duplicates (declNames ++ map (PrefixName pre . fnName) decls) in unless (null dups) $
     Left $ dumbErr $ NameClash $ show dups
   -- Generate some stuff for each entry:
     --  * A map from names to VDecls (aka an Env)
     --  * Some overs and outs??
   let (globalNS, newRoot) = split "globals" ns
-  (entries, (holes, kcStore, kcGraph, capSets)) <- run venv initStore globalNS $
+  (entries, (holes, kcStore, kcGraph, capSets)) <- run (M.map fst oldDeclEnv) initStore globalNS $
     withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
       let name = PrefixName pre (fnName d)
       (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
@@ -162,11 +162,16 @@ loadStmtsWithEnv ns (venv, oldDecls, oldEndData) (fname, pre, stmts, cts) = addS
   let to_define = M.fromList [ (name, unders) | ((name, VDecl decl), (unders, _)) <- entries, fnLocality decl == Local ]
   let vdecls = map fst entries
   -- Now generate environment mapping usernames to nodes in the graph
-  venv <- pure $ venv <> M.fromList [(name, overs) | ((name, _), (_, overs)) <- entries]
-  ((), (holes, newEndData, graph, capSets)) <- run venv kcStore newRoot $ withAliases aliases $ do
+  let newDecls :: DeclEnv = M.fromList [(name, (overs, vdecl)) | ((name, vdecl), (_, overs)) <- entries]
+  -- ALAN this feels wrong ATM because every loadStmtsWithEnv is given the same
+  -- Namespace. It's passing tests but perhaps no-one ever imports a file where
+  -- the importee has a function with the same name as one in the importer.
+  declEnv <- first (Err Nothing) $ combineDisjointEnvs oldDeclEnv newDecls
+
+  ((), (holes, newStore, graph, capSets)) <- run (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
     if M.null remaining then pure () else error $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
-  pure (venv, oldDecls <> vdecls, holes, oldEndData <> newEndData, kcGraph <> graph, capSets)
+  pure (declEnv, holes, oldStore <> newStore, kcGraph <> graph, capSets)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]
              -> (QualName, VDecl)
@@ -214,10 +219,13 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
   -- keep VEnv as we fold but discard holes, graph and captures except from the last file in the list
   liftEither $ foldM
-    (\(venv, decls, _, defs, _, _) -> loadStmtsWithEnv ns (venv, decls, defs))
+    (\(declenv, _, store, _, _) -> loadStmtsWithEnv ns (declenv, store))
     emptyMod
     allStmts'
   where
+    emptyMod :: VMod
+    emptyMod = (M.empty, [], initStore, (M.empty, []), M.empty)
+
     -- builds a map from Import to (index in which discovered, module)
     depGraph :: M.Map Import (Int, FlatMod) -- input map to which to add
              -> Import -> String

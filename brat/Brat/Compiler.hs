@@ -17,15 +17,16 @@ import Brat.Naming (root, split)
 import Control.Exception (evaluate)
 import Control.Monad (when)
 import Control.Monad.Except
+import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
-  (_, decls, holes, _, _, _) <- eitherIO env
+  (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  print decls
+  print $ M.toList $ M.map snd declEnv
   putStrLn ""
   putStrLn "Holes:"
   mapM_ print holes
@@ -57,7 +58,7 @@ writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do
   env <- runExceptT $ loadFilename root libDirs file
   -- Discard captureSets; perhaps we could incorporate into the graph
-  (_, _, _, _, graph, _) <- eitherIO env
+  (_, _, _, graph, _) <- eitherIO env
   writeFile out (toDotString graph)
 {-
  where
@@ -75,7 +76,8 @@ compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
 compileFile libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
   env <- runExceptT $ loadFilename checkRoot libDirs file
-  (venv, _, holes, defs, outerGraph, capSets) <- eitherIO env
+  (declEnv, holes, defs, outerGraph, capSets) <- eitherIO env
+  let venv = M.map fst declEnv
   case holes of
     [] -> Right <$> evaluate -- turns 'error' into IO 'die'
                     (compile defs newRoot outerGraph capSets venv)
