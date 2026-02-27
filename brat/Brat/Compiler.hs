@@ -91,10 +91,10 @@ type CompilationResult = M.Map Name (HugrGraph NodeId, [(NodeId, OutPort)])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
-  (newRoot, (venv, decls, holes, st, outerGraph, _)) <- compileToGraph libDirs file
+  (newRoot, (venv, declNames, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   case holes of
     [] -> do
-      box_decls <- concat <$> forM decls (findBoxes venv outerGraph . fst)
+      box_decls <- concat <$> forM declNames (findBoxes venv outerGraph)
       Right <$> (evaluate -- turns 'error' into IO 'die'
             $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)

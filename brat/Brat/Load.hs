@@ -45,17 +45,16 @@ type FlatMod = ((FEnv, String) -- data at the node: declarations, and file conte
                ,Import -- name of this node
                ,[Import]) -- other nodes on which this depends
 
--- Result of checking/compiling a module
-type VMod = (VEnv
+type VMod = (VEnv, [QualName], [TypedHole], Store, Graph, CaptureSets)
+
+-- Working through modules compiling program
+type PMod = (VEnv
             ,[(QualName, VDecl)] -- all symbols from all modules
             ,[TypedHole]          -- for just the last module
             ,Store  -- Ends declared & defined in the module
             ,Graph  -- all functions in this module, nodes identified from first VEnv
             ,CaptureSets -- for nodes in this module's Graph only
             )
-
-emptyMod :: VMod
-emptyMod = (M.empty, [], [], initStore, (M.empty, []), M.empty)
 
 -- N.B. This should only be passed local functions
 -- If the decl is a function with pattern matching clauses, return the Name of
@@ -127,7 +126,7 @@ withAliases :: [TypeAlias] -> Checking a -> Checking a
 withAliases [] m = m
 withAliases (a:as) m = loadAlias a >>= \a -> localAlias a $ withAliases as m
 
-loadStmtsWithEnv :: Namespace -> (VEnv, [(QualName, VDecl)], Store) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
+loadStmtsWithEnv :: Namespace -> (VEnv, [(QualName, VDecl)], Store) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr PMod
 loadStmtsWithEnv ns (venv, oldDecls, oldEndData) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
   -- hacky mess - cleanup!
   (decls, aliases) <- desugarEnv =<< elabEnv stmts
@@ -185,11 +184,12 @@ loadFilename ns libDirs file = do
   unless (takeExtension file == ".brat") $ fail $ "Filename " ++ file ++ " must end in .brat"
   let (path, fname) = splitFileName $ dropExtension file
   contents <- lift $ readFile file
-  loadFiles ns (path :| libDirs) fname contents
+  (venv, decls, holes, store, graph, capSets) <- loadFiles ns (path :| libDirs) fname contents
+  pure (venv, fst <$> decls, holes, store, graph, capSets)
 
 -- Does not read the main file, but does read any imported files
 loadFiles :: Namespace -> NonEmpty FilePath -> String -> String
-         -> ExceptT SrcErr IO VMod
+         -> ExceptT SrcErr IO PMod
 loadFiles ns (cwd :| extraDirs) fname contents = do
   let mainImport = Import { importName = dummyFC (plain fname)
                           , importQualified = True
@@ -219,6 +219,9 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
     emptyMod
     allStmts'
   where
+    emptyMod :: PMod
+    emptyMod = (M.empty, [], [], initStore, (M.empty, []), M.empty)
+    
     -- builds a map from Import to (index in which discovered, module)
     depGraph :: M.Map Import (Int, FlatMod) -- input map to which to add
              -> Import -> String
