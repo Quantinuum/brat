@@ -70,8 +70,10 @@ compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
       in mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
         -- ignore splices for now
         let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ "." ++ outputExt)
-        BS.writeFile outFile (to_json hugr)
-        pure $ "Written to " ++ outFile ++ " pending validation\n")
+        if BS.length (to_json hugr) > 0 then do
+          BS.writeFile outFile (to_json hugr)
+          pure $ "Written to " ++ outFile ++ " pending validation\n"
+        else error $ "Compilation produced empty Hugr for " ++ show boxName ++ "\n")
     Left (CompilingHoles _) -> pure "Skipped as contains holes"
 
 setupCompilationTests :: IO TestTree
