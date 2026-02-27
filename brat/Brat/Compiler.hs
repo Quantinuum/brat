@@ -25,6 +25,7 @@ import Control.Monad (when, forM)
 import Control.Monad.Except
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
+import Data.List (intercalate)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import qualified Data.Map as M
 import System.Exit (die)
@@ -32,9 +33,10 @@ import System.Exit (die)
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
-  (_, decls, holes, _, _, _) <- eitherIO env
+  (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  print decls
+  forM (M.toList declEnv) $ \(name, src_tys) ->
+    putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
   putStrLn ""
   putStrLn "Holes:"
   mapM_ print holes
@@ -66,7 +68,7 @@ writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do
   env <- runExceptT $ loadFilename root libDirs file
   -- Discard captureSets; perhaps we could incorporate into the graph
-  (_, _, _, _, graph, _) <- eitherIO env
+  (_, _, _, graph, _) <- eitherIO env
   writeFile out (toDotString graph)
 {-
  where
@@ -91,10 +93,10 @@ type CompilationResult = M.Map Name (HugrGraph NodeId, [(NodeId, OutPort)])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
-  (newRoot, (venv, declNames, holes, st, outerGraph, _)) <- compileToGraph libDirs file
+  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   case holes of
     [] -> do
-      box_decls <- concat <$> forM declNames (findBoxes venv outerGraph)
+      box_decls <- concat <$> forM (M.keys declEnv) (findBoxes declEnv outerGraph)
       Right <$> (evaluate -- turns 'error' into IO 'die'
             $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)

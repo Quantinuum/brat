@@ -45,7 +45,12 @@ type FlatMod = ((FEnv, String) -- data at the node: declarations, and file conte
                ,Import -- name of this node
                ,[Import]) -- other nodes on which this depends
 
-type VMod = (VEnv, [QualName], [TypedHole], Store, Graph, CaptureSets)
+-- Result of checking a program - all imported files
+type VMod = (VEnv, -- for all decls in all modules, QualName to node in (some, lost) Graph
+             [TypedHole],
+             Store,
+             Graph,
+             CaptureSets)
 
 -- Working through modules compiling program
 type PMod = (VEnv
@@ -185,7 +190,8 @@ loadFilename ns libDirs file = do
   let (path, fname) = splitFileName $ dropExtension file
   contents <- lift $ readFile file
   (venv, decls, holes, store, graph, capSets) <- loadFiles ns (path :| libDirs) fname contents
-  pure (venv, fst <$> decls, holes, store, graph, capSets)
+  let declEnv = M.fromList $ (\(n,_) -> (n, venv M.! n)) <$> decls
+  pure (declEnv, holes, store, graph, capSets)
 
 -- Does not read the main file, but does read any imported files
 loadFiles :: Namespace -> NonEmpty FilePath -> String -> String
