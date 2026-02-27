@@ -29,7 +29,7 @@ import Control.Monad.Except
 import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (first)
 import Data.Functor ( (<&>), ($>) )
-import Data.List (sort)
+import Data.List (intercalate, sort)
 import Data.List.HT (viewR)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Graph as G
@@ -166,7 +166,9 @@ loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcCont
   -- ALAN this feels wrong ATM because every loadStmtsWithEnv is given the same
   -- Namespace. It's passing tests but perhaps no-one ever imports a file where
   -- the importee has a function with the same name as one in the importer.
-  declEnv <- first (Err Nothing) $ combineDisjointEnvs oldDeclEnv newDecls
+  declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names) $
+    TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)) $
+      combineDisjointEnvs oldDeclEnv newDecls
 
   ((), (holes, newStore, graph, capSets)) <- run (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
@@ -183,6 +185,9 @@ loadStmtsWithEnv ns (oldDeclEnv, oldStore) (fname, pre, stmts, cts) = addSrcCont
       (Nothing, remaining) -> pure remaining
       -- Decl defines are the inputs to the Id node which represents a definition
       (Just decl_defines, remaining) -> remaining <$ checkDecl pre decl decl_defines
+
+declLoc :: DeclEnv -> QualName -> FC
+declLoc declEnv name = let VDecl (FuncDecl {fnLoc=loc}) = snd (declEnv M.! name) in loc
 
 loadFilename :: Namespace -> [FilePath] -> String -> ExceptT SrcErr IO VMod
 loadFilename ns libDirs file = do
