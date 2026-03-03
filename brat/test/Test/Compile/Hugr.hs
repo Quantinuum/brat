@@ -18,7 +18,7 @@ outputDir = prefix </> "output"
 
 -- examples that we expect to compile, but then to fail validation
 invalidExamples :: [FilePath]
-invalidExamples = (map ((++ ".brat") . ("examples" </>))
+invalidExamples = map ((++ ".brat") . ("examples" </>))
   ["adder"
   ,"app"
   ,"dollar_kind"
@@ -28,8 +28,7 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
   ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
   ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
-  ,"thunks"]
-  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
+  ,"thunks"] ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.

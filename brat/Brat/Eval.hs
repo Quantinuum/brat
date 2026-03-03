@@ -192,11 +192,11 @@ kindEq (TypeFor m xs) (TypeFor m' ys) | m == m' = kindListEq xs ys
 kindEq k k' = Left . TypeErr $ "Unequal kinds " ++ show k ++ " and " ++ show k'
 
 kindOf :: VVar Z -> Checking TypeKind
-kindOf (VPar e) = (req (TypeOf e) <&> fst) >>= \case
+kindOf (VPar e) = req (TypeOf e) >>= (\case
   EndType Braty (Left k) -> pure k
   EndType my ty -> typeErr $ "End " ++ show e ++ " isn't a kind, it's type is " ++ case my of
     Braty -> show ty
-    Kerny -> show ty
+    Kerny -> show ty) . fst
 kindOf (VInx n) = case n of {}
 
 -------- for SolvePatterns usage: not allowed to solve hopes,

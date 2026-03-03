@@ -224,7 +224,7 @@ compileArithNode parent op TFloat = addNode (show op ++ "_Float") (parent, OpCus
 compileArithNode _ _ ty = error $ "compileArithNode: Unexpected type " ++ show ty
 
 dumpJSON :: Compile BS.ByteString
-dumpJSON = gets hugr <&> (encode . H.serialize)
+dumpJSON = gets ((encode . H.serialize) . hugr)
 
 compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> Compile [TypedPort]
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
@@ -290,10 +290,9 @@ compileTarget parent tgtN tgt = do
   edges <- compileInEdges parent tgt
   -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
   for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
-  pure ()
 
 in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
-in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
+in_edges name = gets ((\(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]) . bratGraph)
 
 compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
 compileInEdges parent name = do
@@ -314,7 +313,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
+  compileNode = case hasPrefix ["checking", "globals", "decl"] name of
     Just _ -> do
       -- reference to a top-level decl. Every such should be in the decls map.
       -- We need to return value of each type (perhaps to be indirectCalled by successor).
@@ -398,7 +397,6 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
         outs <- addNodeWithInputs n (parent, OpCustom (CustomOp ext op boxFunTy [])) ins outputTys
         setOp output (OpOut (OutputNode outputTys [("source", "Prim")]))
         for_ (zip (fst <$> outs) (Port output <$> [0..])) addEdge
-        pure ()
       pure $ default_edges loadConst
 
     -- Check if the node has prefix "globals", hence should be a direct call
@@ -446,7 +444,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       outs -> error $ "Unexpected outs of box: " ++ show outs
 
     Source -> error "Source found outside of compileBox"
-      
+
     Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
@@ -716,10 +714,10 @@ makeConditional :: String    -- Label
 makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
-  (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  outTyss_cases <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   let outTys = if allRowsEqual (fst <$> outTyss_cases)
                then fst (head outTyss_cases)
-               else (error "Conditional output types didn't match")
+               else error "Conditional output types didn't match"
   let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
   onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)

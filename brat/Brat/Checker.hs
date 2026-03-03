@@ -763,7 +763,7 @@ checkClause my fnName cty clause = modily my $ do
           trackM $ "[[[[[[TestMatchData\n" ++ show match ++ "\n]]]]]]"
           pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
 
-  for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
+  for_ defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
@@ -786,7 +786,7 @@ checkClause my fnName cty clause = modily my $ do
      -- would arise if we've not yet defined the outer src
      let vars = fst <$> sol
      env <- mkEnv vars rhsOvers
-     (localEnv (env <> defs) $ "$rhs" -! check @m (rhs clause) ((), rhsUnders))
+     localEnv (env <> defs) $ "$rhs" -! check @m (rhs clause) ((), rhsUnders)
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
@@ -1289,6 +1289,6 @@ run ve initStore ns m = do
     -- show multiple error locations
     hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
  where
-  isNatKinded tyMap e = case tyMap M.! (InEnd e) of
+  isNatKinded tyMap e = case tyMap M.! InEnd e of
     (EndType Braty (Left Nat), _) -> True
     _ -> False
