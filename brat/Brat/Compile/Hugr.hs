@@ -291,13 +291,13 @@ compileTarget parent tgtN tgt = do
   -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
   for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
 
-in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
-in_edges name = gets ((\(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]) . bratGraph)
+inEdges :: Name -> Compile [((OutPort, Val Z), Int)]
+inEdges name = gets ((\(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]) . bratGraph)
 
 compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
 compileInEdges parent name = do
-  in_edges <- in_edges name
-  catMaybes <$> for in_edges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
+  inEdges <- inEdges name
+  catMaybes <$> for inEdges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
 compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
@@ -318,7 +318,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       -- reference to a top-level decl. Every such should be in the decls map.
       -- We need to return value of each type (perhaps to be indirectCalled by successor).
       -- Note this is where we must compile something different *for each caller* by clearing out the `compiled` map for each function
-      hTys <- in_edges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
+      hTys <- inEdges name <&> (map (compileType . snd . fst) . sortBy (comparing snd))
 
       decls <- gets decls
       let (funcDef, extra_call) = decls M.! name

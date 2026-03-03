@@ -22,7 +22,6 @@ import Brat.Syntax.Port (toEnd)
 
 import Control.Monad (unless)
 import Data.Bifunctor (first)
-import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
@@ -137,7 +136,7 @@ typeOfEnd my e = do
            Right ty -> Right <$> eval S0 ty
            _ -> pure ty
          Kerny -> eval S0 ty
-     | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode")
+     | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
 
 
 solveConstructor :: EvMode m
