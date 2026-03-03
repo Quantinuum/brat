@@ -1,6 +1,9 @@
 name: Brat CI
 on:
-  pull_request: []
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.hs"
 
 jobs:
   hlint:
