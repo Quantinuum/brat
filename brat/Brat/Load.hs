@@ -155,7 +155,7 @@ loadStmtsWithEnv ns (venv, oldDecls, oldEndData) (fname, pre, stmts, cts) = addS
       (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
       pure ((name, VDecl d{fnSig=sig}), (unders, overs))
   trackM "finished kind checking"
-  unless (length holes == 0) $ error "Should be no holes from kind-checking"
+  unless (null holes) $ error "Should be no holes from kind-checking"
   unless (M.null capSets) $ error "Should be no captures from kind-checking"
   -- We used to check there were no holes from that, but for now we do not bother
   -- A list of local functions (read: with bodies) to define with checkDecl

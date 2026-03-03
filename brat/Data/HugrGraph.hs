@@ -7,7 +7,7 @@ module Data.HugrGraph(NodeId,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
                       serialize,
-                      splice, splice_new, splice_prepend, inlineDFG
+                      splice, spliceNew, splicePrepend, inlineDFG
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
@@ -28,10 +28,10 @@ newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 data HugrGraph n = HugrGraph {
     root :: n,
     parents :: M.Map n n, -- definitive list of (valid) nodes, excluding root
-    first_children:: M.Map n [n],
+    firstChildren:: M.Map n [n],
     nodes :: M.Map n HugrOp,
-    edges_out :: M.Map n [(Int, PortId n)],
-    edges_in :: M.Map n [(PortId n, Int)]
+    edgesOut :: M.Map n [(Int, PortId n)],
+    edgesIn :: M.Map n [(PortId n, Int)]
 } deriving (Eq, Show) -- we probably want a better `show`
 
 freshNode :: NodeId -> String -> State (HugrGraph NodeId, Namespace) NodeId
@@ -45,8 +45,8 @@ freshNode parent nam = state $ \(hugr@HugrGraph {root, parents}, nameSupply) ->
 
 -- ERRORS if firstChildren already set for this node
 setFirstChildren :: Ord n => n -> [n] -> State (HugrGraph n) ()
-setFirstChildren p cs = modify $ \h -> let nch = M.alter (\Nothing -> Just cs) p (first_children h)
-                                      in h {first_children = nch}
+setFirstChildren p cs = modify $ \h -> let nch = M.alter (\Nothing -> Just cs) p (firstChildren h)
+                                      in h {firstChildren = nch}
 
 -- ERRORS if op already set for this node (or node does not have parent - should not be possible)
 setOp :: (Ord n, Show n) => n -> HugrOp -> State (HugrGraph n) ()
@@ -64,10 +64,10 @@ new nam op = state $ \ns ->
   in (HugrGraph {
         root,
         parents = M.empty,
-        first_children = M.empty,
+        firstChildren = M.empty,
         nodes = M.singleton root op,
-        edges_in = M.empty,
-        edges_out = M.empty}
+        edgesIn = M.empty,
+        edgesOut = M.empty}
       ,ns'
       )
 
@@ -75,8 +75,8 @@ addEdge :: Ord n =>(PortId n, PortId n) -> State (HugrGraph n) ()
 addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
   ((), ) $ case (M.lookup s nodes, M.lookup t nodes) of
     (Just _, Just _) -> h {
-      edges_out = addToMap s (o, tgt) edges_out id,
-      edges_in = addToMap t (src, i) edges_in no_other_inedge
+      edgesOut = addToMap s (o, tgt) edgesOut id,
+      edgesIn = addToMap t (src, i) edgesIn no_other_inedge
     }
     _ -> error "addEdge to/from node not present"
  where
@@ -91,7 +91,7 @@ addOrderEdge :: Ord n => (n, n) -> State (HugrGraph n) ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
 
 edgeList :: HugrGraph n -> [(PortId n, PortId n)]
-edgeList (HugrGraph {edges_out}) = [(Port n off, tgt) | (n, vs) <- M.assocs edges_out
+edgeList (HugrGraph {edgesOut}) = [(Port n off, tgt) | (n, vs) <- M.assocs edgesOut
                                                       , (off, tgt) <- vs
                                    ]
 
@@ -107,7 +107,7 @@ getOp HugrGraph {nodes} n = nodes M.! n
 -- We expect the new Hugr to be DFG-rooted with the same signature as the hole
 -- being replaced, although this is not enforced.
 splice :: forall m n. (Ord n, Ord m) => n -> HugrGraph m -> (m -> n) -> State (HugrGraph n) ()
-splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) >>= isHole) of
+splice hole add non_root_k = modify $ \host -> case M.lookup hole (nodes host) >>= isHole of
   Just (_, sig) -> case M.lookup (root add) (nodes add) of
     -- We could inline the DFG here, which could be done more efficiently (iterating through
     -- nodes of `add` but not the host), but for now we just splice in the DFG in place
@@ -116,10 +116,10 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
         parents = disj_union (parents host) (M.mapKeys k $ M.map k $ parents add),
         -- union prefers left --> override host `nodes` for `hole` with new (DFG)
         nodes = M.union (M.mapKeys k (nodes add)) (nodes host),
-        edges_in  = disj_union (edges_in host) new_edges_in,
-        edges_out = disj_union (edges_out host) new_edges_out,
-        first_children = disj_union (first_children host)
-                                    (M.mapKeys k $ M.map (k <$>) $ first_children add)
+        edgesIn  = disj_union (edgesIn host) new_edgesIn,
+        edgesOut = disj_union (edgesOut host) new_edgesOut,
+        firstChildren = disj_union (firstChildren host)
+                                    (M.mapKeys k $ M.map (k <$>) $ firstChildren add)
       }
     other -> error $ "Expected DFG with sig " ++ show sig ++ "\nBut found: " ++ show other
   other -> error $ "Expected a hole, found " ++ show other
@@ -127,21 +127,21 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
     k :: m -> n
     k n = if n == root add then hole else non_root_k n
 
-    new_edges_in = M.fromList [(k tgt, [(Port (k srcNode) srcPort, tgtPort)
+    new_edgesIn = M.fromList [(k tgt, [(Port (k srcNode) srcPort, tgtPort)
                                        | (Port srcNode srcPort, tgtPort) <- in_edges ])
-                              | (tgt, in_edges ) <- M.assocs (edges_in add)]
+                              | (tgt, in_edges ) <- M.assocs (edgesIn add)]
 
-    new_edges_out = M.fromList [(k src, [(srcPort, Port (k tgtNode) tgtPort)
+    new_edgesOut = M.fromList [(k src, [(srcPort, Port (k tgtNode) tgtPort)
                                        | (srcPort, Port tgtNode tgtPort) <- out_edges])
-                              | (src, out_edges) <- M.assocs (edges_out add)]
+                              | (src, out_edges) <- M.assocs (edgesOut add)]
 
     disj_union = M.unionWith (\_ _ -> error "keys not disjoint")
 
 -- Replace the specified hole of the host Hugr (in the State monad), with a new Hugr,
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
 -- the hole
-splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
-splice_prepend hole add = splice hole add (keyMap M.!)
+splicePrepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
+splicePrepend hole add = splice hole add (keyMap M.!)
  where
   prefixRoot :: NodeId -> NodeId
   prefixRoot (NodeId (MkName ids)) = let NodeId (MkName rs) = hole in NodeId $ MkName (rs ++ ids)
@@ -154,10 +154,10 @@ splice_prepend hole add = splice hole add (keyMap M.!)
 -- Replace the specified hole of a host Hugr (in the State monad, with NodeId keys) with
 -- a new Hugr of any key type, using a Namespace to generate a fresh NodeId for each node
 -- of the new Hugr
-splice_new :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
-splice_new hole add = modify $ \(host, ns) ->
+spliceNew :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
+spliceNew hole add = modify $ \(host, ns) ->
   let
-   (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add)) 
+   (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add))
    newMapping :: n -> (Namespace, M.Map n NodeId) -> (Namespace, M.Map n NodeId)
    newMapping n (ns, km) = let (nn, ns') = fresh (show n) ns in (ns', M.insert n (NodeId nn) km)
    host_out = execState (splice hole add (keyMap M.!)) host
@@ -168,8 +168,8 @@ splice_new hole add = modify $ \(host, ns) ->
 inlineDFG :: Ord n => n -> State (HugrGraph n) ()
 inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
   (Just (OpDFG _)) -> do
-    let newp = (parents h) M.! dfg
-    let [inp, out] = (first_children h) M.! dfg
+    let newp = parents h M.! dfg
+    let [inp, out] = firstChildren h M.! dfg
     -- rewire edges
     dfg_in_map <- takeInEdgeMap dfg
     input_out_map <- takeOutEdges inp
@@ -180,13 +180,13 @@ inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
     -- remove dfg, inp, out; reparent children of dfg
     let to_remove = [dfg, inp, out]
     modify $ \h -> h {
-      first_children = M.delete dfg (first_children h), -- inp/out shouldn't have any children
+      firstChildren = M.delete dfg (firstChildren h), -- inp/out shouldn't have any children
       nodes = foldl (flip M.delete) (nodes h) to_remove,
       -- TODO this is O(size of hugr) reparenting. Either add a child map,
       -- or combine with splicing so we only iterate through the inserted
       -- hugr (which we do anyway) rather than the host.
       parents = M.fromList [(n, if p==dfg then newp else p)
-                          | (n,p) <- M.assocs (parents h), not (elem n to_remove)]
+                          | (n,p) <- M.assocs (parents h), n `notElem` to_remove]
     }
   other -> error $ "Expected DFG, found " ++ show other
  where
@@ -195,10 +195,10 @@ inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
 takeInEdges :: forall n. Ord n => n -> State (HugrGraph n) [(PortId n, Int)]
 takeInEdges tgt = do
   h <- get
-  let (removed_edges, edges_in') = first (fromMaybe []) $ M.updateLookupWithKey
-        (\_ _ -> Nothing) tgt (edges_in h)
-  let edges_out' = foldl removeFromOutMap (edges_out h) removed_edges
-  put h {edges_in=edges_in', edges_out=edges_out'}
+  let (removed_edges, edgesIn') = first (fromMaybe []) $ M.updateLookupWithKey
+        (\_ _ -> Nothing) tgt (edgesIn h)
+  let edgesOut' = foldl removeFromOutMap (edgesOut h) removed_edges
+  put h {edgesIn=edgesIn', edgesOut=edgesOut'}
   pure removed_edges
  where
   removeFromOutMap :: M.Map n [(Int, PortId n)] -> (PortId n, Int) -> M.Map n [(Int, PortId n)]
@@ -208,15 +208,15 @@ takeInEdges tgt = do
   removeFromOutList [] _ = error "Out-edge not found"
   removeFromOutList (e:es) e' | e == e' = es
   removeFromOutList ((outport, _):_) (outport', _) | outport == outport' = error "Wrong out-edge"
-  removeFromOutList (e:es) r = e:(removeFromOutList es r)
+  removeFromOutList (e:es) r = e:removeFromOutList es r
 
 takeOutEdges :: forall n. Ord n => n -> State (HugrGraph n) [(Int, PortId n)]
 takeOutEdges src = do
   h <- get
-  let (removed_edges, edges_out') = first (fromMaybe []) $ M.updateLookupWithKey
-       (\_ _ -> Nothing) src (edges_out h)
-  let edges_in' = foldl removeFromInMap (edges_in h) removed_edges
-  put h {edges_in=edges_in', edges_out=edges_out'}
+  let (removed_edges, edgesOut') = first (fromMaybe []) $ M.updateLookupWithKey
+       (\_ _ -> Nothing) src (edgesOut h)
+  let edgesIn' = foldl removeFromInMap (edgesIn h) removed_edges
+  put h {edgesIn=edgesIn', edgesOut=edgesOut'}
   pure removed_edges
  where
   removeFromInMap :: M.Map n [(PortId n, Int)] -> (Int, PortId n) -> M.Map n [(PortId n, Int)]
@@ -226,7 +226,7 @@ takeOutEdges src = do
   removeFromInList [] _ = error "In-edge not found"
   removeFromInList (e:es) e' | e==e' = es
   removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
-  removeFromInList (e:es) r = e:(removeFromInList es r)
+  removeFromInList (e:es) r = e:removeFromInList es r
 
 serialize :: forall n. (Ord n, Show n) => HugrGraph n -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
@@ -236,7 +236,7 @@ serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
     -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
     -- require an extra order edge from the source to the sibling that is ancestor of the target
     let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edgeList hugr,
-            (parentOf n1 /= parentOf n2),
+            parentOf n1 /= parentOf n2,
             requiresOrderEdge n1,
             requiresOrderEdge n2] in
     track ("interEdges: " ++ show interEdges) (walkUp <$> interEdges)
@@ -261,15 +261,15 @@ type StackAndIndices n = (Bwd (n, HugrOp) -- node is index, this is (parent, op)
                          , M.Map n Int)
 
 renameAndSort :: forall n. Ord n => HugrGraph n -> Hugr Int
-renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr (
-    (first transNode) <$> (fst nodeStackAndIndices) <>> [],
+renameAndSort hugr@(HugrGraph {root, firstChildren=fc, nodes, parents}) = Hugr (
+    first transNode <$> fst nodeStackAndIndices <>> [],
     [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
   ) where
-    first_children k = M.findWithDefault [] k fc
+    firstChildren k = M.findWithDefault [] k fc
     nodeStackAndIndices :: StackAndIndices n
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
-                          in foldl' addNode just_root (first_children root ++ M.keys parents)
-    
+                          in foldl' addNode just_root (firstChildren root ++ M.keys parents)
+
     addNode :: StackAndIndices n -> n -> StackAndIndices n
     addNode ins n = case M.lookup n (snd ins) of
       (Just _) -> ins
@@ -277,10 +277,10 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
         parent = parents M.! n -- guaranteed as root is always in `ins`
         with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
        in case M.lookup n indices of
-            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children 
+            Just _ -> with_parent -- self added by recursive call; we must be in parent's firstChildren 
             Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
-                       -- finally add first_children immediately after n
-                       in foldl addNode with_n (first_children n)
+                       -- finally add firstChildren immediately after n
+                       in foldl addNode with_n (firstChildren n)
 
     transNode :: n -> Int
-    transNode = ((snd nodeStackAndIndices) M.!)
+    transNode = (snd nodeStackAndIndices M.!)

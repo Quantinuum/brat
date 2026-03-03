@@ -1,6 +1,9 @@
 name: Brat CI
 on:
-  pull_request: []
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.hs"
 
 jobs:
   hlint:
@@ -17,4 +20,4 @@ jobs:
         path: brat/
         # https://github.com/haskell-actions/hlint-run/issues/20#issuecomment-2168787894
         hlint-bin: hlint --hint=brat/.hlint.yaml
-        fail-on: warning
+        fail-on: error

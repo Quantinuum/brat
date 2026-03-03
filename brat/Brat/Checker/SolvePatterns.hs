@@ -22,7 +22,6 @@ import Brat.Syntax.Port (toEnd)
 
 import Control.Monad (unless)
 import Data.Bifunctor (first)
-import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
@@ -128,14 +127,16 @@ solve my ((src, PCon c abs):p) = do
 
 
 typeOfEnd :: Modey m -> End -> Checking (BinderType m)
-typeOfEnd my e = (req (TypeOf e) <&> fst) >>= \case
-  EndType my' ty
-    | Just Refl <- testEquality my my' -> case my' of
-        Braty -> case ty of
-          Right ty -> Right <$> eval S0 ty
-          _ -> pure ty
-        Kerny -> eval S0 ty
-    | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
+typeOfEnd my e = do
+  (ty, _) <- req (TypeOf e)
+  case ty of
+    EndType my' ty
+     | Just Refl <- testEquality my my' -> case my' of
+         Braty -> case ty of
+           Right ty -> Right <$> eval S0 ty
+           _ -> pure ty
+         Kerny -> eval S0 ty
+     | otherwise -> err . InternalError $ "Expected end " ++ show e ++ " to be in a different mode"
 
 
 solveConstructor :: EvMode m
