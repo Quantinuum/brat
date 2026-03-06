@@ -126,6 +126,10 @@ addNode nam (parent, op) = do
   setOp name (addMetadata [("id", show name)] op)
   pure name
 
+filePrefix :: [String] -> Name -> Maybe Name
+filePrefix prefixes (MkName (("checking",_):_filename:ns)) =
+  hasPrefix (["globals"]++prefixes) (MkName ns)
+
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
 runCheckingInCompile (Req (ELup e) k) = do
@@ -314,7 +318,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
+  compileNode = case (filePrefix ["decl"] name) of
     Just _ -> do
       -- reference to a top-level decl. Every such should be in the decls map.
       -- We need to return value of each type (perhaps to be indirectCalled by successor).
@@ -364,7 +368,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       ins <- compilePorts ins
       outs <- compilePorts outs
       let sig = FunctionType ins outs bratExts
-      case hasPrefix ["checking", "globals", "prim"] outNode of
+      case filePrefix ["prim"] outNode of
         -- If we're evaling a Prim, we add it directly into the kernel graph
         Just suffix -> do
           (ns, _) <- gets bratGraph
@@ -407,13 +411,13 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       outs <- compilePorts outs
       (ns, _) <- gets bratGraph
       decls <- gets decls
-      case hasPrefix ["checking", "globals", "prim"] outNode of
+      case filePrefix ["prim"] outNode of
         -- Callee is a Prim node, insert Hugr Op; first look up outNode in the BRAT graph to get the Prim data
         Just suffix -> default_edges <$> case M.lookup outNode ns of
           Just (BratNode (Prim (ext,op)) _ _) -> do
             addNode (show suffix) (parent, OpCustom (CustomOp ext op (FunctionType ins outs [ext]) []))
           x -> error $ "Expected a Prim node but got " ++ show x
-        Nothing -> case hasPrefix ["checking", "globals"] outNode of
+        Nothing -> case filePrefix [] outNode of
           -- Callee is a user-defined global def that, since it does not require an "extra" call, can be turned from IndirectCall to direct.
           Just _ | (funcDef, False) <- fromJust (M.lookup outNode decls) -> do
                 callerId <- addNode ("direct_call(" ++ show funcDef ++ ")")
@@ -449,7 +453,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       
     Target -> error "Target found outside of compileBox"
 
-    Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
+    Id | Nothing <- filePrefix ["decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
       let [(_,ty)] = ins -- fail if more than one input
       addNode "Id" (parent, OpNoop (NoopOp (compileType ty)))
@@ -854,7 +858,7 @@ compileModule venv moduleNode = do
   decls = do -- in list monad, no Compile here
             (fnName, wires) <- M.toList venv
             let (Ex idNode _) = end (fst $ head wires) -- would be better to check same for all rather than just head
-            case hasPrefix ["checking","globals","decl"] idNode of
+            case filePrefix ["decl"] idNode of
               Just _ -> pure (fnName, idNode) -- assume all ports are 0,1,2...
               Nothing -> []
 
