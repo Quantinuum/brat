@@ -35,10 +35,24 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
 -- Note this does not include those with remaining holes; these are automatically skipped.
 nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   map ((++ ".brat") . ("examples" </>))
-    [
-    ]
+  ["fzbz"
+  ,"let"
+  ,"patterns"
+  ,"qft"
+  ,"infer" -- problems with undoing pattern tests
+  ,"infer2" -- problems with undoing pattern tests
+  ,"fanout" -- Contains Selectors
+  ,"vectorise" -- Generates MapFun nodes which aren't implemented yet
+  ,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet
+  ,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet
+  -- Victims of #13
+  ,"arith"
+  ,"klet"
+  ,"magic-state-distillation" -- also makes selectors
+  ]
 
-nonCompilingTests = []
+-- This is https://github.com/Quantinuum/brat/issues/101
+nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
