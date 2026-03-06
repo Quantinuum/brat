@@ -5,7 +5,7 @@ import Test.Checking (expectedCheckingFails)
 import Test.Parsing (expectedParsingFails)
 import Test.Util (expectFailForPaths)
 
-import qualified Data.ByteString.Lazy as BS
+import qualified Data.ByteString as BS
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
@@ -29,14 +29,13 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
   --,"repeated_app" -- not checking yet, but will be missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ]
-  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
+  )
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
 nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   map ((++ ".brat") . ("examples" </>))
   ["fzbz"
-  ,"ising"
   ,"let"
   ,"patterns"
   ,"qft"
@@ -48,14 +47,8 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   ,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet
   -- Victims of #13
   ,"arith"
-  ,"cqcconf"
-  ,"imports"
-  ,"ising"
   ,"klet"
   ,"magic-state-distillation" -- also makes selectors
-  ,"rus"
-  ,"teleportation"
-  ,"vlup_covering"
   ]
 
 -- This is https://github.com/Quantinuum/brat/issues/101
@@ -63,11 +56,13 @@ nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
-    Right bs -> do
-      let outputExt = if file `elem` invalidExamples then "json.invalid" else "json"
-      let outFile = outputDir </> replaceExtension (takeFileName file) outputExt
-      BS.writeFile outFile bs
-      pure $ "Written to " ++ outFile ++ " pending validation"
+    Right hugr_bytes -> do
+          let outputExt = if file `elem` invalidExamples then "json.invalid" else "json"
+          let outFile = outputDir </> replaceExtension (takeFileName file) outputExt
+          -- lots of fun with lazy and even strict bytestrings
+          -- returning many bytes before evaluation has completed
+          BS.writeFile outFile $! (BS.toStrict hugr_bytes)
+          pure $ "Written to " ++ outFile ++ " pending validation\n"
     Left (CompilingHoles _) -> pure "Skipped as contains holes"
 
 setupCompilationTests :: IO TestTree
