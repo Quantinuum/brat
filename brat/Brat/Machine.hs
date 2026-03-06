@@ -34,7 +34,8 @@ type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
 runInterpreter :: [FilePath] -> String -> String -> IO ()
 runInterpreter libDirs file runFunc = do
-    (root, (venv, _, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
+    (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
+    let venv = M.map fst declEnv
     --print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
