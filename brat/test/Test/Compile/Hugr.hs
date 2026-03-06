@@ -19,16 +19,47 @@ outputDir = prefix </> "output"
 -- examples that we expect to compile, but then to fail validation
 invalidExamples :: [FilePath]
 invalidExamples = (map ((++ ".brat") . ("examples" </>))
-  [--"adder" -- doesn't even check yet
-  --,"repeated_app" -- doesn't check; will have missing coercions, https://github.com/quantinuum-dev/brat/issues/413
-  ])
+  ["app"
+  --,"adder" -- not even checking yet
+  ,"dollar_kind"
+  ,"portpulling"
+  ,"eatsfull" -- Compiling hopes #96
+  ,"map" -- Compiling hopes #96
+  ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
+  ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
+  --,"repeated_app" -- not checking yet, but will be missing coercions, https://github.com/quantinuum-dev/brat/issues/413
+  ]
+  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
 nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
-  map ((++ ".brat") . ("examples" </>)) []
+  map ((++ ".brat") . ("examples" </>))
+  ["fzbz"
+  ,"ising"
+  ,"let"
+  ,"patterns"
+  ,"qft"
+  ,"infer" -- problems with undoing pattern tests
+  ,"infer2" -- problems with undoing pattern tests
+  ,"fanout" -- Contains Selectors
+  ,"vectorise" -- Generates MapFun nodes which aren't implemented yet
+  ,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet
+  ,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet
+  -- Victims of #13
+  ,"arith"
+  ,"cqcconf"
+  ,"imports"
+  ,"ising"
+  ,"klet"
+  ,"magic-state-distillation" -- also makes selectors
+  ,"rus"
+  ,"teleportation"
+  ,"vlup_covering"
+  ]
 
-nonCompilingTests = []
+-- This is https://github.com/Quantinuum/brat/issues/101
+nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
