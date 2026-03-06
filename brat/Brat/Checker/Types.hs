@@ -5,6 +5,7 @@ module Brat.Checker.Types (Overs, Unders
                           ,ChkConnectors, SynConnectors
                           ,Mode(..), Modey(..)
                           ,Env, VEnv, KEnv, EnvData
+                          ,combineDisjointEnvs
                           ,IsSkolem(..), Store(..), EndType(..)
                           ,emptyEnv
                           ,TypedHole(..), HoleTag(..), HoleData(..)
@@ -22,6 +23,7 @@ import Hasochism (N(..))
 
 import Data.Kind (Type)
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- Inputs against which a term is checked
 type family Overs (m :: Mode) (k :: Kind) :: Type where
@@ -60,6 +62,14 @@ type KEnv = Env (EnvData Kernel)
 
 emptyEnv :: Env a
 emptyEnv = M.empty
+
+-- Left == error == list of the QualNames that were multiply defined
+combineDisjointEnvs :: Env e -> Env e -> Either [QualName] (Env e)
+combineDisjointEnvs l r =
+  let commonKeys = S.intersection (M.keysSet l) (M.keysSet r)
+  in if S.null commonKeys
+      then pure $ M.union l r
+      else Left $ S.toList commonKeys
 
 data HoleTag :: Mode -> Kind -> Type where
   NBHole :: HoleTag Brat Noun

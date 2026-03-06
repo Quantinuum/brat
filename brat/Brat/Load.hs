@@ -7,7 +7,7 @@ module Brat.Load (loadFilename
 import Brat.Checker
 import Brat.Checker.Helpers (ensureEmpty, next, showMode, wire)
 import Brat.Checker.Monad
-import Brat.Checker.Types (Store, TypedHole, VEnv, initStore)
+import Brat.Checker.Types (Store, TypedHole, initStore, VEnv)
 import Brat.Elaborator (elabEnv)
 import Brat.Error
 import Brat.FC hiding (end)
@@ -213,11 +213,13 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
       pure (deps ++ [main])
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
   -- keep VEnv as we fold but discard holes, graph and captures except from the last file in the list
-  liftEither $ foldM
-    (\(venv, decls, _, defs, _, _) -> loadStmtsWithEnv ns (venv, decls, defs))
-    emptyMod
-    allStmts'
+  liftEither $ fst <$> foldM loadStmtsSplitNS (emptyMod, ns) allStmts'
   where
+    loadStmtsSplitNS :: (VMod, Namespace) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr (VMod, Namespace)
+    loadStmtsSplitNS ((venv,decls,_,store,_,_), ns) file@(fname, _, _, _) =
+      let (subns, ns') = split (takeBaseName fname) ns
+      in (, ns') <$> loadStmtsWithEnv subns (venv,decls,store) file
+
     -- builds a map from Import to (index in which discovered, module)
     depGraph :: M.Map Import (Int, FlatMod) -- input map to which to add
              -> Import -> String
