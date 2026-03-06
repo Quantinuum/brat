@@ -66,6 +66,9 @@ sumOfRows ty = error $ show ty ++ " isn't a sum of row tuples"
 compileSumOfRows :: SumOfRows -> HugrType
 compileSumOfRows (SoR rows) = HTSum (SG (GeneralSum rows))
 
+hugrRotation :: HugrType
+hugrRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
+
 -- Depends on HugrValue (via TypeArg in HTOpaque)
 data HugrType
   = HTQubit
@@ -231,6 +234,8 @@ hvFloat x = HVExtension ["arithmetic.float_types"] hugrFloat
             (CC "ConstF64" (KeyMap.singleton "value" x))
 hvInt x = HVExtension ["arithmetic.int_types"] hugrInt
           (CC "ConstInt" (KeyMap.insert "log_width" 6 (KeyMap.singleton "value" x)))
+hvRotation rad = HVExtension ["tket.rotation"] hugrRotation
+                 (CC "ConstRotation" (KeyMap.singleton "half_turns" (rad / pi)))
 
 valFromSimple :: SimpleTerm -> HugrValue
 valFromSimple (Num x) = hvInt x

@@ -6,13 +6,16 @@ module Data.HugrGraph(NodeId,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
-                      serialize,
-                      splice, splice_new, splice_prepend, inlineDFG
+                      splice, splice_new, splice_prepend, inlineDFG,
+                      serialize, to_json
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
 import Bwd
 import Data.Hugr hiding (const)
+
+import qualified Data.ByteString.Lazy as BS
+import Data.Aeson (encode)
 
 import Control.Monad.State (State, execState, state, get, put, modify)
 import Data.Foldable (foldl', for_)
@@ -73,12 +76,14 @@ new nam op = state $ \ns ->
 
 addEdge :: Ord n =>(PortId n, PortId n) -> State (HugrGraph n) ()
 addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
-  ((), ) $ case (M.lookup s nodes, M.lookup t nodes) of
+  ((), ) $ case (M.lookup s parents, M.lookup t parents) of
     (Just _, Just _) -> h {
       edges_out = addToMap s (o, tgt) edges_out id,
       edges_in = addToMap t (src, i) edges_in no_other_inedge
     }
-    _ -> error "addEdge to/from node not present"
+    (Nothing, Just _) -> error $ "addEdge source not present"
+    (Just _, Nothing) -> error $ "addEdge Target not present"
+    _ -> error $ "addEdge nodes not present"
  where
   addToMap :: Ord k => k -> v -> M.Map k [v] -> ([v] -> [v]) -> M.Map k [v]
   addToMap k v m chk = M.alter (Just . (v:) . maybe [] chk) k m
@@ -157,7 +162,7 @@ splice_prepend hole add = splice hole add (keyMap M.!)
 splice_new :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
 splice_new hole add = modify $ \(host, ns) ->
   let
-   (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add)) 
+   (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add))
    newMapping :: n -> (Namespace, M.Map n NodeId) -> (Namespace, M.Map n NodeId)
    newMapping n (ns, km) = let (nn, ns') = fresh (show n) ns in (ns', M.insert n (NodeId nn) km)
    host_out = execState (splice hole add (keyMap M.!)) host
@@ -228,6 +233,9 @@ takeOutEdges src = do
   removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
   removeFromInList (e:es) r = e:(removeFromInList es r)
 
+to_json :: HugrGraph NodeId -> BS.ByteString
+to_json = encode . serialize
+
 serialize :: forall n. (Ord n, Show n) => HugrGraph n -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
  where
@@ -269,7 +277,7 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
     nodeStackAndIndices :: StackAndIndices n
     nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
                           in foldl' addNode just_root (first_children root ++ M.keys parents)
-    
+
     addNode :: StackAndIndices n -> n -> StackAndIndices n
     addNode ins n = case M.lookup n (snd ins) of
       (Just _) -> ins
@@ -277,7 +285,7 @@ renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr 
         parent = parents M.! n -- guaranteed as root is always in `ins`
         with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
        in case M.lookup n indices of
-            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children 
+            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children
             Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
                        -- finally add first_children immediately after n
                        in foldl addNode with_n (first_children n)
