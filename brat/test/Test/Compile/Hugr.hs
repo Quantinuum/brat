@@ -29,7 +29,7 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
   ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
   --,"repeated_app" -- not checking yet, but will be missing coercions, https://github.com/quantinuum-dev/brat/issues/413
   ]
-  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
+  )
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
