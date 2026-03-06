@@ -19,10 +19,9 @@ outputDir = prefix </> "output"
 -- examples that we expect to compile, but then to fail validation
 invalidExamples :: [FilePath]
 invalidExamples = (map ((++ ".brat") . ("examples" </>))
-  ["adder"
-  ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
-  ,"thunks"]
-  )
+  [--"adder" -- doesn't even check yet
+  --,"repeated_app" -- doesn't check; will have missing coercions, https://github.com/quantinuum-dev/brat/issues/413
+  ])
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
