@@ -7,8 +7,8 @@ import Test.Checking (expectedCheckingFails)
 import Test.Parsing (expectedParsingFails)
 import Test.Util (expectFailForPaths)
 
-import qualified Data.ByteString.Lazy as BS
 import qualified Data.Map as M
+import qualified Data.ByteString as BS
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
@@ -22,17 +22,17 @@ outputDir = prefix </> "output"
 -- examples that we expect to compile, but then to fail validation
 invalidExamples :: [FilePath]
 invalidExamples = (map ((++ ".brat") . ("examples" </>))
-  ["adder"
-  ,"app"
+  ["app"
+  --,"adder" -- not even checking yet
   ,"dollar_kind"
   --,"portpulling" -- compiling just kernels is fine
   ,"eatsfull" -- Compiling hopes #96
   ,"map" -- Compiling hopes #96
   ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
   ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
-  ,"repeated_app" -- missing coercions, https://github.com/quantinuum-dev/brat/issues/413
-  ,"thunks"]
-  ) ++ ["test/compilation/closures.brat"] -- fails to compile but still spits out some JSON (not whole Hugr)
+  --,"repeated_app" -- not checking yet, but will be missing coercions, https://github.com/quantinuum-dev/brat/issues/413
+  ]
+  )
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
@@ -51,14 +51,12 @@ nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
   --,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
   -- Victims of #13
   --,"arith" -- can compile just kernels
-  ,"cqcconf"
-  ,"imports"
   ,"klet"
   ,"magic-state-distillation" -- also makes selectors
-  --,"rus" -- can compile just kernels
-  ,"teleportation"
-  --,"vlup_covering" -- can compile just kernels
   ]
+
+-- This is https://github.com/Quantinuum/brat/issues/101
+nonCompilingTests = ["test/compilation/closures.brat"]
 
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
@@ -67,7 +65,9 @@ compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
       in mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
         -- ignore splices for now
         let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ "." ++ outputExt)
-        BS.writeFile outFile (to_json hugr)
+        -- lots of fun with lazy and even strict bytestrings
+        -- returning many bytes before evaluation has completed
+        BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
         pure $ "Written to " ++ outFile ++ " pending validation\n")
     Left (CompilingHoles _) -> pure "Skipped as contains holes"
 

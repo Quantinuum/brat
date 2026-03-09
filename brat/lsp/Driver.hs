@@ -16,6 +16,7 @@ import Language.LSP.Protocol.Types
 import Language.LSP.VFS
 import System.FilePath (dropFileName)
 import System.Log.Logger
+import qualified Data.Map as M
 
 import Brat.Checker.Types (TypedHole)
 import Brat.Error
@@ -115,9 +116,9 @@ loadVFile state _ msg = do
       --                                                vv
       env <- liftIO . runExceptT $ loadFiles Name.root (cwd :| []) (show fileName) file
       case env of
-        Right (_,newDecls,holes,_,_,_) -> do
+        Right (declEnv, holes,_,_,_) -> do
           old <- liftIO $ takeMVar state
-          liftIO $ putMVar state (updateState (snd <$> newDecls, holes) old)
+          liftIO $ putMVar state (updateState (snd <$> M.elems declEnv, holes) old)
           allGood fileName
           logHoles holes fileName
         Left (SrcErr _ err) -> allGood fileName *> sendError fileName err

@@ -128,16 +128,16 @@ convertSig fn@(FunctionType { .. }) = M.Apply "core.fn" [inpTm, outTm]
   outTm = M.List (M.Item . convertType <$> output)
 
 -- TODO: Rewrite this so that we don't rely on HugrGraph internals
-hugrToModel :: HugrGraph -> Model M.Region
+hugrToModel :: HugrGraph NodeId -> Model M.Region
 hugrToModel hg@(HugrGraph { ..  }) =
   case getOp hg root of
     OpDFG (DFG sig meta) -> dfgToRegion hg (root, sig, meta)
     _ -> error "TODO: Non-DFG root op"
 
 -- Invariant: NodeId points to a DFG
-dfgToRegion :: HugrGraph -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
+dfgToRegion :: HugrGraph NodeId -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
 dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
-  let [inp, out] = fromMaybe (error "no kids") $ Map.lookup nodeId first_children
+  let [inp, out] = fromMaybe (error "no kids") $ getFirstChildren hg nodeId
   sourceVars <- freshOutputLinks inp (input sig)
   targetVars <- freshInputLinks out (output sig)
   let regionMetas = convertMeta meta
@@ -154,14 +154,14 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
        })
 
 -- Get the links corresponding to the inputs and outputs of a Model Node
-nodeInputs :: HugrGraph -> NodeId -> Model [M.LinkName] -- inputs
+nodeInputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName] -- inputs
 nodeInputs hg nodeId =
   for (inEdges hg nodeId) $ \(Port srcNode srcIx, tgtIx) -> do
     getDangling srcNode srcIx >>= \case
       Just link -> pure link
       Nothing -> makeInputLink nodeId tgtIx
 
-nodeOutputs :: HugrGraph -> NodeId -> Model [M.LinkName]
+nodeOutputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName]
 nodeOutputs hg nodeId =
   for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) -> do
     getHungry tgtNode tgtIx >>= \case
@@ -171,7 +171,7 @@ nodeOutputs hg nodeId =
 
 -- build a node and all of it's descendants
 -- TODO: If nodes are deleted here, we need to keep a map of where the missing edges should end up
-convertNode :: HugrGraph -> NodeId -> Model (Maybe M.Node)
+convertNode :: HugrGraph NodeId -> NodeId -> Model (Maybe M.Node)
 convertNode hg nodeId = case getOp hg nodeId of
   (OpMod ModuleOp) -> pure Nothing -- Compilation should just produce hugrs, no modules
   -- We should write these edges to point to the parent
@@ -278,5 +278,5 @@ printPackage :: HugrGraph -> Builder
 printPackage hg = "(hugr 0)\n(mod)" <> (M.serialise hugrToModel)
 -}
 
-toModelString :: Namespace -> HugrGraph -> String
+toModelString :: Namespace -> HugrGraph NodeId -> String
 toModelString ns hg = M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns 0 Map.empty Map.empty)))

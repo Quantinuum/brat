@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Brat.Compile.Hugr (compileKernel) where
+module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), addEdge, addNode, Container(..), onHugr) where
 
 import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..), CaptureSets)
@@ -48,7 +48,8 @@ type TypedPort = (PortId NodeId, HugrType)
 
 data CompilationState = CompilationState
  { bratGraph :: Graph -- the input BRAT Graph; should not be written
- , hugr :: HugrGraph
+ , nameSupply :: Namespace
+ , hugr :: HugrGraph NodeId
  , compiled :: M.Map Name NodeId  -- Mapping from Brat nodes to Hugr nodes
  -- When lambda lifting, captured variables become extra function inputs.
  -- This maps from the captured value (in the BRAT graph, perhaps outside the current func/lambda)
@@ -60,7 +61,7 @@ data CompilationState = CompilationState
 
 type Compile = State CompilationState
 
-onHugr :: State HugrGraph a -> Compile a
+onHugr :: State (HugrGraph NodeId) a -> Compile a
 onHugr f = get >>= \s -> let (r, h') = runState f (hugr s) in put (s {hugr=h'}) >> pure r
 
 data Container = Ctr {
@@ -69,10 +70,11 @@ data Container = Ctr {
   output :: NodeId
 }
 
-makeCS :: (Graph, Store) -> HugrGraph -> CompilationState
-makeCS (g, store) hugr =
+makeCS :: (Graph, Namespace, Store) -> HugrGraph NodeId -> CompilationState
+makeCS (g, ns, store) hugr =
   CompilationState
     { bratGraph = g
+    , nameSupply = ns
     , hugr = hugr
     , compiled = M.empty
     , holes = B0
@@ -81,12 +83,16 @@ makeCS (g, store) hugr =
     }
 
 freshNode :: String -> NodeId -> Compile NodeId
-freshNode name parent = onHugr (H.freshNode parent name)
+freshNode name parent = do
+  s <- get
+  let (r, (h', ns')) = runState (H.freshNode parent name) (hugr s, nameSupply s)
+  put (s {hugr=h', nameSupply=ns'})
+  pure r
 
 makeIO :: String -> NodeId -> Compile Container
 makeIO name parent = do
   input <- freshNode (name ++ "_Input") parent
-  output <- freshNode (name ++ "_Input") parent
+  output <- freshNode (name ++ "_Output") parent
   onHugr $ H.setFirstChildren parent [input, output]
   pure $ Ctr {parent, input, output}
 
@@ -111,6 +117,10 @@ addHole parent sig outPort = do
   st <- get
   put (st { holes = (holes st) :< (h, outPort)})
   pure h
+
+filePrefix :: [String] -> Name -> Maybe Name
+filePrefix prefixes (MkName (("checking",_):_filename:ns)) =
+  hasPrefix (["globals"]++prefixes) (MkName ns)
 
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
@@ -273,7 +283,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode = case (hasPrefix ["checking", "globals", "decl"] name) of
+  compileNode = case (filePrefix ["decl"] name) of
     Just _ -> error "Kernel contained call to global; should have been a splice"
     _ -> do
       (ns, _) <- gets bratGraph
@@ -300,7 +310,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       ins <- compilePorts ins
       outs <- compilePorts outs
       let sig = FunctionType ins outs bratExts
-      case hasPrefix ["checking", "globals", "prim"] outNode of
+      case filePrefix ["prim"] outNode of
         -- If we're evaling a Prim, we add it directly into the kernel graph
         Just suffix -> do
           (ns, _) <- gets bratGraph
@@ -316,7 +326,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
 
     Target -> error "Target found outside of compileBox"
 
-    Id | Nothing <- hasPrefix ["checking", "globals", "decl"] name -> default_edges <$> do
+    Id | Nothing <- filePrefix ["decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
       let [(_,ty)] = ins -- fail if more than one input
       addNode "Id" (parent, OpNoop (NoopOp (compileType ty)))
@@ -570,7 +580,7 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
 
 compileKernel :: (Namespace, Store, Graph)
               -> String -> Name
-              -> (HugrGraph, [(NodeId, OutPort)])
+              -> (HugrGraph NodeId, [(NodeId, OutPort)])
 compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
   (src_tgt, outs) = case ns M.! name of
       -- All top-level functions are compiled into Box-es, which should look like this:
@@ -578,8 +588,8 @@ compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
     nt -> error $ "Can only compile Box nodes, not " ++ show nt ++ " (for " ++ show name ++ ")"
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
-  startHugr = H.new nsp desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])
-  (hgr, holelist) = flip evalState (makeCS (g,store) startHugr) $ do
+  (startHugr, nsp') = runState (H.new desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])) nsp
+  (hgr, holelist) = flip evalState (makeCS (g, nsp', store) startHugr) $ do
     ctr <- makeIO desc (root startHugr)
     compileBox ctr src_tgt
     hugr <- gets hugr
