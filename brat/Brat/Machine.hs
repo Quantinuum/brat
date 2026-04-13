@@ -38,7 +38,7 @@ runInterpreter libDirs file runFunc = do
     let outTask = evalPorts (outerGraph, st, newRoot, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> Right (Model.toModelString modelNS hugr)
+      Finished [(KernelV hugr)] -> Right (Model.toModelEnvelope modelNS hugr)
       _ -> Left $ T.pack $ show outTask
 
 data Frame where

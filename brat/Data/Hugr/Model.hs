@@ -216,7 +216,9 @@ instance Serialise SeqPart where
    serialise (Splice tm) = serialise tm <> "..."
 
 printListParts :: [SeqPart] -> Doc
+printListParts [Splice (List xs)] = printListParts xs
 printListParts (Splice (List ys):xs) = printListParts ys <+> printListParts xs
+printListParts [x] = serialise x
 printListParts (x:xs) = serialise x <+> printListParts xs
 printListParts [] = mempty
 

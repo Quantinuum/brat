@@ -1,5 +1,5 @@
 -- Module for printing out a HugrGraph as a hugr model
-module Brat.Compile.Model (toModelString) where
+module Brat.Compile.Model (toModelString, toModelEnvelope) where
 
 import Control.Monad.State
 import Data.ByteString (ByteString)
@@ -100,7 +100,6 @@ freshOutputLinks nodeId xs = do
   for (zip [0..] links) $ \(ix, link) -> setOutVar nodeId [(ix, link)]
   pure links
 
-
 convertMeta :: [(String, String)] -> [M.Term]
 convertMeta [] = []
 convertMeta ((key,val):xs) = M.Tuple [M.Item (M.Literal (M.LitStr key)), M.Item (M.Literal (M.LitStr key))] : convertMeta xs
@@ -110,8 +109,8 @@ convertType :: HugrType -> M.Term
 convertType HTQubit = M.Var "prelude.qubit"
 convertType HTUSize = M.Var "prelude.usize"
 --convertType HTArray = _
-convertType (HTSum (SU (UnitSum n))) = M.Apply "core.adt" [M.List [] | _ <- [1..n]]
-convertType (HTSum (SG (GeneralSum rows))) = M.Apply "core.adt" [M.List (M.Item . convertType <$> row) | row <- rows ]
+convertType (HTSum (SU (UnitSum n))) = M.Apply "core.adt" [M.List [M.Item (M.List []) | _ <- [1..n]]]
+convertType (HTSum (SG (GeneralSum rows))) = M.Apply "core.adt" [M.List [ M.Item (M.List (M.Item . convertType <$> row)) | row <- rows ]]
 --convertType (HTOpaque ext typ args bound) = _
 --convertType (HTFunc polyFuncType) = _
 convertType x = error $ "convertType " ++ show x
@@ -128,10 +127,10 @@ convertSig fn@(FunctionType { .. }) = M.Apply "core.fn" [inpTm, outTm]
   outTm = M.List (M.Item . convertType <$> output)
 
 -- TODO: Rewrite this so that we don't rely on HugrGraph internals
-hugrToModel :: HugrGraph -> Model M.Region
+hugrToModel :: HugrGraph NodeId -> Model M.Package
 hugrToModel hg@(HugrGraph { ..  }) =
   case getOp hg root of
-    OpDFG (DFG sig meta) -> dfgToRegion hg (root, sig, meta)
+    OpDFG (DFG sig meta) -> M.H <$> dfgToRegion hg (root, sig, meta)
     _ -> error "TODO: Non-DFG root op"
 
 -- Invariant: NodeId points to a DFG
@@ -209,7 +208,7 @@ convertNode hg nodeId = case getOp hg nodeId of
     inWires <- nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
 
-    let discrim = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sum_rows ]
+    let discrim = M.Apply "core.adt" [M.List [M.Item (M.List (M.Item . convertType <$> row)) | row <- sum_rows ]]
     let signature = M.Apply "core.fn"
                     [M.List (M.Item discrim : [M.Item (convertType ty) | ty <- other_inputs])
                     ,M.List [M.Item (convertType ty) | ty <- outputs ++ other_inputs]
@@ -234,7 +233,7 @@ convertNode hg nodeId = case getOp hg nodeId of
     outWires <- nodeOutputs hg nodeId
     let op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat tag)])
     let inTys = M.List (M.Item . convertType <$> sumTy !! tag)
-    let outTy = M.Apply "core.adt" [ M.List (M.Item . convertType <$> row) | row <- sumTy ]
+    let outTy = M.Apply "core.adt" [M.List [ M.Item (M.List (M.Item . convertType <$> row)) | row <- sumTy] ]
     let signature = M.Apply "core.fn" [inTys, outTy]
     pure (Just (M.Node
          { op = op
@@ -280,3 +279,8 @@ printPackage hg = "(hugr 0)\n(mod)" <> (M.serialise hugrToModel)
 
 toModelString :: Namespace -> HugrGraph -> String
 toModelString ns hg = M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns 0 Map.empty Map.empty)))
+
+magic = "HUGRiHJv(@"
+
+toModelEnvelope :: Namespace -> HugrGraph NodeId -> String
+toModelEnvelope ns hg = magic ++ M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns 0 Map.empty Map.empty)))
