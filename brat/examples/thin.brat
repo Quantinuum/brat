@@ -25,8 +25,11 @@ comp(_, _, _, zero, zero) = zero
 -- focus(X :: *, n :: #, m :: #, Thin(n, m), { Vec(X, n) -> Vec(X, n) }) -> { Vec(X, m) -> Vec(X, m) }
 -- focus(_, _, th, f) = { xs => select(!, !, !, th, xs); f;
 
-thinning :: Thin(1, 3)
-thinning = omit(succ(omit(zero)))
+thinning1 :: Thin(3, 5)
+thinning1 = succ(omit(succ(succ(omit(zero)))))
+
+thinning2 :: Thin(1, 3)
+thinning2 = omit(succ(omit(zero)))
 
 go :: Vec(Nat, 1)
-go = select(!, !, !, thinning, [1,2,3])
+go = select(!, !, !, comp(!, !, !, thinning2, thinning1), [1,2,3, 4, 5])
