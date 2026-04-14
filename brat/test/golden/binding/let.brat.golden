@@ -3,5 +3,5 @@ badBinding = let x = twoThings in x
              ^^^^^^^^^^^^^^^^^^^^^^
 
   Internal error: Expected empty unders after abstract, got:
-  (b1 :: Int)
+  (_1 :: Int)
 

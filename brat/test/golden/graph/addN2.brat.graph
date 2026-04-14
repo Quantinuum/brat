@@ -18,7 +18,7 @@ Nodes:
 (addN2.brat_globals_Int_12,BratNode (Constructor Int) [] [("value",[])])
 (addN2.brat_globals_decl_13_addN,BratNode Id [("thunk",{ (inp :: Int) -> (out :: Int) })] [("thunk",{ (inp :: Int) -> (out :: Int) })])
 (addN2.brat_globals_prim_2_N,BratNode (Prim ("","N")) [] [("value",Int)])
-(addN2.brat_globals_prim_8_add,BratNode (Prim ("","add")) [] [("a1",{ (a :: Int), (b :: Int) -> (c :: Int) })])
+(addN2.brat_globals_prim_8_add,BratNode (Prim ("","add")) [] [("_0",{ (a :: Int), (b :: Int) -> (c :: Int) })])
 
 Wires:
 (Ex addN2.brat_check_defs_1_addN_LambdaChk_9_checkClauses_1_$rhs_4_Eval 0,Int,In addN2.brat_check_defs_1_addN_LambdaChk_9_checkClauses_1_lambda.0_rhs/out_2 0)

@@ -16,7 +16,7 @@ Nodes:
 (pair.brat_globals_Int_2,BratNode (Constructor Int) [] [("value",[])])
 (pair.brat_globals_cons_1,BratNode (Constructor cons) [("head",[]),("tail",[])] [("value",[])])
 (pair.brat_globals_cons_3,BratNode (Constructor cons) [("head",[]),("tail",[])] [("value",[])])
-(pair.brat_globals_decl_6_xs,BratNode Id [("a1",[Int,Bool])] [("a1",[Int,Bool])])
+(pair.brat_globals_decl_6_xs,BratNode Id [("_0",[Int,Bool])] [("_0",[Int,Bool])])
 (pair.brat_globals_nil_5,BratNode (Constructor nil) [] [("value",[])])
 
 Wires:

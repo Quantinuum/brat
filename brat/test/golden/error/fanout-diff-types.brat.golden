@@ -3,7 +3,7 @@ f = { [/\] }
       ^^^^
 
   Type mismatch when checking [/\]
-Expected: (b1 :: Bit)
+Expected: (_1 :: Bit)
 But got:  (head :: Qubit)
 
 

@@ -27,7 +27,7 @@ Nodes:
 (vec.brat_globals_Int_2,BratNode (Constructor Int) [] [("value",[])])
 (vec.brat_globals_Vec_1,BratNode (Constructor Vec) [("X",[]),("n",Nat)] [("value",[])])
 (vec.brat_globals_const_3,BratNode (Const 3) [] [("value",Nat)])
-(vec.brat_globals_decl_4_xs,BratNode Id [("a1",Vec(Int, 3))] [("a1",Vec(Int, 3))])
+(vec.brat_globals_decl_4_xs,BratNode Id [("_0",Vec(Int, 3))] [("_0",Vec(Int, 3))])
 
 Wires:
 (Ex vec.brat_check_defs_1_xs_$rhs_check'Con__2 0,[],In vec.brat_check_defs_1_xs_$rhs_check'Con_$!_pat2val 0)
