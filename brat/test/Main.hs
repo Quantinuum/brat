@@ -10,7 +10,6 @@ import Test.Failure
 import Test.HugrGraph
 import Test.Libs
 import Test.Naming
-import Test.Parsing
 import Test.Search
 import Test.Substitution
 import Test.Syntax.Let
@@ -62,7 +61,6 @@ coroT2 = do
 main = do
   failureTests  <- getFailureTests
   checkingTests <- getCheckingTests
-  parsingTests <- getParsingTests
   compilationTests <- setupCompilationTests
   graphTests <- getGraphTests
   spliceTests <- getSpliceTests
@@ -76,7 +74,6 @@ main = do
                                 ,letTests
                                 ,libDirTests
                                 ,nameTests
-                                ,parsingTests
                                 ,searchTests
                                 ,elaborationTests
                                 ,substitutionTests

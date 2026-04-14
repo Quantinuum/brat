@@ -4,7 +4,6 @@ import Control.Monad (forM)
 import Data.HugrGraph (to_json)
 import Brat.Compiler (compileFile, CompilingHoles(..))
 import Test.Checking (expectedCheckingFails)
-import Test.Parsing (expectedParsingFails)
 import Test.Util (expectFailForPaths)
 
 import qualified Data.Map as M
@@ -36,7 +35,7 @@ invalidExamples = (map ((++ ".brat") . ("examples" </>))
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
-nonCompilingExamples = expectedCheckingFails ++ expectedParsingFails ++
+nonCompilingExamples = expectedCheckingFails ++
   map ((++ ".brat") . ("examples" </>))
   [--"fzbz" -- can compile just kernels
   --,"ising" -- can compile just kernels

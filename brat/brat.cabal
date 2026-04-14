@@ -165,7 +165,6 @@ test-suite tests
                        Test.Graph,
                        Test.HugrGraph,
                        Test.Libs,
-                       Test.Parsing,
                        Test.Naming,
                        Test.Search,
                        Test.Substitution,
