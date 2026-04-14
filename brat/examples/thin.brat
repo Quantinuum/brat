@@ -1,7 +1,12 @@
-select(n :: #, m :: #, Thin(n, m), Vec(Bit, m)) -> Vec(Bit, n)
-select(_, _, zero, []) = []
-select(_, _, succ(th), x ,- xs) = x ,- select(!, !, th, xs)
-select(_, _, omit(th), _ ,- xs) = select(!, !, th, xs)
+select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
+select(_, _, _, zero, []) = []
+select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
+select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
+
+-- thin(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
+-- thin(_, _, _, _, zero, [], ys) = ys
+-- thin(_, _, _, _, succ(th), x ,- xs, y ,- ys) = x ,- thin(!, !, !, !, th, xs, ys)
+-- thin(_, _, _, _, omit(th), xs, y ,- ys) = y ,- thin(!, !, !, !, th, xs, ys)
 
 identity(n :: #) -> Thin(n, n)
 identity(0) = zero
@@ -16,3 +21,6 @@ comp(_, _, succ(_), th, omit(ph)) = omit(comp(!, !, !, th, ph))
 comp(_, succ(_), succ(_), omit(th), succ(ph)) = omit(comp(!, !, !, th, ph))
 comp(succ(_), succ(_), succ(_), succ(th), succ(ph)) = succ(comp(!, !, !, th, ph))
 comp(_, _, _, zero, zero) = zero
+
+-- focus(X :: *, n :: #, m :: #, Thin(n, m), { Vec(X, n) -> Vec(X, n) }) -> { Vec(X, m) -> Vec(X, m) }
+-- focus(_, _, th, f) = { xs => select(!, !, !, th, xs); f;
