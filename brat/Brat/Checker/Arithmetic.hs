@@ -17,7 +17,9 @@ a -/ b = case a-b of
     x | x >0 -> x
     _ -> 0
 
-simplify :: Ord var => (NumSum var, NumSum var) -> (NumSum var, NumSum var)
+type Eqn var = (NumSum var, NumSum var)
+
+simplify :: Ord var => Eqn var -> Eqn var
 simplify (NumSum n xs, NumSum m ys) = minOnLeft $ defactor (NumSum (n -/ m) xs', NumSum (m -/ n) ys')
  where
   Pullbacks xs' _ ys' = pullbacks xs ys
