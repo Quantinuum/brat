@@ -2,7 +2,6 @@ module Test.Parsing (getParsingTests, expectedParsingFails) where
 
 import Brat.Load
 
-import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Silver
@@ -15,7 +14,7 @@ testParse file = testCase (show file) $ do
     Left err -> assertFailure (show err)
     Right _ -> return () -- OK
 
-expectedParsingFails = ["examples" </> "thin.brat"]
+expectedParsingFails = []
 
 parseXF = expectFailForPaths expectedParsingFails testParse
 
