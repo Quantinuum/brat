@@ -1,8 +1,8 @@
 module Brat.LSP.State (ProgramState(..), emptyPS, updateState) where
 
 import Brat.Checker.Types (TypedHole)
+import Brat.Load (VDecl)
 import Brat.Syntax.Raw
-import Brat.Syntax.Value (VDecl)
 
 data ProgramState
   = PS { decls :: [VDecl]

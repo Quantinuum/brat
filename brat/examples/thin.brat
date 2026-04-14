@@ -1,22 +1,26 @@
--- Experiments with selecting out of vectors with first class selections
--- This feature has fallen by the wayside, so expect this to fail
+select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
+select(_, _, _, zero, []) = []
+select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
+select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
 
--- This type is WRONG
-test :: Vec(X, 2) <<< Vec(X, 2)
-test = {0..} -- The identity thinning
+-- thin(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
+-- thin(_, _, _, _, zero, [], ys) = ys
+-- thin(_, _, _, _, succ(th), x ,- xs, y ,- ys) = x ,- thin(!, !, !, !, th, xs, ys)
+-- thin(_, _, _, _, omit(th), xs, y ,- ys) = y ,- thin(!, !, !, !, th, xs, ys)
 
-test' :: Vec(X, 1) <<< Vec(X, 9)
-test' = {5} -- just the fifth
+identity(n :: #) -> Thin(n, n)
+identity(0) = zero
+identity(succ(_)) = succ(identity(!))
 
-vec :: Vec(Nat, 5)
-vec = [1, 2, 3, 4, 5]
- 
-test'' :: Vec(Nat, 1)
-test'' = vec{0} -- vec{2,4,5}
--- test''' :: Vec Nat 1
--- test''' = <0>
+empty(n :: #) -> Thin(0, n)
+empty(0) = zero
+empty(succ(_)) = omit(empty(!))
 
-mapOn :: (th :: x <<< y), (f :: X -> X), Vec(X, y) -> Vec(X, y)
-mapOn = ?mapOn
+comp(l :: #, n :: #, m :: #, Thin(l, n), Thin(n, m)) -> Thin(l, m)
+comp(_, _, succ(_), th, omit(ph)) = omit(comp(!, !, !, th, ph))
+comp(_, succ(_), succ(_), omit(th), succ(ph)) = omit(comp(!, !, !, th, ph))
+comp(succ(_), succ(_), succ(_), succ(th), succ(ph)) = succ(comp(!, !, !, th, ph))
+comp(_, _, _, zero, zero) = zero
 
-map = mapOn {1,4} f vec
+-- focus(X :: *, n :: #, m :: #, Thin(n, m), { Vec(X, n) -> Vec(X, n) }) -> { Vec(X, m) -> Vec(X, m) }
+-- focus(_, _, th, f) = { xs => select(!, !, !, th, xs); f;

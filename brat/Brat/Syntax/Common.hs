@@ -38,7 +38,8 @@ module Brat.Syntax.Common (PortName,
                            ArithOp(..),
                            pattern Dollar,
                            pattern Star,
-                           Precedence(..)
+                           Precedence(..),
+                           TypeAliasF(..)
                           ) where
 
 import Brat.FC
@@ -46,7 +47,7 @@ import Brat.QualName
 import Brat.Syntax.Abstractor
 import Brat.Syntax.Port
 
-import Data.Bifunctor (first)
+import Data.Bifunctor
 import Data.List (intercalate)
 import Data.Kind (Type)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
@@ -94,25 +95,43 @@ instance TestEquality Modey where
   testEquality Kerny Kerny = Just Refl
   testEquality _ _ = Nothing
 
-data TypeRowElem ty = Named PortName ty | Anon ty deriving (Foldable, Functor, Traversable)
-type TypeRow ty = [TypeRowElem ty]
+-- This is double parameterised because Constraints are parsed as if they're terms
+-- and require some extra elaboration
+data TypeRowElem expr ty = Named PortName ty | Anon ty | Constraint expr expr
+ deriving (Functor, Foldable, Traversable)
 
-forgetPortName :: TypeRowElem ty -> ty
-forgetPortName (Anon ty) = ty
-forgetPortName (Named _ ty) = ty
+instance Bifunctor TypeRowElem where
+  first f (Constraint a b) = Constraint (f a) (f b)
+  first _ (Named p ty) = Named p ty
+  first _ (Anon ty) = Anon ty
 
-toTypeRow :: [(String, ty)] -> TypeRow ty
+  second _ (Constraint a b) = Constraint a b
+  second f (Named p ty) = Named p (f ty)
+  second f (Anon ty) = Anon (f ty)
+
+type TypeRow expr ty = [TypeRowElem expr ty]
+
+forgetPortName :: TypeRowElem expr ty -> Either (expr,expr) ty
+forgetPortName (Anon ty) = Right ty
+forgetPortName (Named _ ty) = Right ty
+forgetPortName (Constraint lhs rhs) = Left (lhs,rhs)
+
+toTypeRow :: [(String, ty)] -> TypeRow expr ty
 toTypeRow = fmap (uncurry Named)
 
-instance Show ty => Show (TypeRowElem ty) where
+instance (Show ty, Show expr) => Show (TypeRowElem expr ty) where
   show (Named p ty) = p ++ " :: " ++ show ty
   show (Anon ty) = show ty
+  show (Constraint a b) = show a ++ " = " ++ show b
 
+{-
 instance Eq ty => Eq (TypeRowElem ty) where
   Named _ ty == Named _ ty' = ty == ty'
   Anon ty == Named _ ty' = ty == ty'
   Named _ ty == Anon ty' = ty == ty'
   Anon ty == Anon ty' = ty == ty'
+  _ == _ = False
+-}
 
 data TypeKind = TypeFor Mode [(PortName, TypeKind)] | Nat
   deriving (Eq, Ord)
@@ -200,14 +219,19 @@ instance Show Import where
     showSelection (ImportPartial fns) = "(":(unWC <$> fns) ++ [")"]
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
-showSig :: Show ty => [(String, ty)] -> String
+showSig :: (Show con, Show ty) => [TypeRowElem con ty] -> String
 showSig [] = "()"
-showSig (x:xs)
-  = intercalate ", " [ '(':p ++ " :: " ++ show ty ++ ")"
-                     | (p, ty) <- x:xs]
+showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) | x <- tl])
+ where
+  parens x = '(':x ++ ")"
+
+  showElem (Anon ty) = [",", show ty]
+  showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
+  showElem (Constraint a b) = [" |", show a, "=", show b]
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
-showRow = showSig . fmap (first portName)
+showRow = parens . intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])
+ where parens x = '(':x ++ ")"
 
 
 data ArithOp = Add | Sub | Mul | Div | Pow deriving (Eq, Show)
@@ -228,3 +252,5 @@ data Precedence
  | PAnn
  | PApp
  deriving (Bounded, Enum, Eq, Ord, Show)
+
+data TypeAliasF tm = TypeAlias FC QualName [(PortName,TypeKind)] tm deriving Show

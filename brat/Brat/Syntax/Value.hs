@@ -25,7 +25,6 @@ module Brat.Syntax.Value {-(VDecl
 import Brat.Error
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.Core (Term (..))
 import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
@@ -35,15 +34,6 @@ import Data.Ord (comparing)
 import Data.Kind (Type)
 import Data.Maybe (isJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
-
-newtype VDecl = VDecl (FuncDecl (Some (Ro Brat Z)) (FunBody Term Noun))
-
-instance MODEY Brat => Show VDecl where
-  show (VDecl decl) = show $ aux decl
-   where
-    aux :: FuncDecl (Some (Ro Brat Z)) body -> FuncDecl String body
-    aux (FuncDecl { .. }) = case fnSig of
-      Some sig -> FuncDecl { fnName = fnName, fnSig = show sig, fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
 
 ------------------------------------ Variable Indices ------------------------------------
 -- Well scoped de Bruijn indices
@@ -201,6 +191,7 @@ data Sem where
   SApp :: SVar -> Bwd Sem -> Sem
   -- Sum types, stash like SLam (shared between all variants)
   SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+  SConstraint :: (NumSum SVar, NumSum SVar) -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -226,6 +217,8 @@ data Ro :: Mode
   RPr :: {------} (PortName, Val bot)
       -> {--------------------------} Ro m bot top
       -> Ro m bot {--------------------------} top
+  -- Numeric constraints
+  RCo :: (NumSum (VVar bot), NumSum (VVar bot)) -> Ro m bot top -> Ro m bot top
 
 
 instance forall m top bot. MODEY m => Show (Ro m bot top) where
@@ -237,7 +230,13 @@ instance forall m top bot. MODEY m => Show (Ro m bot top) where
                                       Braty -> show ty
                                       Kerny -> show ty
                                 in  ('(':p ++ " :: " ++ tyStr ++ ")"):roToList ro
-    roToList  (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
+    roToList (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
+    roToList (RCo (lhs,rhs) ro) = unwords
+      ["|"
+      ,show lhs
+      ,"="
+      ,show rhs
+      ] : roToList ro
 
 instance Show (Val n) where
   show v@(VCon _ _) | Just vs <- asList v = show vs
@@ -266,9 +265,11 @@ pattern TList, TOption :: Val n -> Val n
 pattern TList ty = VCon (PrefixName [] "List") [ty]
 pattern TOption ty = VCon (PrefixName [] "Option") [ty]
 
-pattern TVec, TCons :: Val n -> Val n -> Val n
+pattern TVec, TCons, TEq, TThin :: Val n -> Val n -> Val n
 pattern TVec ty n = VCon (PrefixName [] "Vec") [ty, n]
 pattern TCons x ys = VCon (PrefixName [] "cons") [x, ys]
+pattern TEq a b = VCon (PrefixName [] "Eq") [a,b]
+pattern TThin a b = VCon (PrefixName [] "Thin") [a,b]
 
 pattern TQ, TMoney, TBit :: Val n
 pattern TQ = VCon (PrefixName [] "Qubit") []
@@ -288,7 +289,7 @@ type family BinderVal (m :: Mode) where
 data NumVal x = NumValue
   { upshift :: Integer
   , grower  :: Fun00 x
-  } deriving (Eq, Foldable, Functor, Traversable)
+  } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (NumVal x) where
   show (NumValue 0 g) = show g
@@ -299,7 +300,7 @@ instance Show x => Show (NumVal x) where
 data Fun00 x
  = Constant0
  | StrictMonoFun (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Fun00 x) where
   show Constant0 = "0"
@@ -309,7 +310,7 @@ instance Show x => Show (Fun00 x) where
 data StrictMono x = StrictMono
  { multBy2ToThe :: Integer
  , monotone :: Monotone x
- } deriving (Eq, Foldable, Functor, Traversable)
+ } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (StrictMono x) where
   show (StrictMono 0 m) = show m
@@ -320,7 +321,7 @@ instance Show x => Show (StrictMono x) where
 data Monotone x
  = Linear x
  | Full (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Monotone x) where
   show (Linear v) = show v
@@ -562,6 +563,9 @@ varChangerThroughRo vc (RPr (p,ty) ro {- src -> src' -}) = case changeVar vc {- 
 varChangerThroughRo vc {- src -> tgt -} (REx pk ro {- S src' -> src'' -})
   = case varChangerThroughRo (weakenVC vc) ro of
         Some (vc {- src'' -> tgt'' -} :* ro {- S tgt' -> tgt'' -}) -> Some (vc :* REx pk ro)
+varChangerThroughRo vc (RCo (lhs, rhs) ro) = case (changeNumSumVars vc lhs, changeNumSumVars vc rhs) of
+  (lhs, rhs) -> case varChangerThroughRo vc ro of
+    Some (vc :* ro) -> Some (vc :* RCo (lhs, rhs) ro)
 
 instance DeBruijn (CTy m) where
   changeVar (vc {- srcIn -> tgtIn -}) (ri {- srcIn -> srcMid -} :->> ro {- srcMid -> srcOut -}) = case varChangerThroughRo vc ri of
@@ -663,3 +667,43 @@ instance DepEnds (Ro m i j) where
 
 instance DepEnds (CTy m n) where
   depEnds (ss :->> ts) = depEnds ss ++ depEnds ts
+
+-- number plus sum over a sequence of (variable/Full * number), ordered
+-- All Integers positive, all multipliers strictly so
+data NumSum var = NumSum Integer [(Monotone var, Integer)]
+  deriving (Eq, Foldable, Functor, Traversable)
+
+instance Show var => Show (NumSum var) where
+  show (NumSum i vars) = let const = case (i == 0, null vars) of
+                               (True, True) -> "0"
+                               (True, False) -> ""
+                               (False, True) -> show i
+                               (False, False) -> show i ++ " + "
+                             showMult (v,m) = show m ++ "*(" ++ show v ++ ")"
+                         in  const ++ intercalate " + " (showMult <$> vars)
+
+
+instance Ord var => Monoid (NumSum var) where
+    mempty = NumSum 0 []
+    mappend (NumSum n ts) (NumSum n' ts') = NumSum (n + n') (merge ts ts')
+     where
+      merge [] ys = ys
+      merge xs [] = xs
+      merge xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> (x, n):(merge xs yys)
+        EQ -> (x, n+m):(merge xs ys)
+        GT -> (y, m):(merge xxs ys)
+
+instance Ord var => Semigroup (NumSum var) where
+    (<>) = mappend
+
+changeNumSumVars :: VarChanger src tgt -> NumSum (VVar src) -> NumSum (VVar tgt)
+changeNumSumVars ch = fmap (changeVar ch)
+
+nv_to_sum :: NumVal var -> NumSum var
+nv_to_sum (NumValue up grow) = NumSum up $ case grow of
+    Constant0 -> []
+    (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
+
+nvs_to_sum :: Ord var => [NumVal var] -> NumSum var
+nvs_to_sum = foldMap nv_to_sum

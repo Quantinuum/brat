@@ -2,6 +2,7 @@ module Brat.Load (loadFilename
                  ,loadFiles
                  ,parseFile
                  ,desugarEnv
+                 ,VDecl(..)
                  ,VMod
                  ) where
 
@@ -40,6 +41,15 @@ import System.Directory (doesFileExist)
 import System.FilePath
 
 import Prelude hiding (last)
+
+newtype VDecl = VDecl (FuncDecl (Some (Ro Brat Z)) (FunBody Term Noun))
+
+instance Show VDecl where
+  show (VDecl decl) = show $ aux decl
+   where
+    aux :: FuncDecl (Some (Ro Brat Z)) body -> FuncDecl String body
+    aux (FuncDecl { .. }) = case fnSig of
+      Some sig -> FuncDecl { fnName = fnName, fnSig = show sig, fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
 
 -- A Module is a node in the dependency graph
 type FlatMod = ((FEnv, String) -- data at the node: declarations, and file contents

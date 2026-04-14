@@ -1049,7 +1049,7 @@ kindCheck ((_, k):_) tm = typeErr $ "Expected " ++ show tm ++ " to have kind " +
 -- Checks the kinds of the types in a dependent row
 kindCheckRow :: Modey m
              -> String -- for node name
-             -> [(PortName, ThunkRowType m)] -- The row to process
+             -> [TypeRowElem TermConstraint (ThunkRowType m)] -- The row to process
              -> Checking (Some (Ro m Z))
 kindCheckRow my name r = do
   name <- req $ Fresh $ "__kcr_" ++ name
@@ -1060,7 +1060,7 @@ kindCheckRow my name r = do
 -- evaluation of the type of an Id node passing through such values
 kindCheckAnnotation :: Modey m
                     -> String -- for node name
-                    -> [(PortName, ThunkRowType m)]
+                    -> [TypeRowElem TermConstraint (ThunkRowType m)]
                     -> Checking (CTy m Z)
 kindCheckAnnotation my name outs = do
   trackM "kca"
@@ -1080,17 +1080,33 @@ kindCheckRow' :: forall m n
               -> Endz n -- kind outports so far
               -> VEnv -- from string variable names to VPar's
               -> (Name, Int) -- node name and next free input (under to 'kindCheck' a type)
-              -> [(PortName, ThunkRowType m)]
+              -> [TypeRowElem TermConstraint (ThunkRowType m)]
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
-kindCheckRow' Braty (ny :* s) env (name,i) ((p, Left k):rest) = do -- s is Stack Z n
+kindCheckRow' my (ny :* s) env node ((Constraint lhs rhs):rest) = do
+  let vc = ParToInx (AddZ ny) s
+  lhs <- changeNumSumVars vc <$> abstractNS lhs
+  rhs <- changeNumSumVars vc <$> abstractNS rhs
+  kindCheckRow' my (ny :* s) env node rest <&> \case
+    (i, env, Some (ez :* ro)) -> (i, env, Some (ez :*  (RCo (lhs, rhs) ro)))
+ where
+  abstractNS :: NumSum QualName -> Checking (NumSum (VVar Z))
+  abstractNS ns = localVEnv env $ traverse abstractVar ns
+
+  abstractVar :: QualName -> Checking (VVar Z)
+  abstractVar name = vlup name >>= \case
+    [(src, Left Nat)] -> pure $ VPar (ExEnd (end src))
+    _ -> error "bad abstract"
+
+kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named ('_':show i) ty):rest)
+kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
   let dangling = Ex name (ny2int ny)
   req (Declare (ExEnd dangling) Braty (Left k) Definable) -- assume none are SkolemConst??
   env <- pure $ M.insert (plain p) [(NamedPort dangling p, Left k)] env
   (i, env, ser) <- kindCheckRow' Braty (Sy ny :* (s :<< ExEnd dangling)) env (name, i) rest
   case ser of
     Some (s_m :* ro) -> pure (i, env, Some (s_m :* REx (p,k) ro))
-kindCheckRow' my ez@(ny :* s) env (name, i) ((p, bty):rest) = case (my, bty) of
+kindCheckRow' my ez@(ny :* s) env (name, i) ((Named p bty):rest) = case (my, bty) of
   (Braty, Right ty) -> helper ty (Star [])
   (Kerny, ty) -> helper ty (Dollar [])
 
@@ -1229,6 +1245,9 @@ abstractPattern my (dangling, bty) pat@(PCon pcon abst) = case (my, bty) of
                                                      ,"with type"
                                                      ,show ty])
 
+  -- N.B. We desperately want to delete these functions and have Let binding use
+  -- the normal SolvePatterns logic, so we haven't bothered to solve equations
+  -- from the CArgs here.
   abstractCon :: Modey m
               -> (QualName -> QualName -> Checking (CtorArgs m))
               -> (QualName, [Val Z])

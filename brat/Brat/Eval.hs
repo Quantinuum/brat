@@ -18,9 +18,9 @@ module Brat.Eval (EvMode(..)
                  ,kindType
                  ,numVal
                  ,quote
-                 ,quoteNum
+		 ,quoteNum
                  ,getNumVar
-                 ,instantiateMeta
+		 ,instantiateMeta
                  ) where
 
 import Brat.Checker.Monad
@@ -34,6 +34,7 @@ import Bwd
 import Hasochism
 import Util (zipSameLength)
 
+import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.Functor
 import Data.Kind (Type)
@@ -159,6 +160,19 @@ quoteRo m ga (RPr (p, t) r) lvy = do
 quoteRo m ga (REx pk r) lvy = do
   (ga, Some (r :* lvy)) <- quoteRo m (ga :<< semLvl lvy) r (Sy lvy)
   pure (ga, Some (REx pk r :* lvy))
+quoteRo m ga (RCo (lhs, rhs) ro) lvy = do
+  lhs <- fmap (quoteVar lvy) <$> numSumEval ga lhs
+  rhs <- fmap (quoteVar lvy) <$>  numSumEval ga rhs
+  (ga, Some (ro :* lvy)) <- quoteRo m ga ro lvy
+  pure (ga, Some (RCo (lhs, rhs) ro :* lvy))
+
+numSumEval :: Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
+numSumEval ga = traverse (semVarOnly ga)
+ where
+  semVarOnly :: Stack Z Sem n -> VVar n -> Checking SVar
+  semVarOnly ga v = semVar ga v >>= \case
+    SApp sv B0 -> pure $ sv
+    _ -> error "Expected numsum var to become SVar"
 
 class NumEval (f :: Type -> Type) where
   numEval :: Stack Z Sem n -> f (VVar n) -> Checking (NumVal SVar)

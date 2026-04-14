@@ -60,7 +60,8 @@ library
   exposed-modules:     Brat.Checker.Quantity,
                        Brat.Dot,
                        Brat.Eval,
-                       Brat.Lexer
+                       Brat.Lexer,
+                       Brat.Checker.Arithmetic,
                        Brat.Checker.Helpers,
                        Brat.Checker.Helpers.Nodes,
                        Brat.Checker.Monad,
