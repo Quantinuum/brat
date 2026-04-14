@@ -6,10 +6,12 @@ import Brat.FC
 import Brat.QualName
 import Brat.Syntax.Common
 import Brat.Syntax.FuncDecl (FuncDecl(..))
-import Brat.Syntax.Raw
 import Brat.Syntax.Simple
 
-type FlatIO expr = TypeRowElem (WC Flat) (KindOr RawVType)
+type FAlias = TypeAliasF Flat
+type FEnv = ([FDecl], [FAlias])
+
+type FlatIO = TypeRowElem (WC Flat) (WC (KindOr Flat))
 
 data FBody
   = FClauses (NonEmpty (WC Abstractor, WC Flat))
@@ -17,7 +19,7 @@ data FBody
   | FUndefined
  deriving Show
 
-type FDecl = FuncDecl [RawIO (WC Flat)] FBody
+type FDecl = FuncDecl [FlatIO] FBody
 deriving instance Show FDecl
 
 data Flat
@@ -32,7 +34,7 @@ data Flat
  | FInto (WC Flat) (WC Flat)
  | FArith ArithOp (WC Flat) (WC Flat)
  | FLambda (NonEmpty (WC Abstractor, WC Flat))
- | FAnnotation (WC Flat) [RawIO]
+ | FAnnotation (WC Flat) [FlatIO]
  | FLetIn (WC Abstractor) (WC Flat) (WC Flat)
  | FSimple SimpleTerm
  | FHole String
@@ -40,8 +42,8 @@ data Flat
  | FEmpty
  | FPull [PortName] (WC Flat)
  -- We can get away with not elaborating type signatures in the short term
- | FFn RawCType
- | FKernel RawKType
+ | FFn (CType' FlatIO)
+ | FKernel (CType' (TypeRowElem (WC Flat) (WC Flat)))
  | FUnderscore
  | FPass
  | FFanOut

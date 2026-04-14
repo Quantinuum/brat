@@ -38,7 +38,8 @@ module Brat.Syntax.Common (PortName,
                            ArithOp(..),
                            pattern Dollar,
                            pattern Star,
-                           Precedence(..)
+                           Precedence(..),
+                           TypeAliasF(..)
                           ) where
 
 import Brat.FC
@@ -217,14 +218,20 @@ instance Show Import where
     showSelection (ImportPartial fns) = "(":(unWC <$> fns) ++ [")"]
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
-showSig :: Show ty => [(String, ty)] -> String
-showSig [] = "()"
-showSig (x:xs)
-  = intercalate ", " [ '(':p ++ " :: " ++ show ty ++ ")"
-                     | (p, ty) <- x:xs]
+showSig :: (Show con, Show ty) => [TypeRowElem con ty] -> String
+showSig [] = ""
+showSig (hd:tl) = concat
+ (tail (showElem hd)
+ ++
+ [unwords (showElem x) | x <- tl]
+ )
+ where
+  showElem (Anon ty) = [",", show ty]
+  showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
+  showElem (Constraint a b) = [" |", show a, "=", show b]
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
-showRow = showSig . fmap (first portName)
+showRow = intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])
 
 
 data ArithOp = Add | Sub | Mul | Div | Pow deriving (Eq, Show)
@@ -245,3 +252,5 @@ data Precedence
  | PAnn
  | PApp
  deriving (Bounded, Enum, Eq, Ord, Show)
+
+data TypeAliasF tm = TypeAlias FC QualName [(PortName,TypeKind)] tm deriving Show

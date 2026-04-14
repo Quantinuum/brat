@@ -1,6 +1,6 @@
 module Brat.Elaborator where
 
-import Control.Monad (forM, (>=>))
+import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (empty)
@@ -11,8 +11,6 @@ import Brat.Syntax.Concrete
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Raw
 import Brat.Error
-
-type FEnv = ([FDecl], [RawAlias])
 
 assertSyn :: Dirable d => WC (Raw d k) -> Either Error (WC (Raw Syn k))
 assertSyn s@(WC fc r) = case dir r of
@@ -71,7 +69,6 @@ mkCompose a f = do
       f <- assertUVerb f
       pure $ SomeRaw' (a ::-:: f)
 
-elaborateType :: WC Flat -> Either Error (WC (Raw Chk Noun))
 elaborateType = elaborateChkNoun
 
 elaborateChkNoun :: WC Flat -> Either Error (WC (Raw Chk Noun))
@@ -181,6 +178,7 @@ elaborate' (FAnnotation a ts) = do
   (SomeRaw a) <- elaborate a
   a <- assertChk a
   a <- assertNoun a
+  ts <- fmap (fmap unWC) <$> traverse elabSigElem ts
   pure $ SomeRaw' (a ::::: ts)
 elaborate' (FInto a b) = elaborate' (FApp b a)
 elaborate' (FOf n e) = do
@@ -189,8 +187,8 @@ elaborate' (FOf n e) = do
   SomeRaw e <- elaborate e
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
-elaborate' (FFn cty) = pure $ SomeRaw' (RFn cty)
-elaborate' (FKernel sty) = pure $ SomeRaw' (RKernel sty)
+elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> traverse elabSigElem cty
+elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> traverse elabSigElem cty
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered
@@ -198,11 +196,31 @@ elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
 
-elabSig :: [RawIO (WC Flat)] -> Either Error (RawIO (NumSum (WC RawVType)))
-elabSig [] = pure []
-elabSig (Named x ty:rest) = (Named x ty:) <$> elabSig rest
-elabSig (Anon ty:rest) = (Anon ty:) <$> elabSig rest
-elabSig (Constraint e0 e1) = Constraint . Eqn <$> elaborateChkNoun e0 <*> elaborateChkNounArith e1
+elabRowConstraint :: TypeRowElem (WC Flat) ty -> Either Error (TypeRowElem (WC RawVType) ty)
+elabRowConstraint (Constraint e0 e1) = Constraint <$> elaborateChkNoun e0 <*> elaborateChkNoun e1
+elabRowConstraint (Anon ty) = pure $ Anon ty
+elabRowConstraint (Named p ty) = pure $ Named p ty
+
+class Elaborable t where
+  type Elaborated t
+  elab :: WC t -> Either Error (WC (Elaborated t))
+
+-- This is a hack to make elabSigElem nice
+instance Elaborable Flat where
+  type Elaborated Flat = Raw Chk Noun
+  elab = elaborateChkNoun
+
+instance Elaborable t => Elaborable (KindOr t) where
+  type Elaborated (KindOr t) = KindOr (Elaborated t)
+  elab (WC fc (Left k)) = pure (WC fc (Left k))
+  elab (WC fc (Right ty)) = fmap Right <$> elab (WC fc ty)
+
+elabSigElem :: Elaborable t
+            => TypeRowElem (WC Flat) (WC t)
+            -> Either Error (TypeRowElem (WC RawVType) (WC (Elaborated t)))
+elabSigElem (Constraint e0 e1) = Constraint <$> elaborateChkNoun e0 <*> elaborateChkNoun e1
+elabSigElem (Anon ty) = Anon <$> elab ty
+elabSigElem (Named p ty) = Named p <$> elab ty
 
 elabBody :: FBody -> FC -> Either Error (FunBody Raw Noun)
 elabBody (FClauses cs) fc = ThunkOf . WC fc . Clauses <$> traverse elab1Clause cs
@@ -225,14 +243,17 @@ elabBody FUndefined _ = pure Undefined
 elabFunDecl :: FDecl -> Either Error RawFuncDecl
 elabFunDecl d = do
   rc <- elabBody (fnBody d) (fnLoc d)
-  sig <- elabSig (fnSig d)
+  sig <- traverse elabSigElem (fnSig d)
   pure $ FuncDecl
     { fnName = fnName d
     , fnLoc = fnLoc d
-    , fnSig = fnSig d
+    , fnSig = fmap unWC <$> sig -- sus
     , fnBody = rc
     , fnLocality = fnLocality d
     }
 
+elabAlias :: FAlias -> Either Error RawAlias
+elabAlias (TypeAlias fc name tys tm) = TypeAlias fc name tys . unWC <$> elaborateChkNoun (WC fc tm)
+
 elabEnv :: FEnv -> Either Error RawEnv
-elabEnv (ds, x) = (,x,empty) <$> forM ds elabFunDecl
+elabEnv (ds, as) = (,,empty) <$> traverse elabFunDecl ds <*> traverse elabAlias as
