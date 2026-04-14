@@ -31,5 +31,8 @@ thinning1 = succ(omit(succ(succ(omit(zero)))))
 thinning2 :: Thin(1, 3)
 thinning2 = omit(succ(omit(zero)))
 
+thinning :: Thin(1, 5)
+thinning = comp(!, !, !, thinning2, thinning1)
+
 go :: Vec(Nat, 1)
-go = select(!, !, !, comp(!, !, !, thinning2, thinning1), [1,2,3, 4, 5])
+go = select(!, !, !, thinning, [1,2,3, 4, 5])

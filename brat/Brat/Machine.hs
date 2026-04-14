@@ -366,6 +366,7 @@ instance Show Value where
   show (VecV xs) = show xs
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
+  show (ThinConsV b val) = (if b then "1" else "0") ++ "-" ++ show val
   show DummyV = "Dummy"
 
 type EvalEnv = M.Map OutPort Value
