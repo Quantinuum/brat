@@ -316,10 +316,10 @@ flatIO' tyP = rowElem `sepBy` void (try comma)
        Just (WC _ p) -> Named p <$> tyP
        Nothing -> Anon <$> tyP
 
-spanningFC :: TypeRow con (WC ty) -> Parser (WC (TypeRow con (WC ty)))
+spanningFC :: TypeRow (WC con) (WC ty) -> Parser (WC (TypeRow (WC con) (WC ty)))
 spanningFC [] = customFailure (Custom "Internal: FlatIO shouldn't be empty")
-spanningFC [x] = pure (WC (fcOf $ forgetPortName x) [x])
-spanningFC (x:xs) = pure (WC (spanFC (fcOf $ forgetPortName x) (fcOf . forgetPortName $ last xs)) (x:xs))
+spanningFC [x] = pure (WC (either (uncurry spanFCOf) fcOf $ forgetPortName x) [x])
+spanningFC (x:xs) = pure (WC (spanFC (either (uncurry spanFCOf) fcOf $ forgetPortName x) (either (uncurry spanFCOf) fcOf . forgetPortName $ last xs)) (x:xs))
 
 flatIOWithSpanFC :: Parser (WC [FlatIO])
 flatIOWithSpanFC = spanningFC =<< flatIO

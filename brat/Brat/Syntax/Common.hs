@@ -111,9 +111,10 @@ instance Bifunctor TypeRowElem where
 
 type TypeRow expr ty = [TypeRowElem expr ty]
 
-forgetPortName :: TypeRowElem expr ty -> ty
-forgetPortName (Anon ty) = ty
-forgetPortName (Named _ ty) = ty
+forgetPortName :: TypeRowElem expr ty -> Either (expr,expr) ty
+forgetPortName (Anon ty) = Right ty
+forgetPortName (Named _ ty) = Right ty
+forgetPortName (Constraint lhs rhs) = Left (lhs,rhs)
 
 toTypeRow :: [(String, ty)] -> TypeRow expr ty
 toTypeRow = fmap (uncurry Named)

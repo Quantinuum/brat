@@ -191,6 +191,7 @@ data Sem where
   SApp :: SVar -> Bwd Sem -> Sem
   -- Sum types, stash like SLam (shared between all variants)
   SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+  SConstraint :: (NumSum SVar, NumSum SVar) -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -229,7 +230,13 @@ instance forall m top bot. MODEY m => Show (Ro m bot top) where
                                       Braty -> show ty
                                       Kerny -> show ty
                                 in  ('(':p ++ " :: " ++ tyStr ++ ")"):roToList ro
-    roToList  (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
+    roToList (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
+    roToList (RCo (lhs,rhs) ro) = unwords
+      ["|"
+      ,show lhs
+      ,"="
+      ,show rhs
+      ] : roToList ro
 
 instance Show (Val n) where
   show v@(VCon _ _) | Just vs <- asList v = show vs
@@ -556,6 +563,9 @@ varChangerThroughRo vc (RPr (p,ty) ro {- src -> src' -}) = case changeVar vc {- 
 varChangerThroughRo vc {- src -> tgt -} (REx pk ro {- S src' -> src'' -})
   = case varChangerThroughRo (weakenVC vc) ro of
         Some (vc {- src'' -> tgt'' -} :* ro {- S tgt' -> tgt'' -}) -> Some (vc :* REx pk ro)
+varChangerThroughRo vc (RCo (lhs, rhs) ro) = case (changeNumSumVars vc lhs, changeNumSumVars vc rhs) of
+  (lhs, rhs) -> case varChangerThroughRo vc ro of
+    Some (vc :* ro) -> Some (vc :* RCo (lhs, rhs) ro)
 
 instance DeBruijn (CTy m) where
   changeVar (vc {- srcIn -> tgtIn -}) (ri {- srcIn -> srcMid -} :->> ro {- srcMid -> srcOut -}) = case varChangerThroughRo vc ri of
@@ -630,7 +640,17 @@ numVars nv = [e | v@(VPar e) <- vvars nv]
 -- number plus sum over a sequence of (variable/Full * number), ordered
 -- All Integers positive, all multipliers strictly so
 data NumSum var = NumSum Integer [(Monotone var, Integer)]
-  deriving (Eq, Foldable, Functor, Show, Traversable)
+  deriving (Eq, Foldable, Functor, Traversable)
+
+instance Show var => Show (NumSum var) where
+  show (NumSum i vars) = let const = case (i == 0, null vars) of
+                               (True, True) -> "0"
+                               (True, False) -> ""
+                               (False, True) -> show i
+                               (False, False) -> show i ++ " + "
+                             showMult (v,m) = show m ++ "*(" ++ show v ++ ")"
+                         in  const ++ intercalate " + " (showMult <$> vars)
+
 
 instance Ord var => Monoid (NumSum var) where
     mempty = NumSum 0 []
