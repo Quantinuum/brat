@@ -9,10 +9,10 @@ identity(succ(_)) = succ(identity(!))
 
 empty(n :: #) -> Thin(0, n)
 empty(0) = zero
-empty(succ(n)) = omit(empty(n))
+empty(succ(_)) = omit(empty(!))
 
 comp(l :: #, n :: #, m :: #, Thin(l, n), Thin(n, m)) -> Thin(l, m)
-comp(l, n, succ(m), th, omit(ph)) = omit(comp(l, n, m, th, ph))
-comp(l, succ(n), succ(m), omit(th), succ(ph)) = omit(comp(l, n, m, th, ph))
-comp(succ(l), succ(n), succ(m), succ(th), succ(ph)) = succ(comp(l, n, m, th, ph))
+comp(_, _, succ(_), th, omit(ph)) = omit(comp(!, !, !, th, ph))
+comp(_, succ(_), succ(_), omit(th), succ(ph)) = omit(comp(!, !, !, th, ph))
+comp(succ(_), succ(_), succ(_), succ(th), succ(ph)) = succ(comp(!, !, !, th, ph))
 comp(_, _, _, zero, zero) = zero
