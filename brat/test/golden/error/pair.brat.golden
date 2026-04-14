@@ -2,8 +2,8 @@ Error in test/golden/error/pair.brat on line 5:
 pair = row -- Distinct from a pair
        ^^^
 
-  Type mismatch when checking row
-Expected: (a1 :: [Int,Bool])
-But got:  (a1 :: Int), (b1 :: Bool)
+  Type mismatch when checking checkWire(row)
+Expected: (_0 :: [Int,Bool])
+But got:  (_0 :: Int, _1 :: Bool)
 
 

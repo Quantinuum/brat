@@ -219,19 +219,18 @@ instance Show Import where
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
 showSig :: (Show con, Show ty) => [TypeRowElem con ty] -> String
-showSig [] = ""
-showSig (hd:tl) = concat
- (tail (showElem hd)
- ++
- [unwords (showElem x) | x <- tl]
- )
+showSig [] = "()"
+showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) | x <- tl])
  where
+  parens x = '(':x ++ ")"
+
   showElem (Anon ty) = [",", show ty]
   showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
   showElem (Constraint a b) = [" |", show a, "=", show b]
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
-showRow = intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])
+showRow = parens . intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])
+ where parens x = '(':x ++ ")"
 
 
 data ArithOp = Add | Sub | Mul | Div | Pow deriving (Eq, Show)
