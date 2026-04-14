@@ -77,6 +77,7 @@ data Context = Ctx { globalVEnv :: VEnv
                    -- Ends which need to be solved because they affect runtime behaviour
                    , dynamicSet :: M.Map InPort FC
                    , captureSets :: CaptureSets
+                   , constraintStore :: [(NumSum SVar, NumSum SVar)]
                    }
 
 mkFork :: String -> Free sig () -> Free sig ()

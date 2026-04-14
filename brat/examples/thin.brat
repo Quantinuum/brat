@@ -3,10 +3,10 @@ select(_, _, _, zero, []) = []
 select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
 select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
 
--- thin(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
--- thin(_, _, _, _, zero, [], ys) = ys
--- thin(_, _, _, _, succ(th), x ,- xs, y ,- ys) = x ,- thin(!, !, !, !, th, xs, ys)
--- thin(_, _, _, _, omit(th), xs, y ,- ys) = y ,- thin(!, !, !, !, th, xs, ys)
+thin(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
+thin(_, _, _, _, zero, [], ys) = ys
+thin(_, _, _, _, succ(th), x ,- xs, y ,- ys) = x ,- thin(!, !, !, !, th, xs, ys)
+thin(_, _, _, _, omit(th), xs, y ,- ys) = y ,- thin(!, !, !, !, th, xs, ys)
 
 identity(n :: #) -> Thin(n, n)
 identity(0) = zero

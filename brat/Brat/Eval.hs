@@ -21,6 +21,7 @@ module Brat.Eval (EvMode(..)
 		 ,quoteNum
                  ,getNumVar
 		 ,instantiateMeta
+                 ,numSumEval
                  ) where
 
 import Brat.Checker.Monad
@@ -166,13 +167,11 @@ quoteRo m ga (RCo (lhs, rhs) ro) lvy = do
   (ga, Some (ro :* lvy)) <- quoteRo m ga ro lvy
   pure (ga, Some (RCo (lhs, rhs) ro :* lvy))
 
-numSumEval :: Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
-numSumEval ga = traverse (semVarOnly ga)
+numSumEval :: forall n. Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
+numSumEval ga (NumSum c vs) = (NumSum c [] <>) . mconcat <$> traverse aux vs
  where
-  semVarOnly :: Stack Z Sem n -> VVar n -> Checking SVar
-  semVarOnly ga v = semVar ga v >>= \case
-    SApp sv B0 -> pure $ sv
-    _ -> error "Expected numsum var to become SVar"
+  aux :: (Monotone (VVar n), Integer) -> Checking (NumSum SVar)
+  aux (mono, n) = (flip multNumSum n) . nv_to_sum <$> numEval ga mono
 
 class NumEval (f :: Type -> Type) where
   numEval :: Stack Z Sem n -> f (VVar n) -> Checking (NumVal SVar)

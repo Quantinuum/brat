@@ -5,7 +5,7 @@ module Brat.Checker.Helpers where
 import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
-import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur)
+import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur, numSumEval)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
 import Brat.Naming (FreshMonad(..), Name(..))
@@ -231,8 +231,17 @@ endPorts node rowPol n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
   (row, stuff) <- endPorts node rowPol (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
-endPorts node InputRow n _ ro@(RCo (lhs, rhs) _) = error $ "endPorts stuck on input " ++ show ro
-endPorts node OutputRow n _ ro@(RCo (lhs, rhs) _) = error $ "endPorts stuck on output " ++ show ro
+endPorts node InputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
+  lhs <- numSumEval ga lhs
+  rhs <- numSumEval ga rhs
+  demandConstraint (lhs, rhs)
+  endPorts node InputRow n env ro
+
+endPorts node OutputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
+  lhs <- numSumEval ga lhs
+  rhs <- numSumEval ga rhs
+  givenConstraint (lhs, rhs)
+  endPorts node OutputRow n env ro
 
 next :: String -> NodeType Brat -> (Semz i, Some Endz)
      -> Ro Brat i j
@@ -250,6 +259,24 @@ wire :: (Src, Val Z, Tgt) -> Checking ()
 wire (src, ty, tgt) = do
   ty <- eval S0 ty
   req $ Wire (end src, ty, end tgt)
+
+givenConstraint :: (NumSum SVar, NumSum SVar) -> Checking ()
+givenConstraint _ = pure ()
+
+demandConstraint :: (NumSum SVar, NumSum SVar) -> Checking ()
+demandConstraint (NumSum c [], NumSum d []) =
+ if c == d
+ then pure ()
+ else typeErr $ show c ++ " != " ++ show d
+demandConstraint (lhs,rhs) = Yield (TypeErr $ "Too stupid to solve " ++ show lhs ++ " = " ++ show rhs) (AwaitingAny (getEnds lhs <> getEnds rhs)) $
+  \_ -> demandConstraint (lhs, rhs)
+ where
+  getEnds :: NumSum SVar -> S.Set End
+  getEnds ns = foldMap (\case
+                         SPar v -> S.singleton v
+                         SLvl _ -> error "Found level in constraint") ns
+
+
 
 -- Called by check when synthesising a function.
 -- Given a row of overs which starts with some function types for the same mode:

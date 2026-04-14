@@ -178,7 +178,7 @@ instance MODEY m => Eq (CTy m i) where
     roEq _ _ _ = Nothing
 
 data SVar = SPar End | SLvl Int
- deriving (Show, Eq)
+ deriving (Show, Eq, Ord)
 
 -- Semantic value, used internally by normalization; contains Lvl's but no Inx's
 data Sem where
@@ -191,7 +191,6 @@ data Sem where
   SApp :: SVar -> Bwd Sem -> Sem
   -- Sum types, stash like SLam (shared between all variants)
   SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
-  SConstraint :: (NumSum SVar, NumSum SVar) -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -679,6 +678,7 @@ instance Show var => Show (NumSum var) where
                                (True, False) -> ""
                                (False, True) -> show i
                                (False, False) -> show i ++ " + "
+                             showMult (v,1) = show v
                              showMult (v,m) = show m ++ "*(" ++ show v ++ ")"
                          in  const ++ intercalate " + " (showMult <$> vars)
 
@@ -696,6 +696,12 @@ instance Ord var => Monoid (NumSum var) where
 
 instance Ord var => Semigroup (NumSum var) where
     (<>) = mappend
+
+numSumVar :: var -> NumSum var
+numSumVar v = NumSum 0 [(Linear v, 1)]
+
+multNumSum :: NumSum v -> Integer -> NumSum v
+multNumSum (NumSum c vs) m = NumSum (c*m) [ (v, n*m) | (v, n) <- vs ]
 
 changeNumSumVars :: VarChanger src tgt -> NumSum (VVar src) -> NumSum (VVar tgt)
 changeNumSumVars ch = fmap (changeVar ch)
