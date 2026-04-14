@@ -3,7 +3,7 @@ module Brat.Constructors.Patterns where
 import Brat.QualName
 
 pattern CSucc, CDoub, CNil, CCons, CSome, CNone, CTrue, CFalse, CZero, CSnoc,
-        CConcatEqEven, CConcatEqOdd, CRiffle, CRefl :: QualName
+        CConcatEqEven, CConcatEqOdd, CRiffle, CRefl, COmit :: QualName
 pattern CSucc = PrefixName [] "succ"
 pattern CDoub = PrefixName [] "doub"
 pattern CNil = PrefixName [] "nil"
@@ -20,7 +20,7 @@ pattern CRiffle = PrefixName [] "riffle"
 pattern CRefl = PrefixName [] "refl"
 pattern COmit = PrefixName [] "omit"
 
-pattern CList, CVec, CNat, CInt, COption, CBool, CBit, CFloat, CString, CEq :: QualName
+pattern CList, CVec, CNat, CInt, COption, CBool, CBit, CFloat, CString, CEq, CThin :: QualName
 pattern CList = PrefixName [] "List"
 pattern CVec = PrefixName [] "Vec"
 pattern CNat = PrefixName [] "Nat"
