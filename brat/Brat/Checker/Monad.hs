@@ -22,7 +22,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
--- import Debug.Trace
+import Debug.Trace
 
 -- Used for messages about thread forking / spawning
 thTrace = const id
@@ -312,7 +312,7 @@ handler (Req s k) ctx g
                 M.lookup tycon tbl
         handler (k args) ctx g
 
-      ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) }) g
+      ANewDynamic e fc -> traceM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) }) g
 
       AskDynamics -> handler (k (dynamicSet ctx)) ctx g
 
@@ -320,7 +320,7 @@ handler (Req s k) ctx g
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
 
 handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
-  case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
+  case trace ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
       Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
       Nothing -> case M.lookup end tm of
         Nothing -> Left $ dumbErr (InternalError $ "Defining un-Declared " ++ show end ++ " in \n" ++ show tm)
@@ -341,7 +341,7 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                                     dynamicSet = case end of
                                       ExEnd _ -> dynamicSet ctx
                                       InEnd inport -> case M.lookup inport (dynamicSet ctx) of
-                                        Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
+                                        Just fc -> trace ("Replace " ++ show end ++ " with " ++ show newDynamics) $
                                                  M.union
                                                  (M.fromList (zip newDynamics (repeat fc)))
                                                  (M.delete inport (dynamicSet ctx))
@@ -383,6 +383,7 @@ instance MonadFail Checking where
 suppressHoles :: Checking a -> Checking a
 suppressHoles = wrapper2 (\case
   (LogHole _) -> Just ()
+  (ANewDynamic _ _) -> Just ()
   _ -> Nothing)
 
 -- Run a computation without doing any graph generation
