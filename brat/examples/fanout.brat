@@ -1,3 +1,4 @@
+--!xfail-compilation
 open import lib.kernel (CX)
 
 fanout(Vec(Nat, 3)) -> Nat, Nat, Nat

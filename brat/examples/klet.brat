@@ -1,3 +1,4 @@
+--!xfail-compilation
 import lib.kernel
 
 id ::  { Qubit -o Qubit }

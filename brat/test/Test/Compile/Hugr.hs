@@ -3,8 +3,6 @@ module Test.Compile.Hugr where
 import Control.Monad (forM)
 import Data.HugrGraph (to_json)
 import Brat.Compiler (compileFile, CompilingHoles(..))
-import Test.Checking (expectedCheckingFails)
-import Test.Util (expectFailForPaths)
 
 import qualified Data.Map as M
 import qualified Data.ByteString as BS
@@ -20,8 +18,7 @@ outputDir = prefix </> "output"
 
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
-nonCompilingExamples = expectedCheckingFails ++
-  map ((++ ".brat") . ("examples" </>))
+nonCompilingExamples = map ((++ ".brat") . ("examples" </>))
   [--"fzbz" -- can compile just kernels
   --,"ising" -- can compile just kernels
   --,"let" -- can compile just kernels
@@ -53,9 +50,5 @@ compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
 setupCompilationTests :: IO TestTree
 setupCompilationTests = do
   tests <- findByExtension [".brat"] prefix
-  examples <- findByExtension [".brat"] examplesPrefix
   createDirectoryIfMissing False outputDir
-  let compileTests = compileToOutput <$> tests
-  let examplesTests = testGroup "examples" $ expectFailForPaths nonCompilingExamples compileToOutput examples
-
-  pure $ testGroup "compilation" (examplesTests:compileTests)
+  pure $ testGroup "compilation" $ compileToOutput <$> tests
