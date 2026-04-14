@@ -1,4 +1,4 @@
-module Test.Checking (parseAndCheck, getCheckingTests, expectedCheckingFails) where
+module Test.Checking (parseAndCheck, getCheckingTests) where
 
 import Test.Compile.Hugr (compileToOutput)
 import Brat.Load
@@ -8,28 +8,10 @@ import Control.Monad (foldM)
 import Control.Monad.Except
 import Data.Functor ((<&>))
 import Data.List (isPrefixOf)
-import qualified Data.Map as M
-import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Silver
 import Test.Tasty.ExpectedFailure
-
-data XFailStatus = XFailParse | XFailCheck
-
-expectedFails = M.fromList $
-    (map ((, XFailCheck) . ("examples" </>)) ["nested-abstractors.brat"
-                                             ,"karlheinz.brat"
-                                             ,"karlheinz_alias.brat"
-                                             ,"hea.brat"
-                                             -- https://github.com/Quantinuum/brat/issues/92
-                                             ,"repeated_app.brat"
-                                             ,"adder.brat"
-                                             ]) ++
-    [("examples" </> "thin.brat", XFailParse)]
-
-expectedCheckingFails :: [FilePath]
-expectedCheckingFails = M.keys expectedFails
 
 data Tests = Tests
   { parseTests :: [TestTree]

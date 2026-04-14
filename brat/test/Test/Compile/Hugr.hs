@@ -15,26 +15,6 @@ prefix = "test/compilation"
 examplesPrefix = "examples"
 outputDir = prefix </> "output"
 
--- examples that we expect not to compile.
--- Note this does not include those with remaining holes; these are automatically skipped.
-nonCompilingExamples = map ((++ ".brat") . ("examples" </>))
-  [--"fzbz" -- can compile just kernels
-  --,"ising" -- can compile just kernels
-  --,"let" -- can compile just kernels
-  --,"patterns" -- can compile just kernels
-  --,"qft" -- can compile just kernels
-  --,"infer" -- problems with undoing pattern tests -- can compile just kernels
-  --,"infer2" -- problems with undoing pattern tests -- can compile just kernels
-  "fanout" -- Contains Selectors
-  --,"vectorise" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
-  --,"vector_solve" -- Generates "Pow" nodes which aren't implemented yet -- can compile just kernels
-  --,"batcher-merge-sort" -- Generates MapFun nodes which aren't implemented yet -- can compile just kernels
-  -- Victims of #13
-  --,"arith" -- can compile just kernels
-  ,"klet"
-  ,"magic-state-distillation" -- also makes selectors
-  ]
-
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ do
     createDirectoryIfMissing False outputDir
