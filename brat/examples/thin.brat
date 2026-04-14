@@ -1,3 +1,4 @@
+--!xfail-parsing
 -- Experiments with selecting out of vectors with first class selections
 -- This feature has fallen by the wayside, so expect this to fail
 

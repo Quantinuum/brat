@@ -1,3 +1,4 @@
+--!xfail-checking
 xor(Bool, Bool) -> Bool
 xor(false, b) = b
 xor(a, false) = a

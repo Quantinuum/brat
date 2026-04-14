@@ -1,3 +1,4 @@
+--!xfail-checking
 -- This is a subset of the karlheinz.brat test file
 
 -- Expectation:

@@ -1,3 +1,4 @@
+--!xfail-checking
 -- This file contains type signatures for various operations laid out in the
 -- "Types for Composite Experiments" Confluence page
 

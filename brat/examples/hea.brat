@@ -1,3 +1,4 @@
+--!xfail-checking
 -- Playing with representing a hardware-efficient ansatz
 
 -- Expectation:
