@@ -1,11 +1,13 @@
 module Brat.Checker.Arithmetic where
 
+import Control.Arrow ((***))
 import Data.List (minimumBy)
 import Data.Ord (comparing)
 
 -- number plus sum over a sequence of (variable/Full * number), ordered
 -- All Integers positive, all multipliers strictly so
-data Sum var = Sum Integer [(Monotone var, Integer )]
+data Sum var = Sum Integer [(Monotone var, Integer)]
+  deriving (Eq, Show)
 
 instance Ord var => Monoid (Sum var) where
     mempty = Sum 0 []
@@ -21,10 +23,53 @@ instance Ord var => Monoid (Sum var) where
 instance Ord var => Semigroup (Sum var) where
     (<>) = mappend
 
-nv_to_sum :: Ord var => NumVal var -> Sum var
+sConst :: Integer -> Sum var
+sConst n = Sum n []
+
+sVar :: var -> Sum var
+sVar v = Sum 0 [(Linear v, 1)]
+
+sMul :: Sum var -> Integer -> Sum var
+sMul _ 0 = Sum 0 []
+sMul (Sum n xs) m = Sum (n*m) [(x, k*m) | (x, k) <- xs]
+
+nv_to_sum :: NumVal var -> Sum var
 nv_to_sum (NumValue up grow) = Sum up $ case grow of
     Constant0 -> []
     (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
+
+nvs_to_sum :: Ord var => [NumVal var] -> Sum var
+nvs_to_sum = foldMap nv_to_sum
+
+{-gcd :: Integer -> Integer -> Integer
+gcd 0 x = x
+gcd x y = gcd (y `mod` x) x-}
+
+(-/) :: Integer -> Integer -> Integer
+a -/ b = case a-b of
+    x | x >0 -> x
+    _ -> 0
+
+simplify :: Ord var => (Sum var, Sum var) -> (Sum var, Sum var)
+simplify (Sum n xs, Sum m ys) = defactor (Sum (n -/ m) xs', Sum (m -/ n) ys')
+ where
+  (xs', ys') = cancel xs ys
+
+  cancel [] ys = ([], ys)
+  cancel xs [] = (xs, [])
+  cancel xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> (((x, n):) *** id) (cancel xs yys)
+        EQ -> (cons_non0 (x, n -/ m) *** cons_non0 (y, m -/ n)) (cancel xs ys)
+        GT -> (id *** ((y, m):)) (cancel xxs ys)
+
+  cons_non0 (_, 0) xs = xs
+  cons_non0 xn xs = xn:xs
+
+  defactor (Sum n xs, Sum m ys) = (Sum (n `div` g) [(x, k `div` g) | (x, k) <- xs]
+                                  ,Sum (m `div` g) [(y, k `div` g) | (y, k) <- ys]
+                                  )
+   where
+    g = foldr gcd 0 (n : m : map snd (xs ++ ys))
 
 -------------------------------- Number Values ---------------------------------
 -- x is the TYPE of variables, e.g. SVar or (VVar n)
