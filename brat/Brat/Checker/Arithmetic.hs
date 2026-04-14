@@ -1,6 +1,8 @@
 module Brat.Checker.Arithmetic where
 
 import Brat.Syntax.Value (NumSum(..), Monotone(..))
+import Data.Maybe (fromMaybe)
+import qualified Data.Set as S
 
 nsConst :: Integer -> NumSum var
 nsConst n = NumSum n []
@@ -34,7 +36,6 @@ simplify (NumSum n xs, NumSum m ys) = minOnLeft $ defactor (NumSum (n -/ m) xs',
   minOnLeft (s1@(NumSum _ (x:_)), s2@(NumSum _ (y:_))) | y<x = (s2, s1)
   minOnLeft eqn = eqn
 
-
 data Pullbacks m = Pullbacks {
     leftDiff :: m,
     common :: m,
@@ -67,3 +68,69 @@ instance Ord var => PullbackMonoid (NumSum var) where
         let Pullbacks x c y = min_with_diffs n m
             Pullbacks {..} = pullbacks xs ys
         in Pullbacks (NumSum x leftDiff) (NumSum c common) (NumSum y rightDiff)
+
+-- Might not be necessary to sort vars but it's easy enough
+vars :: Ord var => Eqn var -> [Monotone var]
+vars (NumSum _ xs, NumSum _ ys) = merge (map fst xs) (map fst ys)
+ where
+  merge [] ys = ys
+  merge xs [] = xs
+  merge xxs@(x:xs) yys@(y:ys) = if x<y then x:(merge xs yys) else y:(merge xxs ys)
+
+eFlip :: Eqn var -> Eqn var
+eFlip (s1, s2) = (s2, s1)
+
+eAdd :: Ord var => Eqn var -> Eqn var -> Eqn var
+eAdd (s1, s2) (s1', s2') = simplify (s1 <> s1', s2 <> s2')
+
+eSub :: Ord var => Eqn var -> Eqn var -> Eqn var
+eSub e1 e2 = e1 `eAdd` (eFlip e2)
+
+eMul :: Eqn var -> Integer -> Eqn var
+eMul (s1, s2) m | m >= 0 = (s1 `nsMul` m, s2 `nsMul` m)
+eMul e m = eMul (eFlip e) (-m)
+
+lweight :: Eq var => Eqn var -> Monotone var -> Maybe Integer
+lweight (NumSum _ ts, _) v = lookup ts
+ where
+  lookup ((x,n):_) | x == v = Just n
+  lookup (_:xs) = lookup xs
+  lookup [] = Nothing
+
+sweight :: Eq var => Eqn var -> Monotone var -> Integer
+sweight e v = fromMaybe (fromMaybe 0 $ lweight (eFlip e) v) $ lweight e v
+
+gauss_elim :: forall var. Ord var => [Eqn var] -> [Eqn var]
+gauss_elim eqns = fst $ foldl elim ([], eqns) (S.toList $ S.fromList $ mconcat $ map vars eqns)
+ where
+  -- first element of pair are reduced: each Eqn is the only one mentioning its first variable
+  -- in second element of pair, no Eqn mentions any variable that is first var of any reduced
+  -- variable identifies what to reduce, i.e. 'elim' constructs an equation where that var is first
+  elim :: ([Eqn var], [Eqn var]) -> Monotone var -> ([Eqn var], [Eqn var])
+  elim (redns, eqns) v = (e1:(map rm_v redns), (map rm_v eqns))
+   where
+    (e1, w1) = foldl1 eqn_one ((redns ++ eqns) >>= v_on_left)
+    v_on_left :: Eqn var -> [(Eqn var, Integer)]
+    v_on_left e = case sweight e v of
+        0 -> []
+        w | w<0 -> [(eFlip e, -w)]
+          | otherwise -> [(e, w)]
+
+    -- make an equation containing exactly one 'v'
+    -- both arguments, and result, are (equation, number of 'v's)
+    --     where equation has 'v' on LHS, and number is strictly positive
+    eqn_one :: (Eqn var, Integer) -> (Eqn var, Integer) -> (Eqn var, Integer)
+    eqn_one (e, 1) _ = (e, 1)
+    eqn_one e@(_, w) e2@(_, w2) | w2 > w = eqn_one e (e2 `vlsub` e)
+                                | w2 == w = e -- gcd is >1, best we can do
+                                | otherwise = eqn_one (e `vlsub` e2) e2
+    vlsub :: (Eqn var, Integer) -> (Eqn var, Integer) -> (Eqn var, Integer)
+    vlsub (e1, w1) (e2, w2) = let e = e1 `eSub` e2 -- puts min var on left...perhaps we shouldn't?
+                              in (,w1-w2) $ case sweight e v of
+                                              w | w<0 -> eFlip e
+                                                | w>0 -> e
+
+    -- remove 'v' from equation 'e', where 'e' might be any equation
+    rm_v e = let w = sweight e v
+                 gw = gcd w w1
+              in if w==0 then e else (e `eMul` (w1 `div` gw)) `eSub` (e1 `eMul` (w `div` gw))
