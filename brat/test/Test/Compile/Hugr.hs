@@ -18,21 +18,6 @@ prefix = "test/compilation"
 examplesPrefix = "examples"
 outputDir = prefix </> "output"
 
--- examples that we expect to compile, but then to fail validation
-invalidExamples :: [FilePath]
-invalidExamples = (map ((++ ".brat") . ("examples" </>))
-  ["app"
-  --,"adder" -- not even checking yet
-  ,"dollar_kind"
-  --,"portpulling" -- compiling just kernels is fine
-  ,"eatsfull" -- Compiling hopes #96
-  ,"map" -- Compiling hopes #96
-  ,"infer_thunks" -- Weird: Mismatch between caller and callee signatures in map call
-  ,"infer_thunks2" -- Weird: Mismatch between caller and callee signatures in map call
-  --,"repeated_app" -- not checking yet, but will be missing coercions, https://github.com/quantinuum-dev/brat/issues/413
-  ]
-  )
-
 -- examples that we expect not to compile.
 -- Note this does not include those with remaining holes; these are automatically skipped.
 nonCompilingExamples = expectedCheckingFails ++
@@ -54,16 +39,11 @@ nonCompilingExamples = expectedCheckingFails ++
   ,"magic-state-distillation" -- also makes selectors
   ]
 
--- This is https://github.com/Quantinuum/brat/issues/101
-nonCompilingTests = ["test/compilation/closures.brat"]
-
 compileToOutput :: FilePath -> TestTree
 compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
-    Right hs ->
-      let outputExt = if file `elem` invalidExamples then "json.invalid" else "json"
-      in mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
+    Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
         -- ignore splices for now
-        let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ "." ++ outputExt)
+        let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ ".json")
         -- lots of fun with lazy and even strict bytestrings
         -- returning many bytes before evaluation has completed
         BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
