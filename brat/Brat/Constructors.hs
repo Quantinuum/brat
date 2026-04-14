@@ -31,18 +31,15 @@ defaultConstructors = M.fromList
   [(CSucc, M.fromList
      [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
      ,(CInt, CArgs [] Zy R0 (RPr ("value", TInt) R0))
-     ,(CEq, CArgs [VPNum (NP1Plus NPVar), VPNum (NP1Plus NPVar)] (Sy (Sy Zy)) (REx ("lhs", Nat) (REx ("rhs", Nat) R0)) (RPr ("prf", TEq (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ)))) R0))
      ,(CThin, CArgs [VPNum (NP1Plus NPVar), VPNum (NP1Plus NPVar)] (Sy (Sy Zy)) (REx ("wee", Nat) (REx ("big", Nat) R0)) (RPr ("thinning", TThin (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ)))) R0))
      ])
   ,(CDoub, M.fromList
      [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
      ,(CInt, CArgs [] Zy R0 (RPr ("value", TInt) R0))
-     ,(CEq, CArgs [VPNum (NP2Times NPVar), VPNum (NP2Times NPVar)] (Sy (Sy Zy)) (REx ("lhs", Nat) (REx ("rhs", Nat) R0)) (RPr ("prf", TEq (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ)))) R0))
      ])
   ,(CZero, M.fromList
      [(CNat, CArgs [] Zy R0 R0)
      ,(CInt, CArgs [] Zy R0 R0)
-     ,(CEq, CArgs [VPNum NP0, VPNum NP0] Zy R0 R0)
      ,(CThin, CArgs [VPNum NP0, VPNum NP0] Zy R0 R0)
      ])
   ,(CNil, M.fromList
@@ -108,9 +105,6 @@ defaultConstructors = M.fromList
         (RPr ("value", VApp (VInx VZ) B0) R0))])
   ,(CTrue, M.fromList [(CBool, CArgs [] Zy R0 R0)])
   ,(CFalse, M.fromList [(CBool, CArgs [] Zy R0 R0)])
-  ,(CRefl, M.fromList
-    [(CEq, CArgs [VPVar, VPVar] (Sy (Sy Zy)) (REx ("lhs", Nat) (REx ("rhs", Nat) (RCo (nsVar (VInx (VS VZ)), nsVar (VInx VZ)) R0))) R0)
-    ])
   ,(COmit, M.fromList
     [(CThin, CArgs [VPNum NPVar, VPNum (NP1Plus NPVar)] (Sy (Sy Zy)) (REx ("wee", Nat) (REx ("big", Nat) R0)) (RPr ("thinning", TThin (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ)))) R0))])
   ]
@@ -149,7 +143,6 @@ defaultTypeConstructors = M.fromList
   ,((Brat, CNat),    [])
   ,((Brat, CNil),    [])
   ,((Brat, CCons),   [("head", Star []), ("tail", Star [])])
-  ,((Brat, CEq),     [("lhs", Nat), ("rhs", Nat)])
   ,((Brat, CThin),   [("wee", Nat), ("big", Nat)])
   ,((Kernel, CQubit), [])
   ,((Kernel, CMoney), [])
