@@ -2,6 +2,7 @@ import Test.Tasty  (testGroup)
 import Test.Tasty.Silver.Interactive (defaultMain)
 
 import Test.Abstractor
+import Test.Arithmetic
 import Test.Checking
 import Test.Graph
 import Test.Compile.Hugr
@@ -85,4 +86,5 @@ main = do
                                 ,typeArithTests
                                 ,coroTests
                                 ,spliceTests
+                                ,test_simplify
                                 ]
