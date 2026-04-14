@@ -11,7 +11,7 @@ module Brat.Error (ParseError(..)
 
 import Brat.FC
 import Data.Bracket
-import Brat.Syntax.Port (PortName)
+import Brat.Syntax.Port (End, PortName)
 
 import Data.List (intercalate)
 import System.Exit
@@ -109,6 +109,8 @@ data ErrorMsg
  | ThunkLeftUnders String
  | BracketErr BracketErrMsg
  | RemainingNatHopes [String]
+ | NeedToKnow End
+ | Both ErrorMsg ErrorMsg
 
 instance Show ErrorMsg where
   show (TypeErr x) = "Type error: " ++ x
@@ -194,6 +196,8 @@ instance Show ErrorMsg where
   show (ThunkLeftUnders unders) = "Expected function to return additional values of type: " ++ unders
   show (BracketErr msg) = show msg
   show (RemainingNatHopes hs) = unlines ("Expected to work out values for these holes:":(("    " ++) <$> hs))
+  show (NeedToKnow end) = unlines ["I wanna know what:", ' ':show end,"is."]
+  show (Both err1 err2) = unlines [show err1,""," AND WORSE","",show err2]
 
 data Error = Err { fc  :: Maybe FC
                  , msg :: ErrorMsg
