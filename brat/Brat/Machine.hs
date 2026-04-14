@@ -256,6 +256,8 @@ evalConstructor CTrue [] = BoolV True
 evalConstructor CFalse [] = BoolV False
 evalConstructor CZero [] = IntV 0
 evalConstructor CSucc [IntV n] = IntV (n + 1)
+evalConstructor CSucc [th@(ThinConsV _ _)] = ThinConsV True th
+evalConstructor COmit [th] = ThinConsV False th
 evalConstructor CDoub [IntV n] = IntV (2 * n)
 evalConstructor CNil [] = VecV []
 evalConstructor CCons [hd, VecV tl] = VecV (hd:tl)
@@ -315,6 +317,10 @@ testCtor CBool CTrue (BoolV True) = Just []
 testCtor CBool CFalse (BoolV False) = Just []
 testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
+testCtor CThin CZero (IntV 0) = Just []
+testCtor CThin CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
+testCtor CThin CSucc (ThinConsV True th) = Just [th]
+testCtor CThin COmit (ThinConsV False th) = Just [th]
 testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
 testCtor CVec CConcatEqEven (VecV vs) = do
@@ -345,6 +351,7 @@ data Value =
   | VecV [Value]
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
+  | ThinConsV Bool Value
   | DummyV
 
 data BratThunk =
