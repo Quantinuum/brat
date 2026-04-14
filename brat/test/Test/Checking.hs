@@ -3,6 +3,7 @@ module Test.Checking (parseAndCheck, getCheckingTests, expectedCheckingFails) wh
 import Brat.Load
 import Brat.Naming (root)
 
+import Control.Monad (foldM)
 import Control.Monad.Except
 import Data.List (isPrefixOf)
 import Data.Functor ((<&>))
@@ -29,21 +30,32 @@ expectedFails = M.fromList $
 expectedCheckingFails :: [FilePath]
 expectedCheckingFails = M.keys expectedFails
 
+data Tests = Tests
+  { parseTests :: [TestTree]
+  , checkTests :: [TestTree]
+  }
+
 getCheckingTests :: IO TestTree
 getCheckingTests =  do
   paths <- findByExtension [".brat"] "examples"
-  testGroup "examples" <$> mapM mkTest paths
+  ts <- foldM addTests (Tests [] []) paths
+  pure $ testGroup "examples" [
+      testGroup "parsing" (parseTests ts),
+      testGroup "checking" (checkTests ts)
+    ]
  where
-  mkTest :: FilePath -> IO TestTree
-  mkTest path = readFile path <&> \cts ->
-    if isPrefixOf "--!xfail-parsing" cts then
-      expectFail $ testCase (show path) $ do
-        case parseFile path cts of
-          Left err -> assertFailure (show err)
-          Right _ -> return () -- OK
+  addTests :: Tests -> FilePath -> IO Tests
+  addTests tests@Tests{..} path = readFile path <&> \cts ->
+    let parseTest = testCase (show path) $ do
+          case parseFile path cts of
+            Left err -> assertFailure (show err)
+            Right _ -> return () -- OK
+        checkTest = parseAndCheck [] path
+    in if isPrefixOf "--!xfail-parsing" cts then
+      tests { parseTests = (expectFail parseTest):parseTests }
     else if isPrefixOf "--!xfail-checking" cts then
-      expectFail $ parseAndCheck [] path
-    else parseAndCheck [] path
+      tests { parseTests = parseTest:parseTests, checkTests = (expectFail checkTest):checkTests }
+    else tests {checkTests = checkTest:checkTests }
 
 parseAndCheck :: [FilePath] -> FilePath -> TestTree
 parseAndCheck libDirs file = testCase (show file) $ do
