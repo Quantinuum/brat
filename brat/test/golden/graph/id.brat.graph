@@ -11,7 +11,7 @@ Nodes:
 (id.brat_check_defs_1_main_$rhs_check'Th_thunk_thunk_2,BratNode (Box id.brat_check_defs_1_main_$rhs_check'Th_thunk/in id.brat_check_defs_1_main_$rhs_check'Th_thunk/out_1) [] [("thunk",{ (a :: Qubit) -o (b :: Qubit) })])
 (id.brat_globals_Qubit_2,BratNode (Constructor Qubit) [] [("value",[])])
 (id.brat_globals_Qubit_4,BratNode (Constructor Qubit) [] [("value",[])])
-(id.brat_globals_decl_5_main,BratNode Id [("a1",{ (a :: Qubit) -o (b :: Qubit) })] [("a1",{ (a :: Qubit) -o (b :: Qubit) })])
+(id.brat_globals_decl_5_main,BratNode Id [("_0",{ (a :: Qubit) -o (b :: Qubit) })] [("_0",{ (a :: Qubit) -o (b :: Qubit) })])
 
 Wires:
 (Ex id.brat_check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs/in_1 0,Qubit,In id.brat_check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs/out_2 0)

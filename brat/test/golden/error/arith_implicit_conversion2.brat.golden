@@ -2,7 +2,7 @@ Error in test/golden/error/arith_implicit_conversion2.brat on line 2:
 f(x, y) = x + (y - x)
                ^
 
-  Type mismatch when checking y
+  Type mismatch when checking checkWire(y)
 Expected: (left :: Int)
 But got:  (y :: Float)
 

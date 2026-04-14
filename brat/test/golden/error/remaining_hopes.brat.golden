@@ -1,8 +1,0 @@
-Error in test/golden/error/remaining_hopes.brat on line 5:
-g = f(!)
-     ^^^
-
-  Expected to work out values for these holes:
-    In checking_remaining_hopes_check_defs_1_g_3_$rhs_$!_1 0
-
-

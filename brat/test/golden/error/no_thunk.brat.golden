@@ -2,7 +2,7 @@ Error in test/golden/error/no_thunk.brat on line 8:
     Rz(2.0 / n); X
              ^
 
-  Type mismatch when checking n
+  Type mismatch when checking checkWire(n)
 Expected: (right :: Float)
 But got:  (n :: Nat)
 
