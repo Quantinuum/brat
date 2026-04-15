@@ -1290,6 +1290,7 @@ run ve initStore ns m = do
                 , hopes = M.empty
                 , dynamicSet = M.empty
                 , captureSets = M.empty
+                , constraintStore = []
                 }
   (a,ctx,(holes, graph)) <- handler (localNS ns m) ctx mempty
   let tyMap = typeMap $ store ctx

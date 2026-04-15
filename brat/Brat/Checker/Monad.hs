@@ -77,7 +77,7 @@ data Context = Ctx { globalVEnv :: VEnv
                    -- Ends which need to be solved because they affect runtime behaviour
                    , dynamicSet :: M.Map InPort FC
                    , captureSets :: CaptureSets
-                   , constraintStore :: [(NumSum SVar, NumSum SVar)]
+                   , constraintStore :: [(NumSum (VVar Z), NumSum (VVar Z))]
                    }
 
 mkFork :: String -> Free sig () -> Free sig ()
@@ -121,6 +121,8 @@ data CheckingSig ty where
   ANewDynamic :: InPort -> FC -> CheckingSig ()
   AskDynamics :: CheckingSig (M.Map InPort FC)
   AddCapture :: Name -> (QualName, [(Src, BinderType Brat)]) -> CheckingSig ()
+  GiveConstraint :: (NumSum (VVar Z), NumSum (VVar Z)) -> CheckingSig ()
+  GetConstraints :: CheckingSig [(NumSum (VVar Z), NumSum (VVar Z))]
 
 
 wrapper :: (forall a. CheckingSig a -> Checking (Maybe a)) -> Checking v -> Checking v
@@ -321,6 +323,13 @@ handler (Req s k) ctx g
       AddCapture n (var, ends) ->
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
 
+      GiveConstraint c ->
+        trace ("Given " ++ show c) $
+        handler (k ()) ctx { constraintStore = c:constraintStore ctx } g
+
+      GetConstraints ->
+        handler (k (constraintStore ctx)) ctx g
+
 handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
   case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
       Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
@@ -353,7 +362,9 @@ handler (Yield err Unstuck k) ctx g = handler (k mempty) ctx g
 handler (Yield err (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ Both
                                                                    (TypeErr $ unlines $
   ("Typechecking blocked on:":(show <$> S.toList ends))
-  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"])
+  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx))
+  ++ "":"Constraint store is":(show <$> constraintStore ctx)
+  ++ "":["Try writing more types! :-)"])
  err
 handler (Fork desc par c) ctx g = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx g
 

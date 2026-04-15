@@ -5,7 +5,7 @@ module Brat.Checker.Helpers where
 import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
-import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur, numSumEval)
+import Brat.Eval (eval, EvMode(..), kindType, quote, quoteVar, doesntOccur, numSumEval, numSumUpdate)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
 import Brat.Naming (FreshMonad(..), Name(..))
@@ -232,14 +232,14 @@ endPorts node rowPol n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
 endPorts node InputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
-  lhs <- numSumEval ga lhs
-  rhs <- numSumEval ga rhs
+  lhs <- fmap (quoteVar Zy) <$> numSumEval ga lhs
+  rhs <- fmap (quoteVar Zy) <$> numSumEval ga rhs
   demandConstraint (lhs, rhs)
   endPorts node InputRow n env ro
 
 endPorts node OutputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
-  lhs <- numSumEval ga lhs
-  rhs <- numSumEval ga rhs
+  lhs <- fmap (quoteVar Zy) <$> numSumEval ga lhs
+  rhs <- fmap (quoteVar Zy) <$> numSumEval ga rhs
   givenConstraint (lhs, rhs)
   endPorts node OutputRow n env ro
 
@@ -260,21 +260,27 @@ wire (src, ty, tgt) = do
   ty <- eval S0 ty
   req $ Wire (end src, ty, end tgt)
 
-givenConstraint :: (NumSum SVar, NumSum SVar) -> Checking ()
-givenConstraint _ = pure ()
+givenConstraint :: (NumSum (VVar Z), NumSum (VVar Z)) -> Checking ()
+givenConstraint c = req (GiveConstraint c)
 
-demandConstraint :: (NumSum SVar, NumSum SVar) -> Checking ()
+demandConstraint :: (NumSum (VVar Z), NumSum (VVar Z)) -> Checking ()
 demandConstraint (NumSum c [], NumSum d []) =
  if c == d
  then pure ()
  else typeErr $ show c ++ " != " ++ show d
-demandConstraint (lhs,rhs) = Yield (TypeErr $ "Too stupid to solve " ++ show lhs ++ " = " ++ show rhs) (AwaitingAny (getEnds lhs <> getEnds rhs)) $
-  \_ -> demandConstraint (lhs, rhs)
+demandConstraint (lhs,rhs) = do
+  cs <- req GetConstraints
+  cs <- traverse (\(lhs,rhs) -> (,) <$> numSumUpdate lhs <*> numSumUpdate rhs) cs
+  c@(lhs,rhs) <- (,) <$> numSumUpdate lhs <*> numSumUpdate rhs
+  -- TODO: something smarter, with Gaussian elimination
+  if c `elem` cs
+  then pure ()
+  else Yield (TypeErr $ unlines ["Too stupid to solve",show lhs," =",show rhs]) (AwaitingAny (getEnds lhs <> getEnds rhs)) (\_ -> demandConstraint (lhs, rhs))
  where
-  getEnds :: NumSum SVar -> S.Set End
+  getEnds :: NumSum (VVar Z) -> S.Set End
   getEnds ns = foldMap (\case
-                         SPar v -> S.singleton v
-                         SLvl _ -> error "Found level in constraint") ns
+                         VPar v -> S.singleton v
+                         VInx _ -> error "Found index in constraint") ns
 
 
 

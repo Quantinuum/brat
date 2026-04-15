@@ -1,38 +1,41 @@
-select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
-select(_, _, _, zero, []) = []
-select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
-select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
+-- select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
+-- select(_, _, _, zero, []) = []
+-- select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
+-- select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
+--
+-- identity(n :: #) -> Thin(n, n)
+-- identity(0) = zero
+-- identity(succ(_)) = succ(identity(!))
+--
+-- empty(n :: #) -> Thin(0, n)
+-- empty(0) = zero
+-- empty(succ(_)) = omit(empty(!))
+--
+-- comp(l :: #, n :: #, m :: #, Thin(l, n), Thin(n, m)) -> Thin(l, m)
+-- comp(_, _, _, th, omit(ph)) = omit(comp(!, !, !, th, ph))
+-- comp(_, _, _, omit(th), succ(ph)) = omit(comp(!, !, !, th, ph))
+-- comp(_, _, _, succ(th), succ(ph)) = succ(comp(!, !, !, th, ph))
+-- comp(_, _, _, zero, zero) = zero
+--
+-- thinning1 :: Thin(3, 5)
+-- thinning1 = succ(omit(succ(succ(omit(zero)))))
+--
+-- thinning2 :: Thin(1, 3)
+-- thinning2 = omit(succ(omit(zero)))
+--
+-- thinning :: Thin(1, 5)
+-- thinning = comp(!, !, !, thinning2, thinning1)
+--
+-- go2 :: Vec(Nat, 3)
+-- go2 = select(!, !, !, thinning1, [1,2,3,4,5])
+--
+-- go :: Vec(Nat, 1)
+-- go = select(!, !, !, thinning, [1,2,3,4,5])
 
-thin(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
-thin(_, _, _, _, zero, [], ys) = ys
-thin(_, _, _, _, succ(th), x ,- xs, y ,- ys) = x ,- thin(!, !, !, !, th, xs, ys)
-thin(_, _, _, _, omit(th), xs, y ,- ys) = y ,- thin(!, !, !, !, th, xs, ys)
-
-identity(n :: #) -> Thin(n, n)
-identity(0) = zero
-identity(succ(_)) = succ(identity(!))
-
-empty(n :: #) -> Thin(0, n)
-empty(0) = zero
-empty(succ(_)) = omit(empty(!))
-
-comp(l :: #, n :: #, m :: #, Thin(l, n), Thin(n, m)) -> Thin(l, m)
-comp(_, _, succ(_), th, omit(ph)) = omit(comp(!, !, !, th, ph))
-comp(_, succ(_), succ(_), omit(th), succ(ph)) = omit(comp(!, !, !, th, ph))
-comp(succ(_), succ(_), succ(_), succ(th), succ(ph)) = succ(comp(!, !, !, th, ph))
-comp(_, _, _, zero, zero) = zero
+merge(X :: *, l :: #, n :: #, m :: #, Thin(n, m), Vec(X, n), Vec(X, l), | l + n = m) -> Vec(X, m)
+--merge(_, _, _, _, zero, [], ys) = ys
+merge(_, _, _, _, succ(th), x ,- xs, ys) = x ,- merge(!, !, !, !, th, xs, ys)
+--merge(_, _, _, _, omit(th), xs, y ,- ys) = y ,- merge(!, !, !, !, th, xs, ys)
 
 -- focus(X :: *, n :: #, m :: #, Thin(n, m), { Vec(X, n) -> Vec(X, n) }) -> { Vec(X, m) -> Vec(X, m) }
 -- focus(_, _, th, f) = { xs => select(!, !, !, th, xs); f;
-
-thinning1 :: Thin(3, 5)
-thinning1 = succ(omit(succ(succ(omit(zero)))))
-
-thinning2 :: Thin(1, 3)
-thinning2 = omit(succ(omit(zero)))
-
-thinning :: Thin(1, 5)
-thinning = comp(!, !, !, thinning2, thinning1)
-
-go :: Vec(Nat, 1)
-go = select(!, !, !, thinning, [1,2,3, 4, 5])

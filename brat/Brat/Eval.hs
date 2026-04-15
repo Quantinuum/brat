@@ -19,9 +19,11 @@ module Brat.Eval (EvMode(..)
                  ,numVal
                  ,quote
 		 ,quoteNum
+                 ,quoteVar
                  ,getNumVar
 		 ,instantiateMeta
                  ,numSumEval
+                 ,numSumUpdate
                  ) where
 
 import Brat.Checker.Monad
@@ -163,7 +165,7 @@ quoteRo m ga (REx pk r) lvy = do
   pure (ga, Some (REx pk r :* lvy))
 quoteRo m ga (RCo (lhs, rhs) ro) lvy = do
   lhs <- fmap (quoteVar lvy) <$> numSumEval ga lhs
-  rhs <- fmap (quoteVar lvy) <$>  numSumEval ga rhs
+  rhs <- fmap (quoteVar lvy) <$> numSumEval ga rhs
   (ga, Some (ro :* lvy)) <- quoteRo m ga ro lvy
   pure (ga, Some (RCo (lhs, rhs) ro :* lvy))
 
@@ -172,6 +174,9 @@ numSumEval ga (NumSum c vs) = (NumSum c [] <>) . mconcat <$> traverse aux vs
  where
   aux :: (Monotone (VVar n), Integer) -> Checking (NumSum SVar)
   aux (mono, n) = (flip multNumSum n) . nv_to_sum <$> numEval ga mono
+
+numSumUpdate :: NumSum (VVar Z) -> Checking (NumSum (VVar Z))
+numSumUpdate ns = numSumEval S0 ns >>= pure . fmap (quoteVar Zy)
 
 class NumEval (f :: Type -> Type) where
   numEval :: Stack Z Sem n -> f (VVar n) -> Checking (NumVal SVar)
