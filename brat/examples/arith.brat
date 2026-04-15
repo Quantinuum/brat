@@ -19,3 +19,43 @@ unary_minus(x) = x + -3.0
 
 unary_minus2(Int) -> Int
 unary_minus2(x) = -2-x
+
+--!test [7]
+i :: Nat
+i = 3 + 4
+
+--!test [-9]
+j :: Int
+j = unary_minus2(7)
+
+f :: Float
+f = 2.1 * 5.3
+
+g :: Float
+g = 7.2 - 3.9
+
+inc(Nat) -> Nat
+inc(x) = x + 1
+
+foo :: Nat
+foo = inc(inc(4) + inc(7))
+
+dec(Nat) -> Nat
+dec(0) = 0
+dec(succ(n)) = n
+
+goo :: Nat
+goo = dec(foo)
+
+length(X :: *, n :: #, Vec(X, n)) -> Nat
+length(_, n, _) = n
+
+hoo(n :: #, Vec(Nat, n + 1)) -> Nat
+hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
+hoo(n, _) = n
+
+ioo :: Nat
+ioo = hoo(2, [1,2,3])
+
+joo :: Vec(Nat, 3)
+joo = [1,2,3]
