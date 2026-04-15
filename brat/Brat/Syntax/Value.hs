@@ -216,8 +216,6 @@ data Ro :: Mode
   RPr :: {------} (PortName, Val bot)
       -> {--------------------------} Ro m bot top
       -> Ro m bot {--------------------------} top
-  -- Numeric constraints
-  RCo :: (NumSum (VVar bot), NumSum (VVar bot)) -> Ro m bot top -> Ro m bot top
 
 
 instance forall m top bot. MODEY m => Show (Ro m bot top) where
@@ -230,12 +228,6 @@ instance forall m top bot. MODEY m => Show (Ro m bot top) where
                                       Kerny -> show ty
                                 in  ('(':p ++ " :: " ++ tyStr ++ ")"):roToList ro
     roToList (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
-    roToList (RCo (lhs,rhs) ro) = unwords
-      ["|"
-      ,show lhs
-      ,"="
-      ,show rhs
-      ] : roToList ro
 
 instance Show (Val n) where
   show v@(VCon _ _) | Just vs <- asList v = show vs
@@ -562,9 +554,6 @@ varChangerThroughRo vc (RPr (p,ty) ro {- src -> src' -}) = case changeVar vc {- 
 varChangerThroughRo vc {- src -> tgt -} (REx pk ro {- S src' -> src'' -})
   = case varChangerThroughRo (weakenVC vc) ro of
         Some (vc {- src'' -> tgt'' -} :* ro {- S tgt' -> tgt'' -}) -> Some (vc :* REx pk ro)
-varChangerThroughRo vc (RCo (lhs, rhs) ro) = case (changeNumSumVars vc lhs, changeNumSumVars vc rhs) of
-  (lhs, rhs) -> case varChangerThroughRo vc ro of
-    Some (vc :* ro) -> Some (vc :* RCo (lhs, rhs) ro)
 
 instance DeBruijn (CTy m) where
   changeVar (vc {- srcIn -> tgtIn -}) (ri {- srcIn -> srcMid -} :->> ro {- srcMid -> srcOut -}) = case varChangerThroughRo vc ri of

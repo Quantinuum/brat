@@ -231,17 +231,6 @@ endPorts node rowPol n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
   (row, stuff) <- endPorts node rowPol (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
-endPorts node InputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
-  lhs <- fmap (quoteVar Zy) <$> numSumEval ga lhs
-  rhs <- fmap (quoteVar Zy) <$> numSumEval ga rhs
-  demandConstraint (lhs, rhs)
-  endPorts node InputRow n env ro
-
-endPorts node OutputRow n env@(ga, _) (RCo (lhs, rhs) ro) = do
-  lhs <- fmap (quoteVar Zy) <$> numSumEval ga lhs
-  rhs <- fmap (quoteVar Zy) <$> numSumEval ga rhs
-  givenConstraint (lhs, rhs)
-  endPorts node OutputRow n env ro
 
 next :: String -> NodeType Brat -> (Semz i, Some Endz)
      -> Ro Brat i j
@@ -259,30 +248,6 @@ wire :: (Src, Val Z, Tgt) -> Checking ()
 wire (src, ty, tgt) = do
   ty <- eval S0 ty
   req $ Wire (end src, ty, end tgt)
-
-givenConstraint :: (NumSum (VVar Z), NumSum (VVar Z)) -> Checking ()
-givenConstraint c = req (GiveConstraint c)
-
-demandConstraint :: (NumSum (VVar Z), NumSum (VVar Z)) -> Checking ()
-demandConstraint (NumSum c [], NumSum d []) =
- if c == d
- then pure ()
- else typeErr $ show c ++ " != " ++ show d
-demandConstraint (lhs,rhs) = do
-  cs <- req GetConstraints
-  cs <- traverse (\(lhs,rhs) -> (,) <$> numSumUpdate lhs <*> numSumUpdate rhs) cs
-  c@(lhs,rhs) <- (,) <$> numSumUpdate lhs <*> numSumUpdate rhs
-  -- TODO: something smarter, with Gaussian elimination
-  if c `elem` cs
-  then pure ()
-  else Yield (TypeErr $ unlines ["Too stupid to solve",show lhs," =",show rhs]) (AwaitingAny (getEnds lhs <> getEnds rhs)) (\_ -> demandConstraint (lhs, rhs))
- where
-  getEnds :: NumSum (VVar Z) -> S.Set End
-  getEnds ns = foldMap (\case
-                         VPar v -> S.singleton v
-                         VInx _ -> error "Found index in constraint") ns
-
-
 
 -- Called by check when synthesising a function.
 -- Given a row of overs which starts with some function types for the same mode:

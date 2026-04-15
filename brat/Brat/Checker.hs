@@ -1083,20 +1083,6 @@ kindCheckRow' :: forall m n
               -> [TypeRowElem TermConstraint (ThunkRowType m)]
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
-kindCheckRow' my (ny :* s) env node ((Constraint lhs rhs):rest) = do
-  let vc = ParToInx (AddZ ny) s
-  lhs <- changeNumSumVars vc <$> abstractNS lhs
-  rhs <- changeNumSumVars vc <$> abstractNS rhs
-  kindCheckRow' my (ny :* s) env node rest <&> \case
-    (i, env, Some (ez :* ro)) -> (i, env, Some (ez :*  (RCo (lhs, rhs) ro)))
- where
-  abstractNS :: NumSum QualName -> Checking (NumSum (VVar Z))
-  abstractNS ns = localVEnv env $ traverse abstractVar ns
-
-  abstractVar :: QualName -> Checking (VVar Z)
-  abstractVar name = vlup name >>= \case
-    [(src, Left Nat)] -> pure $ VPar (ExEnd (end src))
-    _ -> error "bad abstract"
 
 kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named ('_':show i) ty):rest)
 kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
@@ -1290,7 +1276,6 @@ run ve initStore ns m = do
                 , hopes = M.empty
                 , dynamicSet = M.empty
                 , captureSets = M.empty
-                , constraintStore = []
                 }
   (a,ctx,(holes, graph)) <- handler (localNS ns m) ctx mempty
   let tyMap = typeMap $ store ctx
