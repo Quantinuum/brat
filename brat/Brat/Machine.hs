@@ -3,15 +3,12 @@ module Brat.Machine (runInterpreter) where
 import Brat.Checker.Monad (CaptureSets)
 import Brat.Checker.Types (Store, initStore)
 import Brat.Compiler (compileToGraph)
---import Brat.Compile.Hugr (compileKernel, makeIO, makeCS, addEdge, addNode, CompilationState(hugr), Container(..))
 import Brat.Compile.Hugr
 import Brat.Constructors.Patterns
 import Brat.Naming (Name, Namespace, split)
-import qualified Brat.Naming as Naming
-import Brat.Graph (Graph, NodeType (..), Node (BratNode, KernelNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
+import Brat.Graph (Graph, NodeType (..), Node (BratNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Simple (SimpleTerm(..))
-import Brat.Syntax.Port (OutPort(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 
@@ -28,8 +25,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Bwd
 import Util (zipSameLength)
-
-import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
@@ -128,16 +123,16 @@ run :: GraphInfo -> Bwd Frame -> Task -> Task
 --run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
 
 -- Tasks that push new frames onto the stack to do things
-run gi@(g@(nodes, wires), _, _, _) fz (EvalPort p@(Ex name offset)) = case lookupOutport fz p of
+run gi fz (EvalPort p@(Ex name _)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
     Nothing -> evalNodeInputs gi (fz :< AwaitNodeInputs p) name
-run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
+run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     --nw | trace ("EVALNODE " ++ show nw) False -> undefined
     (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
     (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
     (BratNode Id _ _) -> run gi fz (Finished ins)
     (BratNode (Eval func) _ _) -> run gi (fz :< CallWith ins) (EvalPort func)
-    (BratNode (Box src tgt) [] [(_, VFun Kerny _)]) ->
+    (BratNode (Box _ _) [] [(_, VFun Kerny _)]) ->
         let (sub, newRoot) = split "box" root
             (hugr, splices) = compileKernel (sub, st, g) "box" n
         in evalSplices (g, st, newRoot, cs) fz hugr splices
@@ -147,7 +142,7 @@ run gi@(g@(nodes, _), st, root, cs) fz t@(EvalNode n ins) = case nodes M.! n of
         in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
     (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
     (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
-    (BratNode (Dummy k) _ _) -> run gi fz (Finished [DummyV])
+    (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
     (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
     nw -> run gi fz (StuckOnNode n nw)
 
@@ -164,13 +159,13 @@ run gi (fz :< DoSplices hugr nid rest) (Use v) =
 run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
     let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
     in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
-run gi@(g,st,ns,cs) (fz :< CallWith inputs) (Use (ThunkV (BratPrim ext op cty)))
+run (g,st,ns,cs) (fz :< CallWith inputs) (Use (ThunkV (BratPrim ext op _cty)))
  | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
 
 ---- Finished (list of values)
-run gi (fz :< AwaitNodeInputs req@(Ex name offset)) (Finished inputs) =
+run gi (fz :< AwaitNodeInputs req@(Ex name _)) (Finished inputs) =
     run gi (fz :< SelectFromNodeOutputs req) (EvalNode name inputs)
-run gi (fz :< SelectFromNodeOutputs req@(Ex name offset)) (Finished outputs) =
+run gi (fz :< SelectFromNodeOutputs (Ex name offset)) (Finished outputs) =
     run gi (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
 run gi (B0 :< ReturnTo fz) (Finished vals) = run gi fz (Finished vals)
 
@@ -187,7 +182,7 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
             in run gi (fz :< CallWith vals) (EvalPort $ Ex box 0)
 
 run gi (fz :< BratValues _) t = run gi fz t
-run gi B0 t = t
+run _ B0 t = t
 run gi fz t = run gi fz (Suspend [] t)
 
 runPrim :: Namespace -> (String, String) -> [Value] -> Maybe [Value]
@@ -326,7 +321,7 @@ testCtor CVec CRiffle (VecV vs) = do
  where
   evenOdds :: [a] -> Maybe ([a], [a])
   evenOdds [] = pure ([], [])
-  evenOdds [x] = Nothing
+  evenOdds [_] = Nothing
   evenOdds (x:y:xs) = do
     (evens, odds) <- evenOdds xs
     pure (x:evens, y:odds)

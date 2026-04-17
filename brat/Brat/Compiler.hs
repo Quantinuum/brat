@@ -28,7 +28,6 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
-import qualified Data.Map as M
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
