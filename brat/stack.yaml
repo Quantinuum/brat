@@ -7,3 +7,4 @@ packages:
 
 extra-deps:
 - partial-order-0.2.0.0@sha256:a0d6ddc9ebcfa965a5cbcff1d06d46a79d44ea5a0335c583c2a51bcb41334487,2275
+- tasty-1.5@sha256:8da3f47fff790714f7d676692f1207aac156b41f705c55f14d1d8147a751264b,2787
