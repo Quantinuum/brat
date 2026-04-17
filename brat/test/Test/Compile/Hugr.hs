@@ -10,7 +10,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Silver
 
 prefix = "test/compilation"
 examplesPrefix = "examples"
@@ -37,18 +36,14 @@ nonCompilingExamples = map ((++ ".brat") . ("examples" </>))
   ]
 
 compileToOutput :: FilePath -> TestTree
-compileToOutput file = testCaseInfo (show file) $ compileFile [] file >>= \case
-    Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
-        -- ignore splices for now
-        let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ ".json")
-        -- lots of fun with lazy and even strict bytestrings
-        -- returning many bytes before evaluation has completed
-        BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
-        pure $ "Written to " ++ outFile ++ " pending validation\n")
-    Left (CompilingHoles _) -> pure "Skipped as contains holes"
-
-setupCompilationTests :: IO TestTree
-setupCompilationTests = do
-  tests <- findByExtension [".brat"] prefix
-  createDirectoryIfMissing False outputDir
-  pure $ testGroup "compilation" $ compileToOutput <$> tests
+compileToOutput file = testCaseInfo (show file) $ do
+    createDirectoryIfMissing False outputDir
+    compileFile [] file >>= \case
+        Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do
+            -- ignore splices for now
+            let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ ".json")
+            -- lots of fun with lazy and even strict bytestrings
+            -- returning many bytes before evaluation has completed
+            BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+            pure $ "Written to " ++ outFile ++ " pending validation\n")
+        Left (CompilingHoles _) -> pure "Skipped as contains holes"
