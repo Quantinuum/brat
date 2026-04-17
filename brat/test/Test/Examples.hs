@@ -19,9 +19,8 @@ import Test.Tasty.ExpectedFailure
 
 data Tests = Tests
   { parseTests :: [TestTree]
-  , checkTests :: [TestTree]
+  , checkExecTests :: [TestTree]
   , compileTests :: [TestTree]
-  , executionTests :: [TestTree]
   }
 
 
@@ -34,12 +33,11 @@ interpreterOutputPrefix = "Finished "
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
   paths <- findByExtension [".brat"] "examples"
-  ts <- foldM addTests (Tests [] [] [] []) paths
+  ts <- foldM addTests (Tests [] [] []) paths
   pure $ testGroup "examples" [
       testGroup "parsing" (parseTests ts),
-      testGroup "checking" (checkTests ts),
-      testGroup "compilation" (compileTests ts),
-      testGroup "execution" (executionTests ts)
+      testGroup "check_exec" (checkExecTests ts),
+      testGroup "compilation" (compileTests ts)
     ]
  where
   addTests :: Tests -> FilePath -> IO Tests
@@ -49,15 +47,13 @@ getExamplesTests =  do
             Left err -> assertFailure (show err)
             Right _ -> return () -- OK
         checkTest = parseAndCheck [] path
-        compileTest = compileToOutput path
     in if isPrefixOf "--!xfail-parsing" cts then
       tests { parseTests = (expectFail parseTest):parseTests }
     else if isPrefixOf "--!xfail-checking" cts then
-      tests { parseTests = parseTest:parseTests, checkTests = (expectFail checkTest):checkTests }
-    else if isPrefixOf "--!xfail-compilation" cts then
-      tests { checkTests = checkTest:checkTests, compileTests = (expectFail compileTest):compileTests }
+      tests { parseTests = parseTest:parseTests, checkExecTests = (expectFail checkTest):checkExecTests }
     else
-      let interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
+      let compileTest = if isPrefixOf "--!xfail-compilation" cts then expectFail (compileToOutput path) else compileToOutput path
+          interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
             let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
                 expectedOutput = interpreterOutputPrefix ++ T.unpack (T.drop (T.length execTestPrefix) testLine)
                 -- this repeats/roughly duplicates the logic for "identifiers" in the parser
@@ -66,7 +62,7 @@ getExamplesTests =  do
                 -- this completely recompiles the file for each test, which is pretty bad
                 output <- runInterpreter [] path func_name
                 assertEqual ("Interpreter output for " ++ func_name) expectedOutput (T.unpack output)
-          testsWithCompile = tests {compileTests = compileTest:compileTests }
-        in if length interpreterTests > 0 then
-            testsWithCompile {executionTests = (testGroup path interpreterTests):executionTests}
-          else testsWithCompile
+          checkExecTest = if null interpreterTests
+            then checkTest
+            else sequentialTestGroup path AllSucceed [checkTest, testGroup "execution" interpreterTests]
+        in tests {compileTests = compileTest:compileTests, checkExecTests = checkExecTest:checkExecTests }
