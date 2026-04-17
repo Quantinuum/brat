@@ -21,6 +21,7 @@ import Hasochism
 
 import Control.Monad.State (execState, gets, evalState)
 import qualified Data.ByteString.Lazy as BS
+import Data.ByteString.Lazy.UTF8 (fromString)
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
@@ -32,7 +33,7 @@ import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
-runInterpreter :: [FilePath] -> String -> String -> IO ()
+runInterpreter :: [FilePath] -> String -> String -> IO (BS.ByteString)
 runInterpreter libDirs file runFunc = do
     (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     let venv = M.map fst declEnv
@@ -40,11 +41,9 @@ runInterpreter libDirs file runFunc = do
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
-    case outTask of
-      Finished [(KernelV hugr)] -> do
-        --putStrLn "Final Hugr Graph:"
-        BS.putStr (HG.to_json hugr)
-      _ -> print outTask
+    pure $ case outTask of
+      Finished [(KernelV hugr)] -> HG.to_json hugr
+      _ -> fromString $ show outTask
 
 data Frame where
     BratValues :: EvalEnv -> Frame

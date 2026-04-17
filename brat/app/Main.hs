@@ -1,6 +1,7 @@
 import Brat.Compiler
 import Brat.Machine (runInterpreter)
 
+import qualified Data.ByteString.Lazy as BS
 import Control.Monad (when)
 import Options.Applicative
 
@@ -44,5 +45,5 @@ main = do
   let libDirs = parseLibs libs
   when (dot /= "") $ writeDot libDirs file dot
   if compile then compileAndPrintFile libDirs file
-  else if runFunc /= "" then runInterpreter libDirs file runFunc
+  else if runFunc /= "" then runInterpreter libDirs file runFunc >>= BS.putStr
                         else printDeclsHoles libDirs file
