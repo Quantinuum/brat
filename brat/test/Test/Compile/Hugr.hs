@@ -15,8 +15,8 @@ prefix = "test/compilation"
 examplesPrefix = "examples"
 outputDir = prefix </> "output"
 
-compileToOutput :: FilePath -> TestTree
-compileToOutput file = testCaseInfo (show file) $ do
+compileToOutput :: String -> FilePath -> TestTree
+compileToOutput name file = testCaseInfo name $ do
     createDirectoryIfMissing False outputDir
     compileFile [] file >>= \case
         Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, splices)) -> do

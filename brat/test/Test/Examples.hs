@@ -1,11 +1,10 @@
 module Test.Examples (getExamplesTests) where
 
-import Test.Checking (parseAndCheck)
+import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput)
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
 
-import Control.Monad (foldM)
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.List (isPrefixOf)
@@ -17,13 +16,6 @@ import Test.Tasty.ExpectedFailure
 
 --import Debug.Trace
 
-data Tests = Tests
-  { parseTests :: [TestTree]
-  , checkExecTests :: [TestTree]
-  , compileTests :: [TestTree]
-  }
-
-
 execTestPrefix :: T.Text
 execTestPrefix = T.pack "--!test "
 
@@ -33,36 +25,35 @@ interpreterOutputPrefix = "Finished "
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
   paths <- findByExtension [".brat"] "examples"
-  ts <- foldM addTests (Tests [] [] []) paths
-  pure $ testGroup "examples" [
-      testGroup "parsing" (parseTests ts),
-      testGroup "check_exec" (checkExecTests ts),
-      testGroup "compilation" (compileTests ts)
-    ]
+  testGroup "examples" <$> mapM mkTest paths
  where
-  addTests :: Tests -> FilePath -> IO Tests
-  addTests tests@Tests{..} path = readFile path <&> \cts ->
-    let parseTest = testCase (show path) $ do
+  mkTest :: FilePath -> IO TestTree
+  mkTest path = readFile path <&> \cts ->
+    let parseTest = do
           case parseFile path cts of
             Left err -> assertFailure (show err)
             Right _ -> return () -- OK
-        checkTest = parseAndCheck [] path
+        checkTest = parseAndCheckNamed "checking" [] path
     in if isPrefixOf "--!xfail-parsing" cts then
-      tests { parseTests = (expectFail parseTest):parseTests }
-    else if isPrefixOf "--!xfail-checking" cts then
-      tests { parseTests = parseTest:parseTests, checkExecTests = (expectFail checkTest):checkExecTests }
-    else
-      let compileTest = if isPrefixOf "--!xfail-compilation" cts then expectFail (compileToOutput path) else compileToOutput path
-          interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
-            let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
-                expectedOutput = interpreterOutputPrefix ++ T.unpack (T.drop (T.length execTestPrefix) testLine)
-                -- this repeats/roughly duplicates the logic for "identifiers" in the parser
-                func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
-            in testCase func_name $ do
-                -- this completely recompiles the file for each test, which is pretty bad
-                output <- runInterpreter [] path func_name
-                assertEqual ("Interpreter output for " ++ func_name) expectedOutput (T.unpack output)
-          checkExecTest = if null interpreterTests
-            then checkTest
-            else sequentialTestGroup path AllSucceed [checkTest, testGroup "execution" interpreterTests]
-        in tests {compileTests = compileTest:compileTests, checkExecTests = checkExecTest:checkExecTests }
+      expectFail (testCase (show path) parseTest)
+    else if isPrefixOf "--!xfail-checking" cts then testGroup (show path) [
+        testCase "parsing" parseTest,
+        expectFail checkTest]
+      else
+        let interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
+              let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
+                  expectedOutput = interpreterOutputPrefix ++ T.unpack (T.drop (T.length execTestPrefix) testLine)
+                  -- this repeats/roughly duplicates the logic for "identifiers" in the parser
+                  func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
+              in testCase func_name $ do
+                  -- this completely recompiles the file for each test, which is pretty bad
+                  output <- runInterpreter [] path func_name
+                  expectedOutput @?= (T.unpack output)
+        in case (interpreterTests, isPrefixOf "--!xfail-compilation" cts) of
+          ([], True) -> testGroup (show path) $ [checkTest, expectFail (compileToOutput "compilation" path)]
+          ([], False) -> compileToOutput path path
+          (intTests, xfcomp) ->
+            let compileTest = compileToOutput "compilation" path
+            in sequentialTestGroup path AllSucceed (
+              (if xfcomp then [checkTest, expectFail compileTest] else [compileTest])
+              ++ interpreterTests)
