@@ -6,12 +6,10 @@ import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
 
 import Control.Monad (foldM)
-import Data.ByteString.Lazy (toStrict)
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.List (isPrefixOf)
-import qualified Data.Text as T
-import Data.Text.Encoding (decodeUtf8Lenient)
+import qualified Data.Text.Lazy as T
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Silver
@@ -67,8 +65,7 @@ getExamplesTests =  do
             in testCase func_name $ do
                 -- this completely recompiles the file for each test, which is pretty bad
                 output <- runInterpreter [] path func_name
-                let outputText = T.strip $ decodeUtf8Lenient $ toStrict output
-                assertEqual ("Interpreter output for " ++ func_name) expectedOutput (T.unpack outputText)
+                assertEqual ("Interpreter output for " ++ func_name) expectedOutput (T.unpack output)
           testsWithCompile = tests {compileTests = compileTest:compileTests }
         in if length interpreterTests > 0 then
             testsWithCompile {executionTests = (testGroup path interpreterTests):executionTests}

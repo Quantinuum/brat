@@ -15,13 +15,13 @@ import Brat.Syntax.Port (OutPort(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 
+import Data.Aeson.Text (encodeToLazyText)
 import Data.Hugr
 import qualified Data.HugrGraph as HG
 import Hasochism
 
 import Control.Monad.State (execState, gets, evalState)
-import qualified Data.ByteString.Lazy as BS
-import Data.ByteString.Lazy.UTF8 (fromString)
+import qualified Data.Text.Lazy as T
 import Data.Maybe (fromMaybe, fromJust)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
@@ -33,7 +33,7 @@ import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
-runInterpreter :: [FilePath] -> String -> String -> IO (BS.ByteString)
+runInterpreter :: [FilePath] -> String -> String -> IO T.Text
 runInterpreter libDirs file runFunc = do
     (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     let venv = M.map fst declEnv
@@ -42,8 +42,8 @@ runInterpreter libDirs file runFunc = do
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> HG.to_json hugr
-      _ -> fromString $ show outTask
+      Finished [(KernelV hugr)] -> encodeToLazyText (HG.serialize hugr)
+      _ -> T.pack $ show outTask
 
 data Frame where
     BratValues :: EvalEnv -> Frame

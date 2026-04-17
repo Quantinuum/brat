@@ -119,8 +119,7 @@ library
                        graphviz,
                        aeson,
                        bytestring,
-                       transformers,
-                       utf8-string,
+                       transformers
 
 executable brat
   import:              haskell, ghc-perf, warning-flags
