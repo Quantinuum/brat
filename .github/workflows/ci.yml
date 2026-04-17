@@ -5,10 +5,14 @@ on:
     branches: [ main ]
     paths:
       - "**.hs"
+      - brat/stack.yaml
+      - brat/brat.cabal
   pull_request:
     branches: [ main ]
     paths:
       - "**.hs"
+      - brat/stack.yaml
+      - brat/brat.cabal
 
 env:
   GHC_VERSION: 9.6.4
