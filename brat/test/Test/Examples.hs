@@ -29,17 +29,16 @@ getExamplesTests =  do
  where
   mkTest :: FilePath -> IO TestTree
   mkTest path = readFile path <&> \cts ->
-    let parseTest = do
+    let parseTest = testCase "parsing" $ do
           case parseFile path cts of
             Left err -> assertFailure (show err)
             Right _ -> return () -- OK
         checkTest = parseAndCheckNamed "checking" [] path
     in if isPrefixOf "--!xfail-parsing" cts then
-      expectFail (testCase (show path) parseTest)
-    else if isPrefixOf "--!xfail-checking" cts then testGroup (show path) [
-        testCase "parsing" parseTest,
-        expectFail checkTest]
-      else
+         testGroup (show path) [expectFail parseTest]
+       else if isPrefixOf "--!xfail-checking" cts then
+         testGroup (show path) [parseTest, expectFail checkTest]
+       else
         let interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
               let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
                   expectedOutput = interpreterOutputPrefix ++ T.unpack (T.drop (T.length execTestPrefix) testLine)
@@ -49,11 +48,10 @@ getExamplesTests =  do
                   -- this completely recompiles the file for each test, which is pretty bad
                   output <- runInterpreter [] path func_name
                   expectedOutput @?= (T.unpack output)
-        in case (interpreterTests, isPrefixOf "--!xfail-compilation" cts) of
-          ([], True) -> testGroup (show path) $ [checkTest, expectFail (compileToOutput "compilation" path)]
-          ([], False) -> compileToOutput path path
-          (intTests, xfcomp) ->
-            let compileTest = compileToOutput "compilation" path
-            in sequentialTestGroup path AllSucceed (
-              (if xfcomp then [checkTest, expectFail compileTest] else [compileTest])
-              ++ interpreterTests)
+            compileTest = compileToOutput "compilation" path
+            checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
+              then [checkTest, expectFail compileTest] else [compileTest]
+        in case interpreterTests of
+          [] -> testGroup (show path) checkAndCompile
+          intTests -> sequentialTestGroup path AllSucceed
+              (checkAndCompile ++ [testGroup "execution" interpreterTests])
