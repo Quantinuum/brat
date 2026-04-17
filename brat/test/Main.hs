@@ -2,7 +2,7 @@ import Test.Tasty  (testGroup)
 import Test.Tasty.Silver.Interactive (defaultMain)
 
 import Test.Abstractor
-import Test.Checking
+import Test.Examples
 import Test.Graph
 import Test.Elaboration
 import Test.Failure
@@ -59,7 +59,7 @@ coroT2 = do
 
 main = do
   failureTests  <- getFailureTests
-  checkingTests <- getCheckingTests
+  examplesTests <- getExamplesTests
   graphTests <- getGraphTests
   spliceTests <- getSpliceTests
   let coroTests = testGroup "coroutine"
@@ -68,7 +68,7 @@ main = do
        ]
   defaultMain $ testGroup "All" [graphTests
                                 ,failureTests
-                                ,checkingTests
+                                ,examplesTests
                                 ,letTests
                                 ,libDirTests
                                 ,nameTests
