@@ -175,6 +175,7 @@ quoteRo m ga (REx pk r) lvy = do
   (ga, Some (r :* lvy)) <- quoteRo m (ga :<< semLvl lvy) r (Sy lvy)
   pure (ga, Some (REx pk r :* lvy))
 
+-- Maintains NumSum invariants through use of (<>)
 numSumEval :: forall n. Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
 numSumEval ga (NumSum c vs) = (NumSum c [] <>) . mconcat <$> traverse aux vs
  where

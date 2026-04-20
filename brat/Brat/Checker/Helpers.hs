@@ -534,13 +534,16 @@ makeHalf (ExEnd e) = do
   pure (toEnd halveOut)
 
 makePred :: End -> Checking End
-makePred (InEnd e) = do
-  (succIn, succOut) <- buildAdd 1
+makePred = makeSub 1
+
+makeSub :: Integer -> End -> Checking End
+makeSub n (InEnd e) = do
+  (succIn, succOut) <- buildAdd n
   req (Wire (end succOut, TNat, e))
   defineTgt' "Helpers"(NamedPort e "") (VNum (nVar (VPar (toEnd succOut))))
   pure (toEnd succIn)
-makePred (ExEnd e) = do
-  (predIn, predOut) <- buildSub 1
+makeSub n (ExEnd e) = do
+  (predIn, predOut) <- buildSub n
   req (Wire (e, TNat, end predIn))
   defineSrc (NamedPort e "") (VNum (nVar (VPar (toEnd predIn))))
   pure (toEnd predOut)

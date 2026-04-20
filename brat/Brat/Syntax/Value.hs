@@ -28,6 +28,7 @@ import Brat.Syntax.Common
 import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
+import Util (log2)
 
 import Data.List (intercalate, minimumBy)
 import Data.Ord (comparing)
@@ -666,10 +667,10 @@ instance DepEnds (Ro m i j) where
 instance DepEnds (CTy m n) where
   depEnds (ss :->> ts) = depEnds ss ++ depEnds ts
 
--- number plus sum over a sequence of (variable/Full * number), ordered
+-- number plus sum over a sequence of (variable/Full * number), ordered and distinct
 -- All Integers positive, all multipliers strictly so
 data NumSum var = NumSum Integer [(Monotone var, Integer)]
-  deriving (Eq, Foldable, Functor, Traversable)
+  deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show var => Show (NumSum var) where
   show (NumSum i vars) = let const = case (i == 0, null vars) of
@@ -712,3 +713,22 @@ nv_to_sum (NumValue up grow) = NumSum up $ case grow of
 
 nvs_to_sum :: Ord var => [NumVal var] -> NumSum var
 nvs_to_sum = foldMap nv_to_sum
+
+numSumToNum :: NumSum var -> Maybe (NumVal var)
+numSumToNum (NumSum c []) = Just (nConstant c)
+numSumToNum (NumSum c [(mono, n)])
+ | Just k <- log2 n = Just $ NumValue c (StrictMonoFun $ StrictMono k mono)
+numSumToNum _ = Nothing
+
+instance DepEnds v => DepEnds (StrictMono v) where
+  depEnds (StrictMono _ v) = depEnds v
+
+instance DepEnds v => DepEnds (Monotone v) where
+  depEnds (Linear v) = depEnds v
+  depEnds (Full sm) = depEnds sm
+
+instance DepEnds (NumSum (VVar Z)) where
+  depEnds (NumSum _ vs) = concat [depEnds v | (v,_) <- vs]
+
+instance (DepEnds a, DepEnds b) => DepEnds (a, b) where
+  depEnds (a, b) = depEnds a ++ depEnds b

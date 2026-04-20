@@ -65,6 +65,7 @@ library
                        Brat.Checker.Helpers,
                        Brat.Checker.Helpers.Nodes,
                        Brat.Checker.Monad,
+                       Brat.Checker.SolveConstraints,
                        Brat.Checker.SolveHoles,
                        Brat.Checker.SolveNumbers,
                        Brat.Checker.SolvePatterns,

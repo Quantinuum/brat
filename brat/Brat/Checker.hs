@@ -13,13 +13,14 @@ module Brat.Checker (checkBody
 import Control.Monad (foldM, forM, zipWithM_)
 import Control.Monad.Freer
 import Data.Bifunctor
-import Data.Foldable (for_)
+import Data.Foldable (for_, traverse_)
 import Data.Functor (($>), (<&>))
 import Data.List ((\\), intercalate)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
@@ -27,6 +28,7 @@ import Prelude hiding (filter)
 import Brat.Checker.Helpers
 import Brat.Checker.Monad
 import Brat.Checker.Quantity
+import Brat.Checker.SolveConstraints (fulbournConstraint, simplify)
 import Brat.Checker.SolveHoles (typeEq)
 import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd)
 import Brat.Checker.Types
@@ -233,6 +235,11 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
           let srcMap = fromJust $ zipSameLength (fst <$> usedOvers) (fst <$> fakeOvers)
           let fakeProblem = [ (fromJust (lookup src srcMap), pat) | (src, pat) <- problem ]
           fakeEnv <- localFC abstFC $ solve ?my fakeProblem >>= (solToEnv . snd)
+          case ?my of
+            Braty -> do
+              constraints <- constraintsFromEnv (concat . M.elems $ fakeEnv)
+              traverse_ fulbournConstraint constraints
+            _ -> pure ()
           pure (fakeEnv, fakeAcc)
         localEnv fakeEnv $ do
           (_, fakeUnders, [], _) <- anext "lambda_fake_target" Hypo fakeAcc outs R0
@@ -710,24 +717,35 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
   (Braty, Right eqn@(VEqn lhs rhs)) -> do
-    CtxEnv _ locals <- req AskVEnv
-    constraints <- constraintsFromEnv (concat (M.elems locals))
-    traceM ("Env: " ++ show locals)
-    traceM ("We've got:\n  " ++ show constraints)
-    lhs <- numSumUpdate lhs
-    rhs <- numSumUpdate rhs
-    traceM ("We want:\n  " ++ show lhs ++ " = " ++ show rhs)
-    typeErr "Stuck"
+    mkFork "SolveHopedConstraint" $ solveConstraint ident tgt (lhs, rhs)
+    pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things or equations with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
 check' tm _ = error $ "check' " ++ show tm
+
+solveConstraint :: String -> Tgt -> (NumSum (VVar Z), NumSum (VVar Z))
+                -> Checking ()
+solveConstraint ident tgt (lhs,rhs) = do
+  CtxEnv _ locals <- req AskVEnv
+  constraints <- constraintsFromEnv (concat (M.elems locals))
+  lhs <- numSumUpdate lhs
+  rhs <- numSumUpdate rhs
+  let eqSimp@(lhsSimp, rhsSimp) = simplify (lhs, rhs)
+  if eqSimp `elem` ((NumSum 0 [], NumSum 0 []):constraints)
+  then defineTgt' ident tgt (VEqn lhsSimp rhsSimp)
+  else do
+   mkFork "" $ fulbournConstraint eqSimp
+   mkYield (WaitingForConstraint (show eqSimp)) ident (S.fromList $ depEnds eqSimp)
+   solveConstraint ident tgt eqSimp
+
 
 constraintsFromEnv :: [(a, BinderType Brat)] -> Checking [(NumSum (VVar Z), NumSum (VVar Z))]
 constraintsFromEnv [] = pure []
 constraintsFromEnv ((_, Right (VEqn lhs rhs)):overs) = do
   lhs <- numSumUpdate lhs
   rhs <- numSumUpdate rhs
-  ((lhs, rhs):) <$> constraintsFromEnv overs
+  let eqn = simplify (lhs, rhs)
+  (eqn:) <$> constraintsFromEnv overs
 constraintsFromEnv (_:xs) = constraintsFromEnv xs
 
 
@@ -766,6 +784,7 @@ checkClause my fnName cty clause = modily my $ do
       Braty -> do
         (sol, defs) <- postProcessSolAndOuts sol unders
         constraints <- constraintsFromEnv (second snd <$> sol)
+        traverse fulbournConstraint constraints
         traceM ("We've got (checkClause):\n  " ++ show constraints)
         pure (sol, defs)
 

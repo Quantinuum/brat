@@ -1,4 +1,4 @@
-module Brat.Checker.SolveNumbers (unifyNum) where
+module Brat.Checker.SolveNumbers (unifyNum, demandAtLeast) where
 
 import Brat.Checker.Monad
 import Brat.Checker.Helpers
@@ -135,7 +135,7 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
     = lhsFun00 (StrictMonoFun sm) (NumValue 0 (StrictMonoFun sm'))
   lhsMono m@(Full _) (NumValue 0 gro) = trail "lhsMono swaps" $ lhsFun00 gro (NumValue 0 (StrictMonoFun (StrictMono 0 m)))
   lhsMono (Full sm) (NumValue up gro) = do
-    smPred <- traceChecking "lhsMono demandSucc" demandSucc (NumValue 0 (StrictMonoFun sm))
+    smPred <- traceChecking "lhsMono demandSucc" (demandSucc mine) (NumValue 0 (StrictMonoFun sm))
     _ <- numEval S0 sm
     -- trailM $ "succ now " ++ show (quoteNum Zy sm)
     unifyNum mine (n2PowTimes 1 (nFull smPred)) (NumValue (up - 1) gro)
@@ -152,34 +152,6 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
     _ -> err . UnificationError $ "Couldn't force " ++ show n ++ " to be 0"
   demand0 n = err . UnificationError $ "Couldn't force " ++ show n ++ " to be 0"
 
-  -- Complain if a number isn't a successor, else return its predecessor
-  demandSucc :: NumVal (VVar Z) -> Checking (NumVal (VVar Z))
-      --   2^k * x
-      -- = 2^k * (y + 1)
-      -- = 2^k + 2^k * y
-      -- Hence, the predecessor is (2^k - 1) + (2^k * y)
-  demandSucc (NumValue k x) | k > 0 = pure (NumValue (k - 1) x)
-  demandSucc (NumValue 0 (StrictMonoFun (mono@(StrictMono k (Linear (VPar e))))))
-    | Just loc <- mine e = do
-      pred <- loc -! traceChecking "makePred" makePred e
-      pure (nPlus ((2^k) - 1) (nVar (VPar pred)))
-
-  --   2^k * full(n + 1)
-  -- = 2^k * (1 + 2 * full(n))
-  -- = 2^k + 2^(k + 1) * full(n)
-
-    | otherwise = do
-      mkYield (NeedToKnow e) "demandSucc" (S.singleton e)
-      nv <- quoteNum Zy <$> numEval S0 mono
-      demandSucc nv
-
-  -- if it's not "mine" should we wait?
-  demandSucc (NumValue 0 (StrictMonoFun (StrictMono k (Full nPlus1)))) = do
-    n <- traceChecking "demandSucc" demandSucc (NumValue 0 (StrictMonoFun nPlus1))
-    -- foo <- numEval S0 x
-    -- trailM $ "ds: " ++ show x ++ " -> " ++ show (quoteNum Zy foo)
-    pure $ nPlus ((2 ^ k) - 1) $ n2PowTimes (k + 1) $ nFull n
-  demandSucc n = err . UnificationError $ "Couldn't force " ++ show n ++ " to be a successor"
 
   -- Complain if a number isn't even, otherwise return half
   demandEven :: NumVal (VVar Z) -> Checking (NumVal (VVar Z))
@@ -205,5 +177,41 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
     -- Check a numval is odd, and return its rounded down half
     oddGro :: NumVal (VVar Z) -> Checking (NumVal (VVar Z))
     oddGro x = do
-     pred <- demandSucc x
+     pred <- demandSucc mine x
      demandEven pred
+
+-- Complain if a number isn't a successor, else return its predecessor
+demandSucc :: (End -> Maybe String) -> NumVal (VVar Z) -> Checking (NumVal (VVar Z))
+    --   2^k * x
+    -- = 2^k * (y + 1)
+    -- = 2^k + 2^k * y
+    -- Hence, the predecessor is (2^k - 1) + (2^k * y)
+demandSucc _ (NumValue k x) | k > 0 = pure (NumValue (k - 1) x)
+demandSucc mine (NumValue 0 (StrictMonoFun (mono@(StrictMono k (Linear (VPar e))))))
+  | Just loc <- mine e = do
+    pred <- loc -! traceChecking "makePred" makePred e
+    pure (nPlus ((2^k) - 1) (nVar (VPar pred)))
+
+--   2^k * full(n + 1)
+-- = 2^k * (1 + 2 * full(n))
+-- = 2^k + 2^(k + 1) * full(n)
+
+  | otherwise = do
+    mkYield (NeedToKnow e) "demandSucc" (S.singleton e)
+    nv <- quoteNum Zy <$> numEval S0 mono
+    demandSucc mine nv
+
+-- if it's not "mine" should we wait?
+demandSucc mine (NumValue 0 (StrictMonoFun (StrictMono k (Full nPlus1)))) = do
+  n <- traceChecking "demandSucc" (demandSucc mine) (NumValue 0 (StrictMonoFun nPlus1))
+  -- foo <- numEval S0 x
+  -- trailM $ "ds: " ++ show x ++ " -> " ++ show (quoteNum Zy foo)
+  pure $ nPlus ((2 ^ k) - 1) $ n2PowTimes (k + 1) $ nFull n
+demandSucc _ n = err . UnificationError $ "Couldn't force " ++ show n ++ " to be a successor"
+
+demandAtLeast :: Integer -> NumVal (VVar Z) -> Checking ()
+demandAtLeast 0 _ = pure ()
+demandAtLeast n nv = do
+  mine <- mineToSolve
+  nv <- demandSucc mine nv
+  demandAtLeast (n - 1) nv
