@@ -48,7 +48,7 @@ import Brat.Syntax.Simple
 import Brat.Syntax.Value
 import Bwd
 import Hasochism
-import Util (zipSameLength)
+import Util (log2, zipSameLength)
 
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
@@ -1040,8 +1040,87 @@ kindCheck ((hungry, Nat):unders) (Con c arg)
      defineTgt' "kind8" hungry v
      pure ([v], unders)
 
+kindCheck ((hungry, Star []):unders) (Eqn (WC lwc lhs) (WC rwc rhs)) = do
+  -- Should we make a new `NodeType` for this?
+  (_, [(lunder,_),(runder,_)], [(dangling,_)], _) <- next "Eq" Hypo (S0, Some (Zy :* S0))
+                                                        (REx ("lhs", Nat) (REx ("rhs", Nat) R0))
+                                                        (REx ("out", Star []) R0)
+  lns <- localFC lwc $ kindCheckNumSum lunder lhs
+  rns <- localFC rwc $ kindCheckNumSum runder rhs
+  wire (dangling, TUnit, hungry)
+  pure ([VEqn lns rns], unders)
 kindCheck ((_, k):_) tm = typeErr $ "Expected " ++ show tm ++ " to have kind " ++ show k
 
+
+-- N.B. We're not really doing any defining that would be useful for the
+-- typechecker yet. The obvious defining isn't possible because NumSum is not a
+-- `Val`.
+kindCheckNumSum :: Tgt -- Nat kinded tgt to wire numsum to
+                -> Term Chk Noun -- The term to turn into a numsum
+                -> Checking (NumSum (VVar Z))
+kindCheckNumSum hungry (Arith op (WC lwc lhs) (WC rwc rhs)) = do
+  (_, [(lunder,_),(runder,_)], [(dangling, _)], _) <- next (show op ++ "NS") (ArithNode op)
+                                                      (S0, Some (Zy :* S0))
+                                                      (REx ("lhs", Nat) (REx ("rhs", Nat) R0))
+                                                      (REx ("out", Nat) R0)
+
+  ns <- case op of
+    Add -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      pure (lns <> rns)
+    Mul -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case (lns, rns) of
+        (NumSum c [], _) -> let ns = multNumSum rns c in ns <$ wire (dangling, TNat, hungry)
+        (_, NumSum c []) -> let ns = multNumSum lns c in ns <$ wire (dangling, TNat, hungry)
+        _ -> localFC eqFC $ typeErr "Constraint too complicated: must be between sums"
+    Sub -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case numSumSub lns rns of
+        Just ns -> ns <$ wire (dangling, TNat, hungry)
+        Nothing -> localFC rwc $ typeErr "Subtraction too complicated"
+    Pow -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case (lns, rns) of
+        (NumSum n [], rns)
+         | Just k <- log2 n, Just nv <- sumToVal rns -> pure (nv_to_sum (powN k nv))
+        _ -> localFC eqFC $ typeErr "Power too confusing"
+
+    Div -> localFC eqFC $ typeErr "Won't handle division in equations"
+  wire (dangling, TNat, hungry)
+  pure ns
+ where
+  eqFC = spanFC lwc rwc
+
+  -- Take 2^n
+  powN :: Integer -> NumVal v -> NumVal v
+  powN 0 nv = nv
+  powN k nv = powN (k - 1) (nPlus 1 (nFull nv))
+
+  numSumSub :: NumSum (VVar Z) -> NumSum (VVar Z) -> Maybe (NumSum (VVar Z))
+  numSumSub (NumSum c vs) (NumSum d ws) | c >= d = NumSum (c-d) <$> aux vs ws
+   where
+    -- blah blah O(n^2)
+    aux :: [(Monotone (VVar Z), Integer)] -> [(Monotone (VVar Z), Integer)]
+        -> Maybe [(Monotone (VVar Z), Integer)]
+    aux monos [] = Just monos
+    aux monos ((v, n):vs) = case [ m | (w, m) <- monos, w == v ] of
+      [m] | m >= n -> ((v, m - n):) <$> aux monos vs
+      [] -> Nothing
+
+  sumToVal :: NumSum v -> Maybe (NumVal v)
+  sumToVal (NumSum up [(n, k)]) | Just l <- log2 k = Just $ nPlus up (n2PowTimes l (numValue n))
+  sumToVal _ = Nothing
+
+kindCheckNumSum under tm = do
+  ([val], []) <- kindCheck [(under, Nat)] tm
+  case val of
+    VNum nv -> let ns = nv_to_sum nv in pure ns -- TODO: Wiring
+    x -> error $ "Didn't expect: " ++ show x
 
 -- Checks the kinds of the types in a dependent row
 kindCheckRow :: Modey m
