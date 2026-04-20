@@ -19,7 +19,6 @@ import Brat.QualName (QualName)
 import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
 import Brat.Syntax.Value (Val(VFun))
 
-
 import Control.Exception (evaluate)
 import Control.Monad (forM, when)
 import Control.Monad.Except
@@ -27,6 +26,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
+import Data.Traversable (for)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import System.Exit (die)
 
@@ -96,20 +96,19 @@ compileFile libDirs file = do
   (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   let venv = M.map fst declEnv
   case holes of
-    [] -> do
-      box_decls <- concat <$> forM (M.keys declEnv) (findBoxes venv outerGraph)
-      Right <$> (evaluate -- turns 'error' into IO 'die'
+    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
+          in Right <$> (evaluate -- turns 'error' into IO 'die'
             $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)
  where
-  findBoxes :: VEnv -> Graph -> QualName -> IO [Name]
+  findBoxes :: VEnv -> Graph -> QualName -> [Name]
   findBoxes venv (ns, es) name = case M.lookup name venv of
-        Nothing -> (putStrLn $ (show name) ++ ".... not found in VEnv") >> pure []
-        Just vals -> concat <$> (forM vals $ \(NamedPort (Ex n _) _, _) -> -- so, this returns IO [Name]
+        Nothing -> error $ (show name) ++ ".... not found in VEnv"
+        Just vals -> concat (for vals $ \(NamedPort (Ex n _) _, _) -> -- so, this returns [Name]
           case M.lookup n ns of
             Just (BratNode Id _ _) ->
-               pure [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
-            _ -> (putStrLn $ (show n) ++ ".... not an Id node") >> pure [])
+               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
+            _ -> [])
   isKernelBox :: Name -> M.Map Name Node -> Bool
   isKernelBox name ns = case M.lookup name ns of
     Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) -> True
