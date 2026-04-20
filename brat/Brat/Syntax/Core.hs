@@ -74,6 +74,7 @@ data Term :: Dir -> Kind -> Type where
   K        :: CType' (TypeRowElem TermConstraint (Term Chk Noun)) -> Term Chk Noun
   FanOut   :: Term Syn UVerb
   FanIn    :: Term Chk UVerb
+  Eqn      :: WC (Term Chk Noun) -> WC (Term Chk Noun) -> Term Chk Noun
 
 -- deriving instance Eq (Term d k)
 

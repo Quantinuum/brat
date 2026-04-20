@@ -151,6 +151,7 @@ data Val :: N -> Type where
   VLam :: Val (S n) -> Val n -- Just body (binds DeBruijn index n)
   VFun :: MODEY m => Modey m -> CTy m n -> Val n
   VApp :: VVar n -> Bwd (Val n) -> Val n
+  VEqn :: NumSum (VVar n) -> NumSum (VVar n) -> Val n
 
 -- Define a naive version of equality, which only says whether the data
 -- structures are on-the-nose equal
@@ -191,6 +192,7 @@ data Sem where
   SApp :: SVar -> Bwd Sem -> Sem
   -- Sum types, stash like SLam (shared between all variants)
   SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+  SEqn :: NumSum SVar -> NumSum SVar -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -241,6 +243,7 @@ instance Show (Val n) where
   show (VFun m cty) = "{ " ++ modily m (show cty) ++ " }"
   show (VApp v ctx) = "VApp " ++ show v ++ " " ++ show ctx
   show (VLam body) = "VLam " ++ show body
+  show (VEqn lhs rhs) = show lhs ++ " = " ++ show rhs
 
 ---------------------------------- Patterns -----------------------------------
 pattern TNat, TInt, TFloat, TBool, TText, TUnit, TNil :: Val n
@@ -538,6 +541,8 @@ instance DeBruijn Val where
     = VFun Braty $ changeVar vc cty
   changeVar vc (VFun Kerny cty)
     = VFun Kerny $ changeVar vc cty
+  changeVar vc (VEqn lhs rhs)
+    = VEqn (changeVar vc <$> lhs) (changeVar vc <$> rhs)
 
 varChangerThroughRo :: VarChanger src tgt
                     -> Ro m src src'
@@ -628,6 +633,10 @@ numVars nv = [e | VPar e <- vvars nv]
 class DepEnds t where
   depEnds :: t -> [End]
 
+instance DepEnds (VVar n) where
+  depEnds (VPar e) = [e]
+  depEnds _ = []
+
 instance DepEnds (NumVal (VVar n)) where
   depEnds nv = [e | VPar e <- vvars nv]
    where
@@ -641,6 +650,7 @@ instance DepEnds (Val n) where
   depEnds (VFun _ cty) = depEnds cty
   depEnds (VApp (VPar e) args) = e : depEnds args
   depEnds (VApp _ args) = depEnds args
+  depEnds (VEqn lhs rhs) = (foldMap depEnds lhs) ++ (foldMap depEnds rhs)
 
 instance DepEnds t => DepEnds [t] where
   depEnds = concatMap depEnds

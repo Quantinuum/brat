@@ -97,15 +97,13 @@ instance TestEquality Modey where
 
 -- This is double parameterised because Constraints are parsed as if they're terms
 -- and require some extra elaboration
-data TypeRowElem expr ty = Named PortName ty | Anon ty | Constraint expr expr
+data TypeRowElem expr ty = Named PortName ty | Anon ty
  deriving (Functor, Foldable, Traversable)
 
 instance Bifunctor TypeRowElem where
-  first f (Constraint a b) = Constraint (f a) (f b)
   first _ (Named p ty) = Named p ty
   first _ (Anon ty) = Anon ty
 
-  second _ (Constraint a b) = Constraint a b
   second f (Named p ty) = Named p (f ty)
   second f (Anon ty) = Anon (f ty)
 
@@ -114,7 +112,6 @@ type TypeRow expr ty = [TypeRowElem expr ty]
 forgetPortName :: TypeRowElem expr ty -> Either (expr,expr) ty
 forgetPortName (Anon ty) = Right ty
 forgetPortName (Named _ ty) = Right ty
-forgetPortName (Constraint lhs rhs) = Left (lhs,rhs)
 
 toTypeRow :: [(String, ty)] -> TypeRow expr ty
 toTypeRow = fmap (uncurry Named)
@@ -122,7 +119,6 @@ toTypeRow = fmap (uncurry Named)
 instance (Show ty, Show expr) => Show (TypeRowElem expr ty) where
   show (Named p ty) = p ++ " :: " ++ show ty
   show (Anon ty) = show ty
-  show (Constraint a b) = show a ++ " = " ++ show b
 
 {-
 instance Eq ty => Eq (TypeRowElem ty) where
@@ -219,7 +215,7 @@ instance Show Import where
     showSelection (ImportPartial fns) = "(":(unWC <$> fns) ++ [")"]
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
-showSig :: (Show con, Show ty) => [TypeRowElem con ty] -> String
+showSig :: (Show ty) => [TypeRowElem con ty] -> String
 showSig [] = "()"
 showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) | x <- tl])
  where
@@ -227,7 +223,6 @@ showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) |
 
   showElem (Anon ty) = [",", show ty]
   showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
-  showElem (Constraint a b) = [" |", show a, "=", show b]
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
 showRow = parens . intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])

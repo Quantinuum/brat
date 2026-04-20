@@ -50,4 +50,5 @@ data Flat
  | FFanIn
  | FIdentity
  | FOf ({- number :: -}WC Flat) {- of -} ({- expr -}WC Flat)
+ | FEqn (WC Flat) (WC Flat)
  deriving Show

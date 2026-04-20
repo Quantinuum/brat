@@ -196,9 +196,12 @@ elaborate' FIdentity = pure $ SomeRaw' RIdentity
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
+elaborate' (FEqn lhs rhs) = do
+  lhs <- elaborateChkNoun lhs
+  rhs <- elaborateChkNoun rhs
+  pure $ SomeRaw' (REqn lhs rhs)
 
 elabRowConstraint :: TypeRowElem (WC Flat) ty -> Either Error (TypeRowElem (WC RawVType) ty)
-elabRowConstraint (Constraint e0 e1) = Constraint <$> elaborateChkNoun e0 <*> elaborateChkNoun e1
 elabRowConstraint (Anon ty) = pure $ Anon ty
 elabRowConstraint (Named p ty) = pure $ Named p ty
 
@@ -219,7 +222,6 @@ instance Elaborable t => Elaborable (KindOr t) where
 elabSigElem :: Elaborable t
             => TypeRowElem (WC Flat) (WC t)
             -> Either Error (TypeRowElem (WC RawVType) (WC (Elaborated t)))
-elabSigElem (Constraint e0 e1) = Constraint <$> elaborateChkNoun e0 <*> elaborateChkNoun e1
 elabSigElem (Anon ty) = Anon <$> elab ty
 elabSigElem (Named p ty) = Named p <$> elab ty
 

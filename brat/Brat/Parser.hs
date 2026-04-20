@@ -263,7 +263,14 @@ typekind = try (fmap (const Nat) <$> matchFC Hash) <|> kindHelper Lexer.Dollar S
     (p,) . unWC <$> typekind
 
 vtype :: Parser (WC Flat)
-vtype = expr' PApp
+vtype = try constraint <|> expr' PApp
+ where
+  constraint :: Parser (WC Flat)
+  constraint = do
+    lhs <- expr' PAddSub
+    match Equal
+    rhs <- expr' PAddSub
+    pure (WC (spanFCOf lhs rhs) (FEqn lhs rhs))
 
 -- Parse a row of type and kind parameters
 -- N.B. kinds must be named
@@ -275,18 +282,7 @@ flatIO = rowElem `sepBy` void (try comma)
   rowElem = try (inBrackets Paren rowElem') <|> rowElem'
 
   rowElem' :: Parser FlatIO
-  rowElem' = constraint <|> try namedKind <|> try namedType <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> vtype)
-
-  -- The introduction of a constraint is signalled by a `|`, followed by
-  -- `<expr> = <expr>`. We'll check the `<expr>`s are valid arithmetic
-  -- expressions during elaboration.
-  constraint :: Parser FlatIO
-  constraint = do
-    match Pipe
-    lhs <- expr' PAddSub
-    match Equal
-    rhs <- expr' PAddSub
-    pure $ Constraint lhs rhs
+  rowElem' = try namedKind <|> try namedType <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> vtype)
 
   namedType :: Parser FlatIO
   namedType = do
