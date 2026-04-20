@@ -46,7 +46,9 @@ getExamplesTests =  do
                   restLine = fromJust $ T.stripPrefix execTestPrefix testLine
                   (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of
                     Just out -> (True, out)
-                    Nothing -> (False, restLine) -- assume begins with space, will be removed here:
+                    Nothing -> case T.stripPrefix (T.pack " ") restLine of
+                      Just out -> (False, out)
+                      Nothing -> error "Invalid test line, should start with '--!exec[-xfail] '"
                   expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip eOut)
                   -- this repeats/roughly duplicates the logic for "identifiers" in the parser
                   func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)

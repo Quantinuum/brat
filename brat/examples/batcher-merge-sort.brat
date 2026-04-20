@@ -26,6 +26,7 @@ merge(succ(n), xs0 =%= xs1, ys0 =%= ys1)
 -- or even:
 -- = merge(n, xs0, ys0) =%= merge(n, xs1, ys1) |>
 --   (zs => fixOffBy1(n, zs))
+-- but the elaborator doesn't synthesize the type of the list before fixOffBy1
 
 
 -- Example of how to write with vectorising `of`
@@ -33,3 +34,7 @@ fixOffBy1(n :: #, Vec(Nat, 2^(n + 1))) -> Vec(Nat, 2^(n + 1))
 fixOffBy1(n, lo ,- (mid0 =%= mid1) -, hi) =
   let mid0', mid1' = (full(n) of cas)(mid0, mid1)
   in  lo ,- (mid0' =%= mid1') -, hi
+
+--!exec-xfail [[2,3,4,5,6,7,11,12]]
+test_merge :: Vec(Nat, 8)
+test_merge = merge(2, [2,5,7,11], [3, 4, 6, 12])

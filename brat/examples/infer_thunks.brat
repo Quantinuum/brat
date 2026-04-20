@@ -7,5 +7,6 @@ map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
 map(_, _, _, []) = []
 map(X, Y, f, x ,- xs) = f(x) ,- map(X, Y, f, xs)
 
+--!exec-xfail [[5.0]]
 test :: List(Float)
 test = map(!, !, {f => f(5)}, [to_float])
