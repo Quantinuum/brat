@@ -3,14 +3,23 @@ isfull(succ(doub(n))) = isfull(n)
 isfull(0) = true
 isfull(_) = false
 
+--!exec [False]
+is5full :: Bool
+is5full = isfull(5)
+
 hasfulllen(n :: #, Vec(Bool, n)) -> Bool
 hasfulllen(n, x ,- (xs =,= ys)) = hasfulllen(!, xs)
 hasfulllen(_, []) = true
 hasfulllen(_, _) = false
 
+--!exec [True]
+hasfulllen3 :: Bool
+hasfulllen3 = hasfulllen(!, [false, false, false])
+
 eatsodd(n :: #, xs :: Vec(Bool, succ(doub(n)))) -> Nat
 eatsodd(n, _) = n
 mkotwo' :: Nat
 mkotwo' = eatsodd(2, [false,false,false,false,false])
+
 mkotwo :: Nat
 mkotwo = eatsodd(!, [false,false,false,false,false])
