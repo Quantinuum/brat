@@ -28,6 +28,8 @@ import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
 
+import Debug.Trace
+
 -- Refine clauses from function definitions (and potentially future case statements)
 -- by processing each one in sequence. This will involve repeating tests for various
 -- branches, the removal of which is a future optimisation.
@@ -72,19 +74,18 @@ solve my ((src, DontCare):p) = do
     Braty -> do
       ty <- typeOfSrc Braty src
       (tests, sol) <- solve my p
-      case ty of
-        Right _ -> pure (tests, sol)
-        -- Kinded things might be used to solve hopes. We pass them through so
-        -- that we can do the proper wiring in this case.
-        -- N.B. When we automatically create a variable name, we add `'`
-        -- characters to the later instances in the row to avoid name collisions.
-        Left k -> let newName = '_':portName src
-                      bump x = if newName `isPrefixOf` x then x ++ "'" else x
-                  in  pure (tests, (newName, (src, ty)):(first bump <$> sol))
+      -- Kinded things might be used to solve hopes. We pass them through so
+      -- that we can do the proper wiring in this case.
+      -- N.B. When we automatically create a variable name, we add `'`
+      -- characters to the later instances in the row to avoid name collisions.
+      let newName = '_':portName src
+      let bump x = if newName `isPrefixOf` x then x ++ "'" else x
+      traceM ("Adding " ++ newName ++ " :: " ++ show ty)
+      pure (tests, (newName, (src, ty)):(first bump <$> sol))
 solve my ((src, Bind x):p) = do
-  ty <- typeOfSrc my src
+  ty <- typeOfSrc my src -- TODO: Check if VEqn
   (tests, sol) <- solve my p
-  pure (tests, (x, (src, ty)):sol)
+  pure (tests, (x, (src, ty)):sol) --
 solve my ((src, Lit tm):p) = do
   ty <- typeOfSrc my src
   -- let's just check the literal is ok at this type, and maybe learn a number

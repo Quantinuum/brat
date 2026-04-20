@@ -50,6 +50,8 @@ import Bwd
 import Hasochism
 import Util (log2, zipSameLength)
 
+import Debug.Trace
+
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
 standardise :: TypeKind -> Val Z -> Checking (Val Z)
@@ -707,9 +709,26 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
     req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
-  (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
+  (Braty, Right eqn@(VEqn lhs rhs)) -> do
+    CtxEnv _ locals <- req AskVEnv
+    constraints <- constraintsFromEnv (concat (M.elems locals))
+    traceM ("Env: " ++ show locals)
+    traceM ("We've got:\n  " ++ show constraints)
+    lhs <- numSumUpdate lhs
+    rhs <- numSumUpdate rhs
+    traceM ("We want:\n  " ++ show lhs ++ " = " ++ show rhs)
+    typeErr "Stuck"
+  (Braty, Right _ty) -> typeErr "Can only infer kinded things or equations with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
 check' tm _ = error $ "check' " ++ show tm
+
+constraintsFromEnv :: [(a, BinderType Brat)] -> Checking [(NumSum (VVar Z), NumSum (VVar Z))]
+constraintsFromEnv [] = pure []
+constraintsFromEnv ((_, Right (VEqn lhs rhs)):overs) = do
+  lhs <- numSumUpdate lhs
+  rhs <- numSumUpdate rhs
+  ((lhs, rhs):) <$> constraintsFromEnv overs
+constraintsFromEnv (_:xs) = constraintsFromEnv xs
 
 
 -- Clauses from either function definitions or case statements, as we get
@@ -744,7 +763,12 @@ checkClause my fnName cty clause = modily my $ do
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
     (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
-      Braty -> postProcessSolAndOuts sol unders
+      Braty -> do
+        (sol, defs) <- postProcessSolAndOuts sol unders
+        constraints <- constraintsFromEnv (second snd <$> sol)
+        traceM ("We've got (checkClause):\n  " ++ show constraints)
+        pure (sol, defs)
+
       Kerny -> pure (sol, [])
     -- The solution gives us the variables bound by the patterns.
     -- We turn them into a row
@@ -789,7 +813,8 @@ checkClause my fnName cty clause = modily my $ do
   (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
-  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)]
+                        -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
    where
     worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
