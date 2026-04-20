@@ -4,3 +4,16 @@ if(_, false, _, else) = else()
 
 test(Bool) -> Nat
 test(b) = if(Nat, b, { => 4 }, { => 12 })
+
+--!exec [4]
+t :: Nat
+t = test(true)
+
+--This is an 'xfail' in that the test is clearly wrong
+--!exec-xfail [11]
+f :: Nat
+f = test(false)
+
+--!exec [12]
+f' :: Nat
+f' = f

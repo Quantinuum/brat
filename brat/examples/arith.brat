@@ -20,26 +20,26 @@ unary_minus(x) = x + -3.0
 unary_minus2(Int) -> Int
 unary_minus2(x) = -2-x
 
---!test [7]
+--!exec [7]
 i :: Nat
 i = 3 + 4
 
---!test [-9]
+--!exec [-9]
 j :: Int
 j = unary_minus2(7)
 
---!test [11.13]
+--!exec [11.13]
 f :: Float
 f = 2.1 * 5.3
 
---!test [3.3000000000000003]
+--!exec [3.3000000000000003]
 g :: Float
 g = 7.2 - 3.9
 
 inc(Nat) -> Nat
 inc(x) = x + 1
 
---!test [14]
+--!exec [14]
 foo :: Nat
 foo = inc(inc(4) + inc(7))
 
@@ -57,10 +57,10 @@ hoo(n :: #, Vec(Nat, n + 1)) -> Nat
 hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
 hoo(n, _) = n
 
---!test [1]
+--!exec [1]
 ioo :: Nat
 ioo = hoo(2, [1,2,3])
 
---!test [[1,2,3]]
+--!exec [[1,2,3]]
 joo :: Vec(Nat, 3)
 joo = [1,2,3]
