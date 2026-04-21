@@ -310,6 +310,8 @@ testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
 testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
+testCtor CList CNil (VecV []) = Just []
+testCtor CList CCons (VecV (v:vs)) = Just [v, VecV vs]
 testCtor CVec CConcatEqEven (VecV vs) = do
   (half, 0) <- pure (length vs `divMod` 2)
   (xs, ys) <- pure (splitAt half vs)
