@@ -12,7 +12,7 @@ declare -a FAILED_TEST_MSGS
 UNEXPECTED_PASSES=
 NUM_FAILURES=0
 
-for dir in test/compilation/output test/hugr/output; do
+for dir in test/compilation/output test/examples/output test/hugr/output; do
     for json in $(find $dir -maxdepth 1 -name "*.json"); do
         echo Validating "$json"
         RESULT=$(cat "$json" | hugr_validator 2>&1)
