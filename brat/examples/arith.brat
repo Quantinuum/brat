@@ -9,6 +9,9 @@ double_rot2(x) = { q => Rx(x + x)(q) }
 -- Postulate existance of a sqrt function
 ext "" sqrt(Float) -> Float
 
+add1 :: {Nat -> Nat}
+add1 = {_ + 1}
+
 -- One solution of the quadratic equation
 quad(Float, Float, Float) -> Float
 quad(a, b, c) = (0.0 - b) + sqrt(b ^ 2.0 - 4.0 * a * c) / 2.0 * a
