@@ -404,7 +404,7 @@ check' (Arith op l r) ((), (hungry, ty):unders) = case (?my, ty) of
   checkNumTy (Right ty) | ty `elem` [TNat, TInt, TFloat] = check_arith ty
   -- Why don't we allow Left Nat??
   checkNumTy (Right ty@(VApp (VPar e) B0)) = do
-    mkYield (NeedToKnow e) "WaitingForHope" (S.singleton e)
+    mkYield (NeedToKnow e) "WaitingForArithHope" (S.singleton e)
     ty <- eval S0 ty
     checkNumTy (Right ty)
   checkNumTy _ = err $ ArithNotExpected (show ty)
@@ -731,9 +731,11 @@ solveConstraint :: String -> Tgt -> (NumSum (VVar Z), NumSum (VVar Z))
 solveConstraint ident tgt (lhs,rhs) = do
   CtxEnv _ locals <- req AskVEnv
   constraints <- constraintsFromEnv (concat (M.elems locals))
+  traceM ("Got:\n> " ++ show constraints)
   lhs <- numSumUpdate lhs
   rhs <- numSumUpdate rhs
   let eqSimp@(lhsSimp, rhsSimp) = simplify (lhs, rhs)
+  traceM ("Want:\n> " ++ show eqSimp)
   if eqSimp `elem` ((NumSum 0 [], NumSum 0 []):constraints)
   then defineTgt' ident tgt (VEqn lhsSimp rhsSimp)
   else do

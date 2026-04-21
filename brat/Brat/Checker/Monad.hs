@@ -29,8 +29,8 @@ thTrace = const id
 --thTrace = trace
 
 trackM :: Monad m => String -> m ()
-trackM = const (pure ())
---trackM = traceM
+--trackM = const (pure ())
+trackM = traceM
 
 --track = const id
 track = trace
@@ -83,7 +83,7 @@ mkFork :: String -> Free sig () -> Free sig ()
 mkFork d par = thTrace ("Forking " ++ d) $ Fork d par $ pure ()
 
 mkYield :: ErrorMsg -> String -> S.Set End -> Free sig ()
-mkYield err desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ Yield err (AwaitingAny es) (\_ -> trackM ("woke up " ++ desc) >> Ret ())
+mkYield err desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ Yield err (AwaitingAny es) (\n -> trackM ("woke up " ++ desc ++ "\n" ++ show n) >> Ret ())
 
 -- Commands for synchronous operations
 data CheckingSig ty where

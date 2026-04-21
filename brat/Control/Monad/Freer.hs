@@ -14,7 +14,7 @@ import qualified Data.Set as S
 --  * e -> Unstuck means e has been solved
 --  * e -> Awaiting es means the problem's been transferred
 --  * e not in news means no change to e
-newtype News = News (M.Map End Stuck)
+newtype News = News (M.Map End Stuck) deriving Show
 
 updateEnd :: News -> End -> Stuck
 updateEnd (News m) e = case M.lookup e m of

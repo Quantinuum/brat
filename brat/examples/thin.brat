@@ -1,12 +1,21 @@
-partition(X :: *, l :: #, n :: #, m :: #, l + n = m, Thin(n, m), Vec(X, m)) -> Vec(X, l), Vec(X, n)
-partition(_, _, _, _, _, zero, []) = [], []
-partition(_, _, _, _, _, succ(th), z ,- zs) =
- let xs', ys' = partition(!, !, !, !, !, th, zs) in xs', z ,- ys'
+--partition(X :: *, l :: #, n :: #, m :: #, l + n = m, Thin(n, m), Vec(X, m)) -> Vec(X, l), Vec(X, n)
+--partition(_, _, _, _, _, zero, []) = [], []
+--partition(_, _, _, _, _, succ(th), z ,- zs) =
+-- let xs', ys' = partition(!, !, !, !, !, th, zs) in xs', z ,- ys'
+--partition(_, _, _, _, _, omit(th), z ,- zs) =
+-- let xs', ys' = partition(!, !, !, !, !, th, zs) in z ,- xs', ys'
+--partition(_, succ(l'), _, _, _, omit(th), z ,- zs) =
+-- let xs', ys' = partition(!, l', !, !, !, th, zs) in z ,- xs', ys'
 
 select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
 select(_, _, _, zero, []) = []
 select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
 select(_, _, _, omit(th), _ ,- xs) = select(!, !, !, th, xs)
+
+reject(X :: *, l :: #, n :: #, m :: #, l + n = m, Thin(n, m), Vec(X, m)) -> Vec(X, l)
+reject(_, _, _, _, _, zero, []) = []
+reject(_, _, _, _, _, succ(th), _ ,- xs) = reject(!, !, !, !, !, th, xs)
+reject(_, _, _, _, _, omit(th), x ,- xs) = x ,- reject(!, !, !, !, !, th, xs)
 
 identity(n :: #) -> Thin(n, n)
 identity(0) = zero
@@ -42,10 +51,10 @@ merge(_, _, _, _, zero, [], ys, _) = ys
 merge(_, _, _, _, succ(th), x ,- xs, ys, _) = x ,- merge(!, !, !, !, th, xs, ys, !)
 merge(_, _, _, _, omit(th), xs, y ,- ys, _) = y ,- merge(!, !, !, !, th, xs, ys, !)
 
-partMerge(X :: *, l :: #, n :: #, m :: #, l + n = m, Thin(n, m), Vec(X, m)) -> Vec(X, m)
-partMerge(_, _, _, _, _, th, xs) =
- let outs, ins = partition(!, !, !, !, !, th, xs) in
-  merge(!, !, !, !, th, outs, ins, !)
+--partMerge(X :: *, l :: #, n :: #, m :: #, l + n = m, Thin(n, m), Vec(X, m)) -> Vec(X, m)
+--partMerge(_, _, _, _, _, th, xs) =
+-- let outs, ins = partition(!, !, !, !, !, th, xs) in
+--  merge(!, !, !, !, th, outs, ins, !)
 
 
 -- focus(X :: *, n :: #, m :: #, Thin(n, m), { Vec(X, n) -> Vec(X, n) }) -> { Vec(X, m) -> Vec(X, m) }
