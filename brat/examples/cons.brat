@@ -1,4 +1,5 @@
-ext "" add(Int, Int) -> Int
+add(Int, Int) -> Int
+add(x, y) = x + y
 
 copy(Int) -> Int, Int
 copy(x) = x, x
@@ -17,7 +18,7 @@ goodBinding = let x, y = twoThings in x, y
 -- Functions can be applied directly to things that
 -- represent the right number of values
 three :: Int
-three = add(twoThings)
+three =  add(twoThings)
 
 -- Is equivalent to:
 --!exec [3]

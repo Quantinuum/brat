@@ -1,4 +1,5 @@
-ext "" add(x :: Int, y :: Int) -> (z :: Int)
+add(x :: Int, y :: Int) -> (z :: Int)
+add(x,y) = x + y
 
 be5 :: { -> Int }
 be5 = { => 5 }
