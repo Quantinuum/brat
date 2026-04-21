@@ -52,7 +52,7 @@ import Bwd
 import Hasochism
 import Util (log2, zipSameLength)
 
---import Debug.Trace
+import Debug.Trace
 
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
@@ -750,7 +750,6 @@ constraintsFromEnv ((_, Right (VEqn lhs rhs)):overs) = do
   let eqn = simplify (lhs, rhs)
   (eqn:) <$> constraintsFromEnv overs
 constraintsFromEnv (_:xs) = constraintsFromEnv xs
-
 
 -- Clauses from either function definitions or case statements, as we get
 -- them from the elaborator
