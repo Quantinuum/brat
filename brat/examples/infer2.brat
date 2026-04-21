@@ -21,5 +21,6 @@ eatsodd(n, _) = n
 mkotwo' :: Nat
 mkotwo' = eatsodd(2, [false,false,false,false,false])
 
+--!exec [2]
 mkotwo :: Nat
 mkotwo = eatsodd(!, [false,false,false,false,false])
