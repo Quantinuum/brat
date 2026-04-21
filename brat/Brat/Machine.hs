@@ -12,7 +12,6 @@ import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
 
-import Data.Aeson.Text (encodeToLazyText)
 import Data.Hugr
 import qualified Data.HugrGraph as HG
 import Hasochism
@@ -28,7 +27,7 @@ import Util (zipSameLength)
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
-runInterpreter :: [FilePath] -> String -> String -> IO T.Text
+runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
 runInterpreter libDirs file runFunc = do
     (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     let venv = M.map fst declEnv
@@ -37,8 +36,8 @@ runInterpreter libDirs file runFunc = do
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> encodeToLazyText (HG.serialize hugr)
-      _ -> T.pack $ show outTask
+      Finished [(KernelV hugr)] -> Right hugr
+      _ -> Left $ T.pack $ show outTask
 
 data Frame where
     BratValues :: EvalEnv -> Frame

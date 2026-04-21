@@ -54,8 +54,9 @@ getExamplesTests =  do
                   func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
               in (if is_xfail then expectFail else id) $ testCase func_name $ do
                   -- this completely recompiles the file for each test, which is pretty bad
-                  output <- runInterpreter [] path func_name
-                  (T.unpack output) @?= expectedOutput
+                  runInterpreter [] path func_name >>= \case
+                    Left t -> T.unpack t @?= expectedOutput
+                    Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
             compileTest = compileToOutput "compilation" path
             checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
               then [checkTest, expectFail compileTest] else [compileTest]

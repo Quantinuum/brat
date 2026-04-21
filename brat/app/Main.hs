@@ -1,6 +1,9 @@
 import Brat.Compiler
 import Brat.Machine (runInterpreter)
 
+import qualified Data.ByteString.Lazy as BS (putStr)
+import Data.HugrGraph (to_json)
+
 import Data.Text.Lazy.IO (putStr)
 import Control.Monad (when)
 import Options.Applicative
@@ -47,5 +50,9 @@ main = do
   let libDirs = parseLibs libs
   when (dot /= "") $ writeDot libDirs file dot
   if compile then compileAndPrintFile libDirs file
-  else if runFunc /= "" then runInterpreter libDirs file runFunc >>= putStr
-                        else printDeclsHoles libDirs file
+  else if runFunc == "" then printDeclsHoles libDirs file
+  else do
+    result <- runInterpreter libDirs file runFunc
+    case result of
+      Right hugr -> BS.putStr (to_json hugr)
+      Left s -> putStr s
