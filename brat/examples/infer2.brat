@@ -3,6 +3,14 @@ isfull(succ(doub(n))) = isfull(n)
 isfull(0) = true
 isfull(_) = false
 
+--!exec [True]
+is3full :: Bool
+is3full = isfull(3)
+
+--!exec [True]
+is15full :: Bool
+is15full = isfull(15)
+
 --!exec [False]
 is5full :: Bool
 is5full = isfull(5)
