@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.HugrGraph(NodeId,
-                      HugrGraph(root), -- do NOT export contents, keep abstract
+                      HugrGraph, -- do NOT export contents, keep abstract
                       new,
                       freshNode,
+                      getRoot, getNodes,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
@@ -27,6 +28,12 @@ import qualified Data.Map as M
 track = const id
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
+
+getRoot :: HugrGraph n -> n
+getRoot HugrGraph {root} = root
+
+getNodes :: HugrGraph n -> [n]
+getNodes HugrGraph {parents, root} = root:(M.keys parents)
 
 data HugrGraph n = HugrGraph {
     root :: n,

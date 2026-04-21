@@ -193,7 +193,7 @@ makeParametrisedGateHugr :: Namespace -> {- Op name: -} String -> {- angle arg: 
 makeParametrisedGateHugr ns op th nqubits =
   let (ns', newRoot) = split "" ns in
    hugr $ flip execState (makeCS (emptyGraph, newRoot, initStore) (dfgHugr ns')) $ do
-     parent <- gets (HG.root . hugr)
+     parent <- gets (HG.getRoot . hugr)
      Ctr {parent,input,output} <- makeIO "" parent
      onHugr $ HG.setOp input (OpIn (InputNode [HTQubit, HTQubit] []))
      onHugr $ HG.setOp output (OpOut (OutputNode [HTQubit, HTQubit] []))
