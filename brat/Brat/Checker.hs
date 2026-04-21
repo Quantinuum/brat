@@ -397,15 +397,18 @@ check' (Var x) ((), ()) = (, ((), ())) . ((),) <$> case ?my of
     Just (p, ty) -> pure [(p, ty)]
     Nothing -> err $ KVarNotFound (show x)
 check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
-  (Braty, ty) -> do
-    ty <- evalBinder Braty ty
-    case ty of
-      Right TNat -> check_arith TNat
-      Right TInt -> check_arith TInt
-      Right TFloat -> check_arith TFloat
-      _ -> err . ArithNotExpected $ show u
+  (Braty, ty) -> checkNumTy ty
   (Kerny, _) -> err ArithInKernel
  where
+  checkNumTy :: BinderType Brat -> Checking (SynConnectors m d k, ChkConnectors m d k)
+  checkNumTy (Right ty) | ty `elem` [TNat, TInt, TFloat] = check_arith ty
+  -- Why don't we allow Left Nat??
+  checkNumTy (Right ty@(VApp (VPar e) B0)) = do
+    mkYield (NeedToKnow e) "WaitingForHope" (S.singleton e)
+    ty <- eval S0 ty
+    checkNumTy (Right ty)
+  checkNumTy _ = err $ ArithNotExpected (show ty)
+
   check_arith ty = let ?my = Braty in do
     let inRo = RPr ("left", ty) $ RPr ("right", ty) R0
     let outRo = RPr ("out", ty) R0
