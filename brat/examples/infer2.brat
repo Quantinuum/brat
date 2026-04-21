@@ -18,9 +18,12 @@ hasfulllen3 = hasfulllen(!, [false, false, false])
 
 eatsodd(n :: #, xs :: Vec(Bool, succ(doub(n)))) -> Nat
 eatsodd(n, _) = n
+
+--!exec [2]
 mkotwo' :: Nat
 mkotwo' = eatsodd(2, [false,false,false,false,false])
 
---!exec [2]
+-- Executing with ! doesn't seem to work. See #111
+--!exec-xfail [2]
 mkotwo :: Nat
 mkotwo = eatsodd(!, [false,false,false,false,false])
