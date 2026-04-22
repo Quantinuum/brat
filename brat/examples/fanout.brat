@@ -4,10 +4,8 @@ open import lib.kernel (CX)
 fanout(Vec(Nat, 3)) -> Nat, Nat, Nat
 fanout = { [/\] }
 
--- XFAIL: Requires handling selectors in the exec test which we want to get rid of!
 -- note a single Vec output would be [[3,5,7]]
---!exec-xfail [3,5,7]
-
+--!exec [3,5,7]
 test_fanout :: Nat, Nat, Nat
 test_fanout = fanout([3,5,7])
 

@@ -7,7 +7,7 @@ import Brat.Compile.Hugr
 import Brat.Constructors.Patterns
 import Brat.Naming (Name, Namespace, split)
 import Brat.Graph (Graph, NodeType (..), Node (BratNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
-import Brat.QualName (QualName, plain)
+import Brat.QualName (QualName(..), plain)
 import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Common
 import Brat.Syntax.Value
@@ -143,6 +143,8 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
     (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
     (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
+    (BratNode (Selector stor) _ _) -> case (stor, ins) of
+        (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
     nw -> run gi fz (StuckOnNode n nw)
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -230,8 +232,6 @@ makeParametrisedGateHugr ns op th nqubits =
                   }
    , args = []
    }
-
-
 
 miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
 miniEval _ env x | Just v <- M.lookup x env = v
