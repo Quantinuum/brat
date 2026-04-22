@@ -57,7 +57,7 @@ data Frame where
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
     -- Remaining thunks with their inputs, and rows output by prior thunks
-    VectorisedFuncs :: [(BratThunk, [Value])] -> Bwd [Value] -> Frame
+    VectorisedFuncs :: [(Value, [Value])] -> Bwd [Value] -> Frame
 
 divider = replicate 78 '-'
 
@@ -121,7 +121,7 @@ evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
 
-runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(BratThunk, [Value])] -> Bwd [Value] -> Task
+runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(Value, [Value])] -> Bwd [Value] -> Task
 runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs <>> [])
  where
   -- outs accumulates a [Value] from each thunk, being a row.
@@ -133,7 +133,7 @@ runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs
        then []
        else let (hds, tls) = unzip (map fromJust rows') in (VecV hds) : (transposeRows2V tls)
 runVectorisedThunks gi fz ((th, inputs):ths) outs =
-    run gi (fz :< VectorisedFuncs ths outs :< CallWith inputs) (Use $ ThunkV th)
+    run gi (fz :< VectorisedFuncs ths outs :< CallWith inputs) (Use th)
 
 run :: GraphInfo -> Bwd Frame -> Task -> Task
 --run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
@@ -167,7 +167,7 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     (BratNode MapFun _ _) -> case ins of
       -- We have a vector of functions
       [IntV len, VecV funs] -> if len == length funs
-        then run gi fz (Finished [VecThunkV $ map (\(ThunkV t) -> t) funs])
+        then run gi fz (Finished [VecThunkV funs])
         else error $ "MapFun length argument " ++ show len ++ " doesn't match length of function vector " ++ show (length funs)
     nw -> run gi fz (StuckOnNode n nw)
 
@@ -384,7 +384,8 @@ data Value =
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
   | DummyV
-  | VecThunkV [BratThunk] -- Vectorised thunk, result of MapFun
+  | VecThunkV [Value] -- Vectorised thunk, result of MapFun;
+                      -- elements are ThunkV (for 1D) or VecThunkV (for higher dimensions)
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
