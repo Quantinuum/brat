@@ -26,7 +26,6 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
-import Data.Traversable (for)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import System.Exit (die)
 
@@ -106,15 +105,14 @@ compileFile libDirs file = do
   findBoxes :: VEnv -> Graph -> QualName -> [Name]
   findBoxes venv (ns, es) name = case M.lookup name venv of
         Nothing -> error $ (show name) ++ ".... not found in VEnv"
-        Just vals -> concat (for vals $ \(NamedPort (Ex n _) _, _) -> -- so, this returns [Name]
-          case M.lookup n ns of
+        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
             Just (BratNode Id _ _) ->
                [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
-            _ -> [])
+            _ -> []
   isKernelBox :: Name -> M.Map Name Node -> Bool
-  isKernelBox name ns = case M.lookup name ns of
-    Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) -> True
-    _ -> False
+  isKernelBox name ns
+    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
+    | otherwise = False
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
