@@ -33,7 +33,7 @@ eatsodd(n, _) = n
 mkotwo' :: Nat
 mkotwo' = eatsodd(2, [false,false,false,false,false])
 
--- Executing with ! doesn't seem to work. See #111
+-- https://github.com/Quantinuum/brat/issues/111
 --!exec-xfail [2]
 mkotwo :: Nat
 mkotwo = eatsodd(!, [false,false,false,false,false])
