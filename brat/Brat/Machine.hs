@@ -57,7 +57,7 @@ data Frame where
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
     -- Remaining thunks with their inputs, and rows output by prior thunks
-    VectorisedFuncs :: [(Value, [Value])] -> Bwd [Value] -> Frame
+    VectorisedFuncs :: [({- thunk: -}Value, [Value])] -> Bwd [Value] -> Frame
 
 divider = replicate 78 '-'
 
@@ -166,10 +166,27 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
       [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
     (BratNode MapFun _ _) -> case ins of
       -- We have a vector of functions
-      [IntV len, VecV funs] -> if len == length funs
-        then run gi fz (Finished [VecThunkV funs])
-        else error $ "MapFun length argument " ++ show len ++ " doesn't match length of function vector " ++ show (length funs)
+      [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
     nw -> run gi fz (StuckOnNode n nw)
+ where
+   -- Assumes uniform type
+  dig :: Int -> [Value] -> Value
+  dig n vals
+   | Just vecs <- getVecs vals = VecV ((\(VecV vs) -> dig n vs) <$> vecs)
+   | Just ths <- getThunks vals
+   , n == length vals = VecThunkV ths
+   where
+    getVecs :: [Value] -> Maybe [Value]
+    getVecs [] = Just []
+    getVecs (VecV x:xs) = ((VecV x):) <$> getVecs xs
+    getVecs _ = Nothing
+
+    getThunks :: [Value] -> Maybe [Value]
+    getThunks [] = Just []
+    getThunks (ThunkV th:ths) = (ThunkV th:) <$> getThunks ths
+    getThunks (VecThunkV ths:thss) = (VecThunkV ths:) <$> getThunks thss
+    getThunks _ = Nothing
+
 
 -- Tasks that unwind the stack looking for what to do with the result
 ----Suspend
