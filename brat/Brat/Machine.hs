@@ -13,7 +13,6 @@ import Brat.Syntax.Common
 import Brat.Syntax.Value
 
 import Data.Hugr
-import qualified Brat.Compile.Model as Model
 import qualified Data.HugrGraph as HG
 import Hasochism
 
@@ -28,17 +27,17 @@ import Util (zipSameLength)
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
-runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
-runInterpreter libDirs file runFunc = do
-    (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
+runInterpreter :: Namespace -> [FilePath] -> String -> String
+               -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
+runInterpreter ns libDirs file runFunc = do
+    (ns, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph ns libDirs file
     let venv = M.map fst declEnv
     --print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
-    let (modelNS, newRoot) = split "v" root
-    let outTask = evalPorts (outerGraph, st, newRoot, capSets) (B0 :< BratValues M.empty) B0 outPorts
+    let outTask = evalPorts (outerGraph, st, ns, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> Right (Model.toModelEnvelope modelNS hugr)
+      Finished [(KernelV hugr)] -> Right hugr
       _ -> Left $ T.pack $ show outTask
 
 data Frame where

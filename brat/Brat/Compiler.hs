@@ -81,9 +81,9 @@ instance Show CompilingHoles where
   show (CompilingHoles hs) = unlines $
     "Can't compile file with remaining holes": fmap (("  " ++) . show) hs
 
-compileToGraph :: [FilePath] -> String -> IO (Namespace, VMod)
-compileToGraph libDirs file = do
-  let (checkRoot, newRoot) = split "checking" root
+compileToGraph :: Namespace -> [FilePath] -> String -> IO (Namespace, VMod)
+compileToGraph ns libDirs file = do
+  let (checkRoot, newRoot) = split "checking" ns
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
 
@@ -92,7 +92,7 @@ type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
-  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
+  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph root libDirs file
   let venv = M.map fst declEnv
   case holes of
     [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)

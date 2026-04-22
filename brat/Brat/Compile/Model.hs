@@ -2,24 +2,16 @@
 module Brat.Compile.Model (toModelString, toModelEnvelope) where
 
 import Control.Monad.State
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import Data.ByteString.Builder (Builder, word8)
 import Data.Traversable (for)
 import Data.List (delete)
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes, fromJust, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe)
 
-import Brat.Naming (Name, Namespace, fresh, root)
+import Brat.Naming (Name, Namespace, fresh)
 import Data.Hugr
 import Data.HugrGraph
-import qualified Brat.Naming as Name
 import qualified Data.Hugr as H
 import qualified Data.Hugr.Model as M
-
-import qualified Data.ByteString as BS
-
-import Debug.Trace
 
 data ModelState = State
  { ns :: Namespace
@@ -102,7 +94,7 @@ freshOutputLinks nodeId xs = do
 
 convertMeta :: [(String, String)] -> [M.Term]
 convertMeta [] = []
-convertMeta ((key,val):xs) = M.Tuple [M.Item (M.Literal (M.LitStr key)), M.Item (M.Literal (M.LitStr key))] : convertMeta xs
+convertMeta ((key,_):xs) = M.Tuple [M.Item (M.Literal (M.LitStr key)), M.Item (M.Literal (M.LitStr key))] : convertMeta xs
 
 -- TODO: Work out how qubit should be represented and do that
 convertType :: HugrType -> M.Term
@@ -118,10 +110,10 @@ convertType x = error $ "convertType " ++ show x
 convertValue :: HugrValue -> M.Term
 -- convertValue (HVFunction hugr) = undefined
 convertValue (HVTuple vs) = M.Tuple (M.Item . convertValue <$> vs)
-convertValue hv@(HVExtension ext ty (CC tag cts)) = error $ show hv
+convertValue hv@(HVExtension _ _ (CC _ _)) = error $ show hv
 
 convertSig :: FunctionType -> M.Term
-convertSig fn@(FunctionType { .. }) = M.Apply "core.fn" [inpTm, outTm]
+convertSig (FunctionType { .. }) = M.Apply "core.fn" [inpTm, outTm]
  where
   inpTm = M.List (M.Item . convertType <$> input)
   outTm = M.List (M.Item . convertType <$> output)
@@ -134,7 +126,7 @@ hugrToModel hg@(HugrGraph { ..  }) =
     _ -> error "TODO: Non-DFG root op"
 
 -- Invariant: NodeId points to a DFG
-dfgToRegion :: HugrGraph -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
+dfgToRegion :: HugrGraph NodeId -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
 dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
   let [inp, out] = fromMaybe (error "no kids") $ Map.lookup nodeId first_children
   sourceVars <- freshOutputLinks inp (input sig)
@@ -153,14 +145,14 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
        })
 
 -- Get the links corresponding to the inputs and outputs of a Model Node
-nodeInputs :: HugrGraph -> NodeId -> Model [M.LinkName] -- inputs
+nodeInputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName] -- inputs
 nodeInputs hg nodeId =
   for (inEdges hg nodeId) $ \(Port srcNode srcIx, tgtIx) -> do
     getDangling srcNode srcIx >>= \case
       Just link -> pure link
       Nothing -> makeInputLink nodeId tgtIx
 
-nodeOutputs :: HugrGraph -> NodeId -> Model [M.LinkName]
+nodeOutputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName]
 nodeOutputs hg nodeId =
   for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) -> do
     getHungry tgtNode tgtIx >>= \case
@@ -170,16 +162,16 @@ nodeOutputs hg nodeId =
 
 -- build a node and all of it's descendants
 -- TODO: If nodes are deleted here, we need to keep a map of where the missing edges should end up
-convertNode :: HugrGraph -> NodeId -> Model (Maybe M.Node)
+convertNode :: HugrGraph NodeId -> NodeId -> Model (Maybe M.Node)
 convertNode hg nodeId = case getOp hg nodeId of
   (OpMod ModuleOp) -> pure Nothing -- Compilation should just produce hugrs, no modules
   -- We should write these edges to point to the parent
-  (OpIn (InputNode tys meta)) -> error $ "Input node with parent " -- ++ show (getOp hg (getParent hg nodeId))
+  (OpIn (InputNode _tys _meta)) -> error $ "Input node with parent " -- ++ show (getOp hg (getParent hg nodeId))
   (OpOut _) -> error "Output node"
   (OpCase _) -> error "Case node"
   (OpNoop _) -> pure Nothing
   -- TODO: Not making the child here? And associating it with the symbol?
-  (OpDefn (FuncDefn name sig fmeta)) -> case getChildren hg nodeId of
+  (OpDefn (FuncDefn name _sig _fmeta)) -> case getChildren hg nodeId of
     [bodyId] -> case getOp hg bodyId of
       -- TODO: Check the sigs are equal
       (OpDFG (DFG sig meta)) -> do
@@ -228,7 +220,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeSignature = Just signature
          }))
 
-  (OpTag (TagOp tag sumTy meta)) -> do
+  (OpTag (TagOp tag sumTy _meta)) -> do
     inWires <- if null (sumTy !! tag) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
     let op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat tag)])
@@ -243,7 +235,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = []
          , nodeSignature = Just signature
          }))
-  (OpCustom (CustomOp ext op sig args)) -> do
+  (OpCustom (CustomOp ext op sig _args)) -> do
     inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
     pure (Just (M.Node
@@ -273,11 +265,11 @@ convertOp hg (OpLoadFunction LoadFunctionOp
 magic :: Builder
 magic = "HUGRiHJv(" <> word8 64
 
-printPackage :: HugrGraph -> Builder
+printPackage :: HugrGraph NodeId -> Builder
 printPackage hg = "(hugr 0)\n(mod)" <> (M.serialise hugrToModel)
 -}
 
-toModelString :: Namespace -> HugrGraph -> String
+toModelString :: Namespace -> HugrGraph NodeId -> String
 toModelString ns hg = M.printDoc (M.serialise (evalState (hugrToModel hg) (State ns 0 Map.empty Map.empty)))
 
 magic = "HUGRiHJv(@"

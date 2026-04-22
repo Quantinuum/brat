@@ -4,6 +4,7 @@ import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput, getHoles)
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
+import Brat.Naming (root)
 import Data.HugrGraph (to_json)
 
 import qualified Data.ByteString as BS
@@ -59,7 +60,7 @@ getExamplesTests =  do
               in if (T.pack "-hugr") == restLine then testCaseInfo func_name $ do
                 let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
                 -- this completely recompiles the file for each test, which is pretty bad
-                hugr <- runInterpreter [] path func_name >>= \case
+                hugr <- runInterpreter root [] path func_name >>= \case
                   Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
                   Right hugr -> pure hugr
                 getHoles hugr @?= []
@@ -75,7 +76,7 @@ getExamplesTests =  do
                     expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip eOut)
                 in (if is_xfail then expectFail else id) $ testCase func_name $ do
                   -- this completely recompiles the file for each test, which is pretty bad
-                  runInterpreter [] path func_name >>= \case
+                  runInterpreter root [] path func_name >>= \case
                     Left t -> T.unpack t @?= expectedOutput
                     Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
             compileTest = compileToOutput "compilation" path

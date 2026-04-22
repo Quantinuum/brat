@@ -1,14 +1,11 @@
+import Brat.Compile.Model (toModelEnvelope)
 import Brat.Compiler
+import Brat.Naming (split, root)
 import Brat.Machine (runInterpreter)
 
-import qualified Data.ByteString.Lazy as BS (putStr)
-import Data.HugrGraph (to_json)
-
-import Data.Text.Lazy.IO (putStr)
+import qualified Data.Text.Lazy.IO as TIO (putStr)
 import Control.Monad (when)
 import Options.Applicative
-
-import Prelude hiding (putStr)
 
 data Options = Opt {
   ast     :: Bool,
@@ -52,7 +49,8 @@ main = do
   if compile then compileAndPrintFile libDirs file
   else if runFunc == "" then printDeclsHoles libDirs file
   else do
-    result <- runInterpreter libDirs file runFunc
+    let (modelNS, newRoot) = split "v" root
+    result <- runInterpreter newRoot libDirs file runFunc
     case result of
-      Right hugr -> BS.putStr (to_json hugr)
-      Left s -> putStr s
+      Right hugr -> putStr (toModelEnvelope modelNS hugr)
+      Left s -> TIO.putStr s
