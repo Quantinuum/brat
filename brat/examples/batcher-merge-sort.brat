@@ -35,6 +35,6 @@ fixOffBy1(n, lo ,- (mid0 =%= mid1) -, hi) =
   let mid0', mid1' = (full(n) of cas)(mid0, mid1)
   in  lo ,- (mid0' =%= mid1') -, hi
 
---!exec-xfail [[2,3,4,5,6,7,11,12]]
+--!exec [[2,3,4,5,6,7,11,12]]
 test_merge :: Vec(Nat, 8)
 test_merge = merge(2, [2,5,7,11], [3, 4, 6, 12])

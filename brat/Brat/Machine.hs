@@ -18,7 +18,8 @@ import Hasochism
 
 import Control.Monad.State (execState, gets, evalState)
 import qualified Data.Text.Lazy as T
-import Data.Maybe (fromMaybe, fromJust)
+import Data.Maybe (fromMaybe, fromJust, isNothing)
+import Data.List (uncons)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -55,7 +56,8 @@ data Frame where
     Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
-    ApplyMapFun :: [Value] -> Frame
+    -- Remaining thunks with their inputs, and rows output by prior thunks
+    VectorisedFuncs :: [(BratThunk, [Value])] -> Bwd [Value] -> Frame
 
 divider = replicate 78 '-'
 
@@ -75,7 +77,7 @@ showFrame (ReturnTo fz) = "ReturnTo" : (("> " ++) <$> showFrames fz)
 showFrame (Alternatives matches vz) = ["Alternatives", show matches, show vz]
 showFrame (PerformMatchTests tests srcs node) = ["PerformMatchTests", show tests, show srcs, show node] -- TODO
 showFrame (DoSplices hg src hugrs) = ["DoSplices", show hg, show src, show hugrs]
-
+showFrame (VectorisedFuncs ths outs) = ["VectorisedFuncs", "remaining " ++ show (length ths) ++ " thunks", show outs]
 showFrames :: Bwd Frame -> [String]
 showFrames = foldMap (\f -> divider : showFrame f)
 
@@ -118,6 +120,20 @@ evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId -> [(HG.NodeId, 
 evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
+
+runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(BratThunk, [Value])] -> Bwd [Value] -> Task
+runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs <>> [])
+ where
+  -- outs accumulates a [Value] from each thunk, being a row.
+  -- assemble corresponding elements from each row into a VecV,
+  -- being that element of the output row of the vectorised thunk.
+  transposeRows2V :: [[Value]] -> [Value]
+  transposeRows2V rows = let rows' = map uncons rows 
+    in if all isNothing rows'
+       then []
+       else let (hds, tls) = unzip (map fromJust rows') in (VecV hds) : (transposeRows2V tls)
+runVectorisedThunks gi fz ((th, inputs):ths) outs =
+    runThunk gi (fz :< VectorisedFuncs ths outs) th inputs
 
 run :: GraphInfo -> Bwd Frame -> Task -> Task
 --run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
@@ -173,6 +189,18 @@ run gi (fz :< DoSplices hugr nid rest) (Use v) =
         hugr' = execState (HG.splice_prepend nid sub_hugr) hugr
     in evalSplices gi fz hugr' rest
 run gi (fz :< CallWith inputs) (Use (ThunkV th)) = runThunk gi (B0 :< ReturnTo fz) th inputs
+run gi (fz :< CallWith inputs) (Use (VecThunkV ths)) =
+  runVectorisedThunks gi fz (fromJust $ zipSameLength ths $ transposeV2Rows inputs) B0
+ where
+  -- inputs to the vectorised thunk are a row of vectors;
+  -- we run thunk#1 on the row formed from element#1 of each vector, and so on.
+  transposeV2Rows :: [Value] -> [[Value]]
+  transposeV2Rows vs
+    | all isEmptyVecV vs = []
+    | otherwise = let (hds, tls) = unzip $ map (\(VecV (hd:tl)) -> (hd, VecV tl)) vs in hds : (transposeV2Rows tls)
+  isEmptyVecV :: Value -> Bool
+  isEmptyVecV (VecV []) = True
+  isEmptyVecV _ = False
 
 ---- Finished (list of values)
 run gi (fz :< AwaitNodeInputs req@(Ex name _)) (Finished inputs) =
@@ -192,6 +220,10 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
         Just env ->
             let vals = [miniEval gi env src | (NamedPort src _, _) <- matchOutputs]
             in run gi (fz :< CallWith vals) (EvalPort $ Ex box 0)
+
+-- Next element of VectorisedFuncs
+run gi (fz :< VectorisedFuncs th_inps outs) (Finished vals) =
+  runVectorisedThunks gi fz th_inps (outs :< vals)
 
 run gi (fz :< BratValues _) t = run gi fz t
 run _ B0 t = t
