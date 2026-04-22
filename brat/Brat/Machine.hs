@@ -57,7 +57,7 @@ data Frame where
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
     -- Remaining thunks with their inputs, and rows output by prior thunks
-    VectorisedFuncs :: [(Value, [Value])] -> Bwd [Value] -> Frame
+    VectorisedFuncs :: [(BratThunk, [Value])] -> Bwd [Value] -> Frame
 
 divider = replicate 78 '-'
 
@@ -121,7 +121,7 @@ evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
     run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
 
-runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(Value, [Value])] -> Bwd [Value] -> Task
+runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(BratThunk, [Value])] -> Bwd [Value] -> Task
 runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs <>> [])
  where
   -- outs accumulates a [Value] from each thunk, being a row.
@@ -133,10 +133,29 @@ runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs
        then []
        else let (hds, tls) = unzip (map fromJust rows') in (VecV hds) : (transposeRows2V tls)
 runVectorisedThunks gi fz ((th, inputs):ths) outs =
-    run gi (fz :< VectorisedFuncs ths outs :< CallWith inputs) (Use th)
+    runThunk gi (fz :< VectorisedFuncs ths outs) th inputs
 
 run :: GraphInfo -> Bwd Frame -> Task -> Task
 --run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
+
+runThunk :: GraphInfo -> Bwd Frame -> BratThunk -> [Value] -> Task
+runThunk gi fz (BratClosure env src tgt) inputs =
+    let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
+    in evalNodeInputs gi (fz :< (BratValues env_with_args)) tgt
+runThunk (g,st,ns,cs) fz (BratPrim ext op _cty) inputs
+ | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
+runThunk gi fz (VectorisedThunks ths) inputs =
+  runVectorisedThunks gi fz (fromJust $ zipSameLength ths $ transposeV2Rows inputs) B0
+ where
+  -- inputs to the vectorised thunk are a row of vectors;
+  -- we run thunk#1 on the row formed from element#1 of each vector, and so on.
+  transposeV2Rows :: [Value] -> [[Value]]
+  transposeV2Rows vs
+    | all isEmptyVecV vs = []
+    | otherwise = let (hds, tls) = unzip $ map (\(VecV (hd:tl)) -> (hd, VecV tl)) vs in hds : (transposeV2Rows tls)
+  isEmptyVecV :: Value -> Bool
+  isEmptyVecV (VecV []) = True
+  isEmptyVecV _ = False
 
 -- Tasks that push new frames onto the stack to do things
 run gi fz (EvalPort p@(Ex name _)) = case lookupOutport fz p of
@@ -167,7 +186,7 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     (BratNode MapFun _ _) -> case ins of
       -- We have a vector of functions
       [IntV len, VecV funs] -> if len == length funs
-        then run gi fz (Finished [VecThunkV funs])
+        then run gi fz (Finished [ThunkV $ VectorisedThunks $ map (\(ThunkV t) -> t) funs])
         else error $ "MapFun length argument " ++ show len ++ " doesn't match length of function vector " ++ show (length funs)
     nw -> run gi fz (StuckOnNode n nw)
 
@@ -181,24 +200,7 @@ run gi (fz :< DoSplices hugr nid rest) (Use v) =
     let (KernelV sub_hugr) = v
         hugr' = execState (HG.splice_prepend nid sub_hugr) hugr
     in evalSplices gi fz hugr' rest
-run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
-    let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
-    in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
-run (g,st,ns,cs) (fz :< CallWith inputs) (Use (ThunkV (BratPrim ext op _cty)))
- | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
-
-run gi (fz :< CallWith inputs) (Use (VecThunkV ths)) =
-  runVectorisedThunks gi fz (fromJust $ zipSameLength ths $ transposeV2Rows inputs) B0
- where
-  -- inputs to the vectorised thunk are a row of vectors;
-  -- we run thunk#1 on the row formed from element#1 of each vector, and so on.
-  transposeV2Rows :: [Value] -> [[Value]]
-  transposeV2Rows vs
-    | all isEmptyVecV vs = []
-    | otherwise = let (hds, tls) = unzip $ map (\(VecV (hd:tl)) -> (hd, VecV tl)) vs in hds : (transposeV2Rows tls)
-  isEmptyVecV :: Value -> Bool
-  isEmptyVecV (VecV []) = True
-  isEmptyVecV _ = False
+run gi (fz :< CallWith inputs) (Use (ThunkV th)) = runThunk gi (B0 :< ReturnTo fz) th inputs
 
 ---- Finished (list of values)
 run gi (fz :< AwaitNodeInputs req@(Ex name _)) (Finished inputs) =
@@ -384,22 +386,21 @@ data Value =
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
   | DummyV
-  | VecThunkV [Value] -- Vectorised thunk, result of MapFun;
-                      -- elements are ThunkV (for 1D) or VecThunkV (for higher dimensions)
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
     BratClosure EvalEnv Name Name  -- Captured environment, src node, tgt node
   | BratPrim String String (CTy Brat Z)
+  | VectorisedThunks [BratThunk]
 
 instance Show Value where
   show (IntV x) = show x
   show (FloatV x) = show x
   show (BoolV x) = show x
   show (VecV xs) = show xs
+  show (ThunkV (VectorisedThunks ths)) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
-  show (VecThunkV ths) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show DummyV = "Dummy"
 
 type EvalEnv = M.Map OutPort Value
