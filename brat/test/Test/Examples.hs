@@ -22,7 +22,7 @@ import Test.Tasty.ExpectedFailure
 --import Debug.Trace
 
 outputDir :: FilePath
-outputDir = "test/examples/output"
+outputDir = "test" </> "examples"
 
 execTestPrefix :: T.Text
 execTestPrefix = T.pack "--!exec"
