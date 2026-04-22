@@ -145,6 +145,8 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
     (BratNode (Selector stor) _ _) -> case (stor, ins) of
         (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
+    (BratNode Replicate _ _) -> case ins of
+      [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
     nw -> run gi fz (StuckOnNode n nw)
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -250,6 +252,7 @@ evalConstructor CFalse [] = BoolV False
 evalConstructor CZero [] = IntV 0
 evalConstructor CSucc [IntV n] = IntV (n + 1)
 evalConstructor CDoub [IntV n] = IntV (2 * n)
+evalConstructor CFull [IntV n] = IntV ((2 ^ n) - 1)
 evalConstructor CNil [] = VecV []
 evalConstructor CCons [hd, VecV tl] = VecV (hd:tl)
 evalConstructor CSnoc [VecV tl, hd] = VecV (tl ++ [hd])
@@ -310,6 +313,7 @@ testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
 testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
+testCtor CVec CSnoc (VecV vs@(_:_)) = Just [VecV (init vs), last vs]
 testCtor CList CNil (VecV []) = Just []
 testCtor CList CCons (VecV (v:vs)) = Just [v, VecV vs]
 testCtor CVec CConcatEqEven (VecV vs) = do
