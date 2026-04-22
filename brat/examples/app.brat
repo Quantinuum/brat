@@ -9,7 +9,7 @@ test(b) = if(Nat, b, { => 4 }, { => 12 })
 t :: Nat
 t = test(true)
 
---This is an 'xfail' in that the test is clearly wrong
+--This is an 'xfail' as the expected value is clearly/deliberately wrong
 --!exec-xfail [11]
 f :: Nat
 f = test(false)
