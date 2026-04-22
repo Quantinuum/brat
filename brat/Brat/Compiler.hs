@@ -88,8 +88,8 @@ compileToGraph libDirs file = do
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
 
--- Map from box name to (compiled graph, list of splices)
-type CompilationResult = M.Map Name (HugrGraph NodeId, [(NodeId, OutPort)])
+-- Map from box name to (compiled hugr, list of hole nodes in it)
+type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
@@ -98,7 +98,9 @@ compileFile libDirs file = do
   case holes of
     [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
           in Right <$> (evaluate -- turns 'error' into IO 'die'
-            $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
+            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
+                               in (hugr, map fst holes))
+                         | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)
  where
   findBoxes :: VEnv -> Graph -> QualName -> [Name]

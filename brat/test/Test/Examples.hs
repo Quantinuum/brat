@@ -1,7 +1,7 @@
 module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
-import Test.Compile.Hugr (compileToOutput, getSplices)
+import Test.Compile.Hugr (compileToOutput, getHoles)
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
 import Data.HugrGraph (to_json)
@@ -62,7 +62,7 @@ getExamplesTests =  do
                 hugr <- runInterpreter [] path func_name >>= \case
                   Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
                   Right hugr -> pure hugr
-                getSplices hugr @?= []
+                getHoles hugr @?= []
                 -- output the hugr for validation
                 createDirectoryIfMissing False outputDir
                 BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
