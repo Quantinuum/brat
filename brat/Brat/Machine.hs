@@ -55,6 +55,7 @@ data Frame where
     Alternatives :: [(TestMatchData Brat, Name)] -> [Value] -> Frame
     PerformMatchTests :: [(Src, PrimTest (BinderType Brat))] -> [(Src, BinderType Brat)] -> Name -> Frame
     DoSplices :: HG.HugrGraph HG.NodeId -> HG.NodeId -> [(HG.NodeId, OutPort)] -> Frame
+    ApplyMapFun :: [Value] -> Frame
 
 divider = replicate 78 '-'
 
@@ -147,6 +148,9 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
         (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
     (BratNode Replicate _ _) -> case ins of
       [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
+    (BratNode MapFun _ _) -> case ins of
+      -- We have a vector of functions
+      [IntV len, VecV fun] -> _
     nw -> run gi fz (StuckOnNode n nw)
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -345,6 +349,7 @@ data Value =
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
   | DummyV
+  | VecThunkV [Value]
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
