@@ -340,6 +340,7 @@ captureEnv (fz :< _) keys = captureEnv fz keys
 evalSimpleTerm :: SimpleTerm -> Value
 evalSimpleTerm (Num x) = IntV x
 evalSimpleTerm (Float x) = FloatV x
+evalSimpleTerm (Text s) = StringV s
 evalSimpleTerm t = error ("todo " ++ show t)
 
 evalArith :: ArithOp -> [Value] -> Value
@@ -403,6 +404,7 @@ data Value =
   | DummyV
   | VecThunkV [Value] -- Vectorised thunk, result of MapFun;
                       -- elements are ThunkV (for 1D) or VecThunkV (for higher dimensions)
+  | StringV String
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
@@ -418,5 +420,6 @@ instance Show Value where
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
   show (VecThunkV ths) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show DummyV = "Dummy"
+  show (StringV str) = show str
 
 type EvalEnv = M.Map OutPort Value
