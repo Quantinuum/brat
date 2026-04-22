@@ -1,4 +1,3 @@
---!xfail-checking
 xor(Bool, Bool) -> Bool
 xor(false, b) = b
 xor(a, false) = a
@@ -50,7 +49,7 @@ fastAdder(n :: #, Vec(Bool, 2^n), Vec(Bool, 2^n), carryIn :: Bool) -> carryOut :
 fastAdder(0, [x], [y], b) = let c, z = fullAdder(x, y, b) in c, [z]
 fastAdder(succ(n), xsh =,= xsl, ysh =,= ysl, b) =
   fastAdder(n, xsh, ysh, true), fastAdder(n, xsh, ysh, false), fastAdder(n, xsl, ysl, b) |>
-  (d1, zsh1, d0, zsh0, c, zsl => if(Bool, c, d1, d0), if(Vec(Bool, succ(full(n))), c, zsh1, zsh0) =,= zsl)
+  (d1, zsh1, d0, zsh0, c, zsl => if(Bool, c, d1, d0), if(!, c, zsh1, zsh0) =,= zsl)
 
 chop(n :: #, Vec(Bool, 2 * n)) -> Vec(Bool, n), Vec(Bool, n)
 chop(n, hi =,= lo) = hi, lo
