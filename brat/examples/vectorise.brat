@@ -15,6 +15,10 @@ zip(X, Y, n, xs, ys) =
  xs, ys |>
  (n of ({[_,_]} :: { X, Y -> [X,Y] }))
 
+--!exec [[["yes",True],["no",False],["true",True],["false",False]]]
+test_zip :: Vec([String, Bool], 4)
+test_zip = zip(!, !, !, ["yes","no","true","false"], [true,false,true,false])
+
 mkPair(X :: *, Y :: *) -> { X, Y -> [X, Y] }
 mkPair(_, _) = { x, y => [x,y] }
 
@@ -54,3 +58,14 @@ juxt = 42 of 1, 42 of true
 
 notTooGreedy(Vec(Nat, 42)) -> Vec(Nat, 42), Vec(Nat, 42)
 notTooGreedy(xs) = 42 of 0, xs
+
+addN(Nat) -> { Nat -> Nat }
+addN(n) = { x => x + n }
+
+adders(n :: #) -> Vec({ Nat -> Nat }, n)
+adders(0) = []
+adders(succ(n)) = adders(n) -, addN(succ(n))
+
+--!exec [[1,2,3,4,5]]
+test_adders :: Vec(Nat, 5)
+test_adders = adders(5)(5 of 0)
