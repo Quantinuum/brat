@@ -122,6 +122,13 @@ evalSplices gi fz hugr ((nid, outport):rest) =
 run :: GraphInfo -> Bwd Frame -> Task -> Task
 --run g fz t | trace ("RUN: " ++ show fz ++ "\n" ++ show t) False = undefined
 
+runThunk :: GraphInfo -> Bwd Frame -> BratThunk -> [Value] -> Task
+runThunk gi fz (BratClosure env src tgt) inputs =
+    let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
+    in evalNodeInputs gi (fz :< (BratValues env_with_args)) tgt
+runThunk (g,st,ns,cs) fz (BratPrim ext op _cty) inputs
+ | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
+
 -- Tasks that push new frames onto the stack to do things
 run gi fz (EvalPort p@(Ex name _)) = case lookupOutport fz p of
     Just v -> run gi fz (Use v)
@@ -150,7 +157,9 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
       [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
     (BratNode MapFun _ _) -> case ins of
       -- We have a vector of functions
-      [IntV len, VecV fun] -> _
+      [IntV len, VecV funs] -> if len == length funs
+        then run gi fz (Finished [VecThunkV $ map (\(ThunkV t) -> t) funs])
+        else error $ "MapFun length argument " ++ show len ++ " doesn't match length of function vector " ++ show (length funs)
     nw -> run gi fz (StuckOnNode n nw)
 
 -- Tasks that unwind the stack looking for what to do with the result
@@ -163,11 +172,7 @@ run gi (fz :< DoSplices hugr nid rest) (Use v) =
     let (KernelV sub_hugr) = v
         hugr' = execState (HG.splice_prepend nid sub_hugr) hugr
     in evalSplices gi fz hugr' rest
-run gi (fz :< CallWith inputs) (Use (ThunkV (BratClosure env src tgt))) =
-    let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
-    in evalNodeInputs gi (B0 :< ReturnTo fz :< (BratValues env_with_args)) tgt
-run (g,st,ns,cs) (fz :< CallWith inputs) (Use (ThunkV (BratPrim ext op _cty)))
- | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
+run gi (fz :< CallWith inputs) (Use (ThunkV th)) = runThunk gi (B0 :< ReturnTo fz) th inputs
 
 ---- Finished (list of values)
 run gi (fz :< AwaitNodeInputs req@(Ex name _)) (Finished inputs) =
@@ -349,7 +354,7 @@ data Value =
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
   | DummyV
-  | VecThunkV [Value]
+  | VecThunkV [BratThunk] -- Vectorised thunk, result of MapFun
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
@@ -363,6 +368,7 @@ instance Show Value where
   show (VecV xs) = show xs
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
+  show (VecThunkV ths) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show DummyV = "Dummy"
 
 type EvalEnv = M.Map OutPort Value
