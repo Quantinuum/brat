@@ -191,18 +191,16 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
    -- Assumes uniform type
   dig :: Int -> [Value] -> Value
   dig n vals
-   | Just vecs <- getVecs vals = VecV vecs
-   | Just ths <- getThunks vals
+   | Just vecs <- mapM getVecs vals = VecV vecs
+   | Just ths <- mapM getThunks vals
    , n == length vals = ThunkV (VectorisedThunks ths)
    where
-    getVecs :: [Value] -> Maybe [Value]
-    getVecs [] = Just []
-    getVecs (VecV x:xs) = ((dig n x):) <$> getVecs xs
+    getVecs :: Value -> Maybe Value
+    getVecs (VecV x) = Just (dig n x)
     getVecs _ = Nothing
 
-    getThunks :: [Value] -> Maybe [BratThunk]
-    getThunks [] = Just []
-    getThunks (ThunkV th:ths) = (th:) <$> getThunks ths
+    getThunks :: Value -> Maybe BratThunk
+    getThunks (ThunkV th) = Just th
     getThunks _ = Nothing
 
 
