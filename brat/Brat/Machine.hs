@@ -184,11 +184,15 @@ run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     (BratNode Replicate _ _) -> case ins of
       [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
     (BratNode MapFun _ _) -> case ins of
-      -- We have a vector of functions
+      -- We have a vector (or vec of vecs, n-dimensions) of functions
       [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
     nw -> run gi fz (StuckOnNode n nw)
  where
-   -- Assumes uniform type
+   -- Assuming a tree of VecV's whose leaf values are ThunkV's,
+   -- Convert the bottom level of VecV's to VectorisedFuncs.
+   -- We assume the tree is of uniform height (and arity at each *level*,
+   -- perhaps varying between levels), this should be guaranteed by the checker.
+   -- (TODO: consider encoding the expected levels/arities in the MapFun?)
   dig :: Int -> [Value] -> Value
   dig n vals
    | Just vecs <- mapM getVecs vals = VecV vecs
