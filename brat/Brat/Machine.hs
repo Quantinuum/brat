@@ -83,8 +83,6 @@ showFrames :: Bwd Frame -> [String]
 showFrames = foldMap (\f -> divider : showFrame f)
 
 data Task where
-    -- Evaluates a port (or retrieves value from cache)
-    EvalPort :: OutPort -> Task
     Suspend :: [Frame] -> Task -> Task
     -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
     EvalNode :: Name -> [Value] -> Task
@@ -111,8 +109,14 @@ lookupOutport (fz :< _) p = lookupOutport fz p
 evalPorts :: GraphInfo -> Bwd Frame -> Bwd Value -> [OutPort] -> Task
 -- EvalPorts is "missing" one input (between valz and ports), i.e. the one that's the current Task
 -- (whereas evalPorts has them all)
-evalPorts g fz valz (p:ps) = run g (fz :< EvalPorts valz ps) (EvalPort p)
+evalPorts g fz valz (p:ps) = evalPort g (fz :< EvalPorts valz ps) p
 evalPorts g fz valz [] = run g fz (Finished (valz <>> []))
+
+-- Evaluates a port (or retrieves value from cache)
+evalPort :: GraphInfo -> Bwd Frame -> OutPort -> Task
+evalPort gi fz p@(Ex name _) = case lookupOutport fz p of
+    Just v -> run gi fz (Use v)
+    Nothing -> evalNodeInputs gi (fz :< AwaitNodeInputs p) name
 
 getNodeInputs :: GraphInfo -> Name -> [OutPort]
 getNodeInputs (g, _, _, _) name = M.elems (M.fromList [(tgtPort, src) | (src, _, In _ tgtPort) <- wiresTo name g])
@@ -129,7 +133,7 @@ updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
 evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId -> [(HG.NodeId, OutPort)] -> Task
 evalSplices gi fz hugr [] = run gi fz (Finished [KernelV hugr])
 evalSplices gi fz hugr ((nid, outport):rest) =
-    run gi (fz :< DoSplices hugr nid rest) (EvalPort outport)
+    evalPort gi (fz :< DoSplices hugr nid rest) outport
 
 runVectorisedThunks :: GraphInfo -> Bwd Frame -> [(BratThunk, [Value])] -> Bwd [Value] -> Task
 runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs <>> [])
@@ -168,15 +172,12 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   isEmptyVecV _ = False
 
 -- Tasks that push new frames onto the stack to do things
-run gi fz (EvalPort p@(Ex name _)) = case lookupOutport fz p of
-    Just v -> run gi fz (Use v)
-    Nothing -> evalNodeInputs gi (fz :< AwaitNodeInputs p) name
 run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
     --nw | trace ("EVALNODE " ++ show nw) False -> undefined
     (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
     (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
     (BratNode Id _ _) -> run gi fz (Finished ins)
-    (BratNode (Eval func) _ _) -> run gi (fz :< CallWith ins) (EvalPort func)
+    (BratNode (Eval func) _ _) -> evalPort gi (fz :< CallWith ins) func
     (BratNode (Box _ _) [] [(_, VFun Kerny _)]) ->
         let (sub, newRoot) = split "box" root
             (hugr, splices) = compileKernel (sub, st, g) "box" n
@@ -247,7 +248,7 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
         Nothing -> run gi (fz :< Alternatives cs ins) TryNextMatch
         Just env ->
             let vals = [miniEval gi env src | (NamedPort src _, _) <- matchOutputs]
-            in run gi (fz :< CallWith vals) (EvalPort $ Ex box 0)
+            in evalPort gi (fz :< CallWith vals) $ Ex box 0
 
 -- Next element of VectorisedFuncs
 run gi (fz :< VectorisedFuncs th_inps outs) (Finished vals) =
