@@ -47,8 +47,8 @@ getExamplesTests =  do
        else if isPrefixOf "--!xfail-checking" cts then
          testGroup (show path) [parseTest, expectFail checkTest]
        else
-        let interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
-              interpreterTestsForExample path start
+        let execStrings = snd <$> T.breakOnAll execTestPrefix (T.pack cts)
+            interpreterTests = interpreterTestsForExample path <$> execStrings
             compileTest = compileToOutput "compilation" path
             checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
               then [checkTest, expectFail compileTest] else [compileTest]
