@@ -42,13 +42,14 @@ runInterpreter libDirs file runFunc = do
 
 data Frame where
     BratValues :: EvalEnv -> Frame
-    -- Optionally "what to do when all ports evaled" - Node weight, name+offset requested
-    -- then state of evaluating inputs: (values computed, ports whose values still needed)
+    -- In process of evaluating a list of OutPorts: (values computed, ports still needed)
+    -- (excluding the one that's in process of being evaluated)
     EvalPorts :: Bwd Value -> [OutPort] -> Frame
     -- We're waiting for a task to deliver us all of the inputs for this node,
-    -- then we can deliver the outputs.
+    -- goal is to deliver the single requested OutPort (after evaluating the node)
     AwaitNodeInputs :: OutPort -> Frame
-    -- Also responsible for caching all node outputs
+    -- Waiting for a task to deliver us all of the outputs for a node,
+    -- goal is to deliver the single requested OutPort.
     SelectFromNodeOutputs :: OutPort -> Frame
     -- have arguments to function, waiting for the function:
     CallWith :: [Value] -> Frame
@@ -82,12 +83,19 @@ showFrames :: Bwd Frame -> [String]
 showFrames = foldMap (\f -> divider : showFrame f)
 
 data Task where
+    -- Evaluates a port (or retrieves value from cache)
     EvalPort :: OutPort -> Task
     Suspend :: [Frame] -> Task -> Task
+    -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
     EvalNode :: Name -> [Value] -> Task
-    Use :: Value -> Task -- searches for EvalPorts or DoSplices
-    Finished :: [Value] -> Task -- searches for SelectFromNodeOutputs, or final result
+    -- A single Outport value is ready; searches for EvalPorts or DoSplices to use it.
+    Use :: Value -> Task
+    -- Finished computing a list of values (all outputs of one node);
+    -- searches for SelectFromNodeOutputs to use one, or is final result (of runInterpreter or ReturnTo).
+    Finished :: [Value] -> Task
+    -- Try the next clause in an Alternatives
     TryNextMatch :: Task
+    -- No clause in an Alternatives matched
     NoMatch :: Task
     StuckOnNode :: Name -> Node -> Task
   deriving Show
