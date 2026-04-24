@@ -1,3 +1,4 @@
+--!xfail-compilation
 open import lib.functional
 open import lib.kernel
 open import lib.math

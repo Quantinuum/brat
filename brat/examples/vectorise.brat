@@ -15,6 +15,10 @@ zip(X, Y, n, xs, ys) =
  xs, ys |>
  (n of ({[_,_]} :: { X, Y -> [X,Y] }))
 
+--!exec [[["yes",True],["no",False],["true",True],["false",False]]]
+test_zip :: Vec([String, Bool], 4)
+test_zip = zip(!, !, !, ["yes","no","true","false"], [true,false,true,false])
+
 mkPair(X :: *, Y :: *) -> { X, Y -> [X, Y] }
 mkPair(_, _) = { x, y => [x,y] }
 
@@ -29,6 +33,15 @@ rank2(X :: *, Y :: *, Z :: *,
       { X, Y -> Z }) -> Vec(Vec(Z, n), m)
 --rank2(_, _, _, n, m, fstArgs, sndArgs, f) = fstArgs, sndArgs |> m of n of f
 rank2(_, _, _, n, m, fstArgs, sndArgs, f) = (m of n of f)(fstArgs, sndArgs)
+
+leq(Nat, Nat) -> Bool
+leq(0, _) = true
+leq(_, 0) = false
+leq(succ(l), succ(n)) = leq(l, n)
+
+--!exec [[[True,False,True],[True,False,True]]]
+test_rank2 :: Vec(Vec(Bool, 3), 2)
+test_rank2 = rank2(!, !, !, !, !, [[1, 2, 3], [4, 5, 6]], [[2, 1, 3], [5, 4, 6]], leq)
 
 f(X :: *, n :: #, Vec(X, n)) -> Vec(X, 2 * n)
 f(X, 0, []) = []
@@ -54,3 +67,14 @@ juxt = 42 of 1, 42 of true
 
 notTooGreedy(Vec(Nat, 42)) -> Vec(Nat, 42), Vec(Nat, 42)
 notTooGreedy(xs) = 42 of 0, xs
+
+addN(Nat) -> { Nat -> Nat }
+addN(n) = { x => x + n }
+
+adders(n :: #) -> Vec({ Nat -> Nat }, n)
+adders(0) = []
+adders(succ(n)) = adders(n) -, addN(succ(n))
+
+--!exec [[1,2,3,4,5]]
+test_adders :: Vec(Nat, 5)
+test_adders = adders(5)(5 of 0)

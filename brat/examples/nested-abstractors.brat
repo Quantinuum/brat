@@ -1,3 +1,4 @@
+--!xfail-checking
 -- We expect that these examples should typecheck, but the machinery for dealing
 -- with nested rows is severly underdeveloped.
 

@@ -1,10 +1,11 @@
+--!xfail-checking
 -- Playing with representing a hardware-efficient ansatz
 
 -- Expectation:
 --  - this file parses and typechecks
 
 -- Reality:
---  - the parser is struggling with variables being plugged into the end of vectors
+--  - kernel compilation doesn't find `numNodes` or `Operator`
 
 open import lib.kernel
 

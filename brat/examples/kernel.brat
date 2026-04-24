@@ -9,8 +9,12 @@ H = ?und
 Rz(th :: Float)-> {a::Qubit -o b::Qubit}
 Rz = ?rz
 
-pba(Float)-> {c :: Qubit,d::Qubit -o c::Qubit,d::Qubit}
+pba(Float) -> {c :: Qubit,d::Qubit -o c::Qubit,d::Qubit}
 pba = th => { x, y => (lib.kernel.H, |)(x, y) }
+
+--!exec-hugr
+test_pba(Qubit, Qubit) -o Qubit, Qubit
+test_pba = pba(0.314)
 
 th :: {Bool -> Bool}
 th = ?th

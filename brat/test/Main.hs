@@ -3,15 +3,13 @@ import Test.Tasty.Silver.Interactive (defaultMain)
 
 import Test.Abstractor
 import Test.Arithmetic
-import Test.Checking
+import Test.Examples
 import Test.Graph
-import Test.Compile.Hugr
 import Test.Elaboration
 import Test.Failure
 import Test.HugrGraph
 import Test.Libs
 import Test.Naming
-import Test.Parsing
 import Test.Search
 import Test.Substitution
 import Test.Syntax.Let
@@ -62,9 +60,7 @@ coroT2 = do
 
 main = do
   failureTests  <- getFailureTests
-  checkingTests <- getCheckingTests
-  parsingTests <- getParsingTests
-  compilationTests <- setupCompilationTests
+  examplesTests <- getExamplesTests
   graphTests <- getGraphTests
   spliceTests <- getSpliceTests
   let coroTests = testGroup "coroutine"
@@ -73,16 +69,14 @@ main = do
        ]
   defaultMain $ testGroup "All" [graphTests
                                 ,failureTests
-                                ,checkingTests
+                                ,examplesTests
                                 ,letTests
                                 ,libDirTests
                                 ,nameTests
-                                ,parsingTests
                                 ,searchTests
                                 ,elaborationTests
                                 ,substitutionTests
                                 ,abstractorTests
-                                ,compilationTests
                                 ,typeArithTests
                                 ,coroTests
                                 ,spliceTests

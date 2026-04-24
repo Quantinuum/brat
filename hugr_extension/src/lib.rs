@@ -9,7 +9,7 @@ use hugr::{
         simple_op::{MakeOpDef, MakeRegisteredOp},
         ExtensionId, ExtensionRegistry, ExtensionSet, TypeDefBound,
     },
-    std_extensions::{arithmetic::int_types, collections},
+    std_extensions::{arithmetic::{float_types,int_types}, collections},
     types::{type_param::TypeParam, CustomType, Type, TypeArg, TypeBound, TypeName, TypeRV},
     Extension,
 };
@@ -49,6 +49,7 @@ lazy_static! {
     pub static ref BRAT_OPS_REGISTRY: ExtensionRegistry  = ExtensionRegistry::try_new([
         prelude::PRELUDE.to_owned(),
         int_types::EXTENSION.to_owned(),
+        float_types::EXTENSION.to_owned(),
         collections::EXTENSION.to_owned(),
         EXTENSION.to_owned(),
     ])

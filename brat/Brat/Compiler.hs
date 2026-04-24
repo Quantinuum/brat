@@ -19,7 +19,6 @@ import Brat.QualName (QualName)
 import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
 import Brat.Syntax.Value (Val(VFun))
 
-
 import Control.Exception (evaluate)
 import Control.Monad (forM, when)
 import Control.Monad.Except
@@ -28,7 +27,6 @@ import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
-import qualified Data.Map as M
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
@@ -89,32 +87,32 @@ compileToGraph libDirs file = do
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
 
--- Map from box name to (compiled graph, list of splices)
-type CompilationResult = M.Map Name (HugrGraph NodeId, [(NodeId, OutPort)])
+-- Map from box name to (compiled hugr, list of hole nodes in it)
+type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])
 
 compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
 compileFile libDirs file = do
   (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   let venv = M.map fst declEnv
   case holes of
-    [] -> do
-      box_decls <- concat <$> forM (M.keys declEnv) (findBoxes venv outerGraph)
-      Right <$> (evaluate -- turns 'error' into IO 'die'
-            $ M.fromList [(n, compileKernel (newRoot, st, outerGraph) "root" n) | n <- box_decls])
+    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
+          in Right <$> (evaluate -- turns 'error' into IO 'die'
+            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
+                               in (hugr, map fst holes))
+                         | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)
  where
-  findBoxes :: VEnv -> Graph -> QualName -> IO [Name]
+  findBoxes :: VEnv -> Graph -> QualName -> [Name]
   findBoxes venv (ns, es) name = case M.lookup name venv of
-        Nothing -> (putStrLn $ (show name) ++ ".... not found in VEnv") >> pure []
-        Just vals -> concat <$> (forM vals $ \(NamedPort (Ex n _) _, _) -> -- so, this returns IO [Name]
-          case M.lookup n ns of
+        Nothing -> error $ (show name) ++ ".... not found in VEnv"
+        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
             Just (BratNode Id _ _) ->
-               pure [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
-            _ -> (putStrLn $ (show n) ++ ".... not an Id node") >> pure [])
+               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
+            _ -> []
   isKernelBox :: Name -> M.Map Name Node -> Bool
-  isKernelBox name ns = case M.lookup name ns of
-    Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) -> True
-    _ -> False
+  isKernelBox name ns
+    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
+    | otherwise = False
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case

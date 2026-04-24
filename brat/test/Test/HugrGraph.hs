@@ -49,7 +49,7 @@ testSplice inline prepend = testCaseInfo name $ do
   name = (if inline then "inline" else "noinline") ++ (if prepend then "_prepend" else "_new")
   host :: (NodeId, (HugrGraph NodeId, Namespace))
   host = flip runState (runState (H.new "root" rootDefn) N.root) $ do
-    root <- get <&> H.root . fst
+    root <- get <&> H.getRoot . fst
     input <- addNode "inp" root (OpIn (InputNode tys []))
     output <- addNode "out" root (OpOut (OutputNode tys []))
     jh $setFirstChildren root [input, output]
@@ -63,7 +63,7 @@ testSplice inline prepend = testCaseInfo name $ do
   dfgHugr =
    let (initHugr, ns) = runState (H.new "root" rootDfg) N.root
    in fst $ flip execState (initHugr, ns) $ do
-    root <- get <&> H.root . fst
+    root <- get <&> H.getRoot . fst
     input <- addNode "inp" root (OpIn (InputNode tys []))
     output <- addNode "out" root (OpOut (OutputNode tys []))
     jh $ setFirstChildren root [input, output]

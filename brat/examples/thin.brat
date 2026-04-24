@@ -1,3 +1,6 @@
+--??xfail-parsing
+-- Experiments with selecting out of vectors with first class selections
+
 -- select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
 -- select(_, _, _, zero, []) = []
 -- select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)

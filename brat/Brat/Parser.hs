@@ -395,6 +395,7 @@ cthunk = try bratFn <|> try kernel <|> thunk
   replaceU' (FLetIn abs a b) = FLetIn abs <$> replaceU a <*> replaceU b
   replaceU' (FLambda lclauses) = FLambda <$> traverse (id **^ replaceU) lclauses
   replaceU' (FAnnotation a t) = (`FAnnotation` t) <$> replaceU a
+  replaceU' (FArith op a b) = FArith op <$> replaceU a <*> replaceU b
   replaceU' (FCon x a) = FCon x <$> replaceU a
   replaceU' (FPull ps a) = FPull ps <$> replaceU a
   replaceU' x = pure x

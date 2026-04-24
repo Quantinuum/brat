@@ -1,3 +1,4 @@
+--!xfail-checking
 id(X::*) -> { X -> X }
 id(_) = {x => x}
 

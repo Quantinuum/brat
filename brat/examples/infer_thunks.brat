@@ -1,4 +1,4 @@
-ext "to_float" to_float(i :: Int) -> Float
+ext "arith.i2f" to_float(i :: Int) -> Float
 
 id(X :: *, X) -> X
 id(_, x) = x
@@ -7,5 +7,6 @@ map(X :: *, Y :: *, { X -> Y }, List(X)) -> List(Y)
 map(_, _, _, []) = []
 map(X, Y, f, x ,- xs) = f(x) ,- map(X, Y, f, xs)
 
+--!exec [[5.0]]
 test :: List(Float)
 test = map(!, !, {f => f(5)}, [to_float])

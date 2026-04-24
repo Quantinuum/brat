@@ -10,12 +10,12 @@
 module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), addEdge, addNode, Container(..), onHugr) where
 
 import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
-import Brat.Checker.Monad (track, trackM, CheckingSig(..), CaptureSets)
+import Brat.Checker.Monad (track, trackM, CheckingSig(..))
 import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (Store(..))
 import Brat.Eval (eval, evalCTy, kindType)
 import Brat.Graph hiding (lookupNode)
-import Brat.Naming hiding (root)
+import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Port
 import Brat.Syntax.Common
@@ -581,7 +581,7 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
 compileKernel :: (Namespace, Store, Graph)
               -> String -> Name
               -> (HugrGraph NodeId, [(NodeId, OutPort)])
-compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
+compileKernel (nsp, store, g@(ns, _)) desc name = (hgr, holelist) where
   (src_tgt, outs) = case ns M.! name of
       -- All top-level functions are compiled into Box-es, which should look like this:
     (BratNode (Box src tgt) [] outs) -> ((src, tgt), outs)
@@ -590,7 +590,7 @@ compileKernel (nsp, store, g@(ns, es)) desc name = (hgr, holelist) where
     [(_, VFun Kerny cty)] -> cty
   (startHugr, nsp') = runState (H.new desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])) nsp
   (hgr, holelist) = flip evalState (makeCS (g, nsp', store) startHugr) $ do
-    ctr <- makeIO desc (root startHugr)
+    ctr <- makeIO desc (H.getRoot startHugr)
     compileBox ctr src_tgt
     hugr <- gets hugr
     hs <- gets holes

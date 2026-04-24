@@ -2,10 +2,11 @@ module Brat.Constructors.Patterns where
 
 import Brat.QualName
 
-pattern CSucc, CDoub, CNil, CCons, CSome, CNone, CTrue, CFalse, CZero, CSnoc,
+pattern CSucc, CDoub, CFull, CNil, CCons, CSome, CNone, CTrue, CFalse, CZero, CSnoc,
         CConcatEqEven, CConcatEqOdd, CRiffle, CRefl, COmit :: QualName
 pattern CSucc = PrefixName [] "succ"
 pattern CDoub = PrefixName [] "doub"
+pattern CFull = PrefixName [] "full"
 pattern CNil = PrefixName [] "nil"
 pattern CSome = PrefixName [] "some"
 pattern CNone = PrefixName [] "none"
