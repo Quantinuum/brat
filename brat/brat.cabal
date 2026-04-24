@@ -194,4 +194,6 @@ test-suite tests
                        utility-ht,
                        partial-order,
                        bytestring,
-                       directory
+                       directory,
+                       process,
+                       ansi-terminal

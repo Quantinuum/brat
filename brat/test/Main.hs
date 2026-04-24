@@ -1,5 +1,6 @@
 import Test.Tasty  (testGroup)
-import Test.Tasty.Silver.Interactive (defaultMain)
+import Test.Tasty.Ingredients.ConsoleReporter (consoleTestReporterWithHook)
+import Test.Tasty.Runners (defaultMainWithIngredients, listingTests)
 
 import Test.Abstractor
 import Test.Examples
@@ -66,17 +67,20 @@ main = do
        [testCase "coroT1" $ assertChecking coroT1
        ,testCase "coroT2" $ assertCheckingFail "Typechecking blocked on" coroT2
        ]
-  defaultMain $ testGroup "All" [graphTests
-                                ,failureTests
-                                ,examplesTests
-                                ,letTests
-                                ,libDirTests
-                                ,nameTests
-                                ,searchTests
-                                ,elaborationTests
-                                ,substitutionTests
-                                ,abstractorTests
-                                ,typeArithTests
-                                ,coroTests
-                                ,spliceTests
-                                ]
+  -- The default `consoleTestReporter` adds a hook giving a pattern to run with
+  -- `-p` to rerun skipped tests, which adds more noise
+  defaultMainWithIngredients [listingTests, consoleTestReporterWithHook (\_ r -> pure r)] $
+    testGroup "All" [graphTests
+                    ,failureTests
+                    ,examplesTests
+                    ,letTests
+                    ,libDirTests
+                    ,nameTests
+                    ,searchTests
+                    ,elaborationTests
+                    ,substitutionTests
+                    ,abstractorTests
+                    ,typeArithTests
+                    ,coroTests
+                    ,spliceTests
+                    ]
