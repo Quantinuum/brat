@@ -25,7 +25,6 @@ module Brat.Syntax.Value {-(VDecl
 import Brat.Error
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
 import Util (log2)
