@@ -84,8 +84,6 @@ showFrames = foldMap (\f -> divider : showFrame f)
 
 data Task where
     Suspend :: [Frame] -> Task -> Task
-    -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
-    EvalNode :: Name -> [Value] -> Task
     -- A single Outport value is ready; searches for EvalPorts or DoSplices to use it.
     Use :: Value -> Task
     -- Finished computing a list of values (all outputs of one node);
@@ -171,33 +169,34 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   isEmptyVecV (VecV []) = True
   isEmptyVecV _ = False
 
--- Tasks that push new frames onto the stack to do things
-run gi@(g@(nodes, _), st, root, cs) fz (EvalNode n ins) = case nodes M.! n of
-    --nw | trace ("EVALNODE " ++ show nw) False -> undefined
-    (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
-    (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
-    (BratNode Id _ _) -> run gi fz (Finished ins)
-    (BratNode (Eval func) _ _) -> evalPort gi (fz :< CallWith ins) func
-    (BratNode (Box _ _) [] [(_, VFun Kerny _)]) ->
-        let (sub, newRoot) = split "box" root
-            (hugr, splices) = compileKernel (sub, st, g) "box" n
-        in evalSplices (g, st, newRoot, cs) fz hugr splices
-    (BratNode (Box src tgt) _ _) ->
-        let captureSet = fromMaybe M.empty (M.lookup n cs)
-            capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
-        in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
-    (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
-    (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
-    (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
-    (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
-    (BratNode (Selector stor) _ _) -> case (stor, ins) of
-        (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
-    (BratNode Replicate _ _) -> case ins of
-      [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
-    (BratNode MapFun _ _) -> case ins of
-      -- We have a vector (or vec of vecs, n-dimensions) of functions
-      [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
-    nw -> run gi fz (StuckOnNode n nw)
+-- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
+evalNode :: GraphInfo -> Bwd Frame -> Name -> [Value] -> Task
+evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case nodes M.! n of
+  --nw | trace ("EVALNODE " ++ show nw) False -> undefined
+  (BratNode (Const st) _ _) -> run gi fz (Finished [evalSimpleTerm st])
+  (BratNode (ArithNode op) _ _) -> run gi fz (Finished [evalArith op ins])
+  (BratNode Id _ _) -> run gi fz (Finished ins)
+  (BratNode (Eval func) _ _) -> evalPort gi (fz :< CallWith ins) func
+  (BratNode (Box _ _) [] [(_, VFun Kerny _)]) ->
+      let (sub, newRoot) = split "box" root
+          (hugr, splices) = compileKernel (sub, st, g) "box" n
+      in evalSplices (g, st, newRoot, cs) fz hugr splices
+  (BratNode (Box src tgt) _ _) ->
+      let captureSet = fromMaybe M.empty (M.lookup n cs)
+          capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
+      in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
+  (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
+  (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
+  (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
+  (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
+  (BratNode (Selector stor) _ _) -> case (stor, ins) of
+      (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
+  (BratNode Replicate _ _) -> case ins of
+    [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
+  (BratNode MapFun _ _) -> case ins of
+    -- We have a vector (or vec of vecs, n-dimensions) of functions
+    [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
+  nw -> run gi fz (StuckOnNode n nw)
  where
    -- Assuming a tree of VecV's whose leaf values are ThunkV's,
    -- Convert the bottom level of VecV's to VectorisedFuncs.
@@ -233,7 +232,7 @@ run gi (fz :< CallWith inputs) (Use (ThunkV th)) = runThunk gi (B0 :< ReturnTo f
 
 ---- Finished (list of values)
 run gi (fz :< AwaitNodeInputs req@(Ex name _)) (Finished inputs) =
-    run gi (fz :< SelectFromNodeOutputs req) (EvalNode name inputs)
+    evalNode gi (fz :< SelectFromNodeOutputs req) name inputs
 run gi (fz :< SelectFromNodeOutputs (Ex name offset)) (Finished outputs) =
     run gi (updateCache fz [(Ex name i, val) | (i, val) <- zip [0..] outputs]) (Use (outputs !! offset))
 run gi (B0 :< ReturnTo fz) (Finished vals) = run gi fz (Finished vals)
