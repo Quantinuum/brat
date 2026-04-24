@@ -1,0 +1,40 @@
+--!xfail-checking
+-- Playing with representing a hardware-efficient ansatz
+
+-- Expectation:
+--  - this file parses and typechecks
+
+-- Reality:
+--  - kernel compilation doesn't find `numNodes` or `Operator`
+
+open import lib.kernel
+
+type Real = Nat -- Temporary hack
+
+type Operator = [[Nat, Nat],Real]
+
+type Pauli = Vec(Nat, 0)
+
+edges :: Vec(Operator, 1)
+edges = ?e
+
+numNodes :: Nat
+numNodes = ?nn
+
+numEdges :: Nat
+numEdges = ?ne
+
+apply_operators :: { Vec(Money, numNodes)
+                   , Vec(Operator, numEdges)
+                   -o Vec(Qubit, numNodes)
+                   }
+apply_operators = ?help
+
+-- map :: (f :: {A -> B}), (xs :: Vec A n) -> (ys :: Vec B n)
+-- map = f, xs => ?ys
+
+hea(rotations :: Vec (Operator, numEdges)
+   ,meas :: Vec (Pauli ,numNodes)   
+   ,(cash :: Vec (Money ,numNodes)))
+   -> (cash :: Vec (Money ,numNodes)), (result :: Vec(Bool, numNodes))
+hea = rots, meas => ?j -- apply-operators; meas(cash); xs => map(measure,xs); transpose
