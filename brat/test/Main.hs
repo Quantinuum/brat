@@ -2,15 +2,13 @@ import Test.Tasty  (testGroup)
 import Test.Tasty.Silver.Interactive (defaultMain)
 
 import Test.Abstractor
-import Test.Checking
+import Test.Examples
 import Test.Graph
-import Test.Compile.Hugr
 import Test.Elaboration
 import Test.Failure
 import Test.HugrGraph
 import Test.Libs
 import Test.Naming
-import Test.Parsing
 import Test.Search
 import Test.Substitution
 import Test.Syntax.Let
@@ -24,7 +22,7 @@ import Brat.QualName
 import Brat.Error
 import Control.Monad.Freer
 import qualified Data.Set as S
-import Debug.Trace
+--import Debug.Trace
 import Test.Util
 import Test.Tasty.HUnit (testCase)
 
@@ -38,7 +36,7 @@ coroT1 = do
           Nothing -> defineEnd "test" e (VCon (PrefixName [] "nil") [])
       )
   mkYield "coroT1" (S.singleton e) >> pure ()
-  traceM "Yield continued"
+  --traceM "Yield continued"
   v <- req $ ELup e
   case v of
     Just _ -> pure ()
@@ -61,9 +59,7 @@ coroT2 = do
 
 main = do
   failureTests  <- getFailureTests
-  checkingTests <- getCheckingTests
-  parsingTests <- getParsingTests
-  compilationTests <- setupCompilationTests
+  examplesTests <- getExamplesTests
   graphTests <- getGraphTests
   spliceTests <- getSpliceTests
   let coroTests = testGroup "coroutine"
@@ -72,16 +68,14 @@ main = do
        ]
   defaultMain $ testGroup "All" [graphTests
                                 ,failureTests
-                                ,checkingTests
+                                ,examplesTests
                                 ,letTests
                                 ,libDirTests
                                 ,nameTests
-                                ,parsingTests
                                 ,searchTests
                                 ,elaborationTests
                                 ,substitutionTests
                                 ,abstractorTests
-                                ,compilationTests
                                 ,typeArithTests
                                 ,coroTests
                                 ,spliceTests

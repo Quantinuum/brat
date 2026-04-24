@@ -1,4 +1,5 @@
-ext "" add(x :: Int, y :: Int) -> (z :: Int)
+add(x :: Int, y :: Int) -> (z :: Int)
+add(x,y) = x + y
 
 be5 :: { -> Int }
 be5 = { => 5 }
@@ -14,6 +15,10 @@ id = { _ }
 
 use5 :: { Int -> Int }
 use5 = { _ |> (id,be5); add }
+
+--!exec [9]
+test_use5 :: Int
+test_use5 = use5(4)
 
 add5 :: { Int -> Int }
 add5 = {add(_, 5)}
@@ -35,8 +40,10 @@ swap = { snd:_,_ }
 -- be5' :: Int
 -- be5' = be5() --> 5
 
+--!exec [6]
 add5' :: Int
-add5' = add5(1) --> 6
+add5' = add5(1)
 
+--!exec [3]
 add__' :: Int
-add__' = add__(1,2) --> 3
+add__' = add__(1,2)

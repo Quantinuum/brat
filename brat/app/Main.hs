@@ -1,7 +1,14 @@
 import Brat.Compiler
+import Brat.Machine (runInterpreter)
 
+import qualified Data.ByteString.Lazy as BS (putStr)
+import Data.HugrGraph (to_json)
+
+import Data.Text.Lazy.IO (putStr)
 import Control.Monad (when)
 import Options.Applicative
+
+import Prelude hiding (putStr)
 
 data Options = Opt {
   ast     :: Bool,
@@ -9,7 +16,8 @@ data Options = Opt {
   compile :: Bool,
   file    :: String,
   libs    :: String,
-  raw     :: Bool
+  raw     :: Bool,
+  runFunc :: String
 }
 
 compileFlag :: Parser Bool
@@ -23,8 +31,10 @@ dotOption = strOption (long "dot" <> value "" <> help "Write graph in Dot format
 
 libOption = strOption (long "lib" <> value "" <> help "Look in extra directories for libraries (delimited with ;)")
 
+runFuncOption = strOption (long "run" <> value "" <> help "Run function with interpreter (must take no arguments)")
+
 opts :: Parser Options
-opts = Opt <$> astFlag <*> dotOption <*> compileFlag <*> strArgument (metavar "FILE") <*> libOption <*> rawFlag
+opts = Opt <$> astFlag <*> dotOption <*> compileFlag <*> strArgument (metavar "FILE") <*> libOption <*> rawFlag <*> runFuncOption
 
 -- Parse a list of library directories delimited by a semicolon
 parseLibs :: String -> [String]
@@ -39,4 +49,10 @@ main = do
   when (ast || raw) $ printAST raw ast file
   let libDirs = parseLibs libs
   when (dot /= "") $ writeDot libDirs file dot
-  if compile then compileAndPrintFile libDirs file else printDeclsHoles libDirs file
+  if compile then compileAndPrintFile libDirs file
+  else if runFunc == "" then printDeclsHoles libDirs file
+  else do
+    result <- runInterpreter libDirs file runFunc
+    case result of
+      Right hugr -> BS.putStr (to_json hugr)
+      Left s -> putStr s

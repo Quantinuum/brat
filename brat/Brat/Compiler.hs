@@ -3,16 +3,21 @@ module Brat.Compiler (printAST
                      ,writeDot
                      ,compileFile
                      ,compileAndPrintFile
+                     ,compileToGraph
                      ,CompilingHoles(..)
                      ) where
 
-import Brat.Checker.Types (TypedHole)
+import Brat.Checker.Types (TypedHole, Modey(Kerny), VEnv)
 import Brat.Compile.Hugr
 import Brat.Dot (toDotString)
 import Brat.Elaborator
 import Brat.Error
+import Brat.Graph(Graph, Node(BratNode), NodeType(Box, Id))
 import Brat.Load
-import Brat.Naming (root, split)
+import Brat.Naming (Namespace, root, split, Name)
+import Brat.QualName (QualName)
+import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
+import Brat.Syntax.Value (Val(VFun))
 
 import Control.Exception (evaluate)
 import Control.Monad (forM, when)
@@ -20,6 +25,8 @@ import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
+import Data.Foldable (for_)
+import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
@@ -74,18 +81,43 @@ instance Show CompilingHoles where
   show (CompilingHoles hs) = unlines $
     "Can't compile file with remaining holes": fmap (("  " ++) . show) hs
 
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles BS.ByteString)
-compileFile libDirs file = do
+compileToGraph :: [FilePath] -> String -> IO (Namespace, VMod)
+compileToGraph libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
   env <- runExceptT $ loadFilename checkRoot libDirs file
-  (declEnv, holes, defs, outerGraph, capSets) <- eitherIO env
+  (newRoot,) <$> eitherIO env
+
+-- Map from box name to (compiled hugr, list of hole nodes in it)
+type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])
+
+compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
+compileFile libDirs file = do
+  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   let venv = M.map fst declEnv
   case holes of
-    [] -> Right <$> evaluate -- turns 'error' into IO 'die'
-                    (compile defs newRoot outerGraph capSets venv)
+    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
+          in Right <$> (evaluate -- turns 'error' into IO 'die'
+            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
+                               in (hugr, map fst holes))
+                         | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)
+ where
+  findBoxes :: VEnv -> Graph -> QualName -> [Name]
+  findBoxes venv (ns, es) name = case M.lookup name venv of
+        Nothing -> error $ (show name) ++ ".... not found in VEnv"
+        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
+            Just (BratNode Id _ _) ->
+               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
+            _ -> []
+  isKernelBox :: Name -> M.Map Name Node -> Bool
+  isKernelBox name ns
+    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
+    | otherwise = False
 
 compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
-  Right bs -> BS.putStr bs
+  Right hs -> for_ (M.toList hs) $ \(n, (hugr, splices)) -> do
+    putStrLn $ "Compiled box: " ++ show n
+    BS.putStr (to_json hugr)
+    putStrLn $ "With splices: " ++ show splices
   Left err -> die (show err)

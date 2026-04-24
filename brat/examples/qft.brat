@@ -29,3 +29,7 @@ qft(succ(n)) = {
     |, qft(n);
     recons(n)
 }
+
+--!exec-hugr
+test_qft(Vec(Qubit, 5)) -o Vec(Qubit, 5)
+test_qft = qft(5)

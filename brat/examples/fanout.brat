@@ -1,7 +1,13 @@
+--!xfail-compilation
 open import lib.kernel (CX)
 
 fanout(Vec(Nat, 3)) -> Nat, Nat, Nat
 fanout = { [/\] }
+
+-- note a single Vec output would be [[3,5,7]]
+--!exec [3,5,7]
+test_fanout :: Nat, Nat, Nat
+test_fanout = fanout([3,5,7])
 
 swap(X :: $, Y :: $) -> { X, Y -o Y, X }
 swap(_, _) = { x, y => y, x }

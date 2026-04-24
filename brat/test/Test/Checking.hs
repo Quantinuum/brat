@@ -1,33 +1,17 @@
-module Test.Checking (parseAndCheck, getCheckingTests, expectedCheckingFails) where
+module Test.Checking (parseAndCheck, parseAndCheckNamed) where
 
 import Brat.Load
 import Brat.Naming (root)
-import Test.Parsing (expectedParsingFails)
-import Test.Util (expectFailForPaths)
 
 import Control.Monad.Except
-import System.FilePath
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Tasty.Silver
-
-expectedCheckingFails = map ("examples" </>) ["nested-abstractors.brat"
-                                             ,"karlheinz.brat"
-                                             ,"karlheinz_alias.brat"
-                                             ,"hea.brat"
-                                             -- https://github.com/Quantinuum/brat/issues/92
-                                             ,"repeated_app.brat"
-                                             ,"adder.brat"
-                                             ]
-
-parseAndCheckXF :: [FilePath] -> [TestTree]
-parseAndCheckXF = expectFailForPaths (expectedParsingFails ++ expectedCheckingFails) (parseAndCheck [])
-
-getCheckingTests :: IO TestTree
-getCheckingTests = testGroup "checking" . parseAndCheckXF <$> findByExtension [".brat"] "examples"
 
 parseAndCheck :: [FilePath] -> FilePath -> TestTree
-parseAndCheck libDirs file = testCase (show file) $ do
+parseAndCheck libDirs file = parseAndCheckNamed (show file) libDirs file
+
+parseAndCheckNamed :: String -> [FilePath] -> FilePath -> TestTree
+parseAndCheckNamed name libDirs file = testCase name $ do
   env <- runExceptT $ loadFilename root libDirs file
   case env of
     Left err -> assertFailure (show err)
