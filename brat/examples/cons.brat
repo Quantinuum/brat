@@ -18,7 +18,7 @@ goodBinding = let x, y = twoThings in x, y
 -- Functions can be applied directly to things that
 -- represent the right number of values
 three :: Int
-three =  add(twoThings)
+three = add(twoThings)
 
 -- Is equivalent to:
 --!exec [3]
