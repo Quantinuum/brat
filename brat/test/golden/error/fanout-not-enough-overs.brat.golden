@@ -2,5 +2,5 @@ Error in test/golden/error/fanout-not-enough-overs.brat on line 2:
 f = { [/\] }
     ^^^^^^^^
 
-  Expected function to return additional values of type: (c1 :: Nat)
+  Expected function to return additional values of type: (_3 :: Nat)
 

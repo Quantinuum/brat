@@ -18,9 +18,12 @@ module Brat.Eval (EvMode(..)
                  ,kindType
                  ,numVal
                  ,quote
-                 ,quoteNum
+		 ,quoteNum
+                 ,quoteVar
                  ,getNumVar
-                 ,instantiateMeta
+		 ,instantiateMeta
+                 ,numSumEval
+                 ,numSumUpdate
                  ) where
 
 import Brat.Checker.Monad
@@ -91,6 +94,16 @@ sem ga (VApp f vz) = do
     f <- semVar ga f
     vz <- traverse (sem ga) vz
     applySem f vz
+sem ga (VEqn lhs rhs) = SEqn <$> semNS ga lhs <*> semNS ga rhs
+
+
+semNS :: forall n. Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
+semNS ga (NumSum c vs) = do
+  nss <- traverse semV vs
+  pure $ foldr (<>) (NumSum c []) nss
+ where
+  semV :: (Monotone (VVar n), Integer) -> Checking (NumSum SVar)
+  semV (mono, n) = flip multNumSum n . nv_to_sum <$> (numEval ga mono)
 
 semVar :: Stack Z Sem n -> VVar n -> Checking Sem
 semVar vz (VInx inx) = pure $ proj vz inx
@@ -127,6 +140,7 @@ quote lvy (SLam stk body) = do
   VLam <$> quote (Sy lvy) body
 quote lvy (SFun my ga cty) = VFun my <$> quoteCTy lvy my ga cty
 quote lvy (SApp f vz) = VApp (quoteVar lvy f) <$> traverse (quote lvy) vz
+quote lvy (SEqn lhs rhs) = pure $ VEqn (quoteVar lvy <$> lhs) (quoteVar lvy <$> rhs)
 
 quoteCTy :: Ny lv -> Modey m -> Stack Z Sem n -> CTy m n -> Checking (CTy m lv)
 quoteCTy lvy my ga (ins :->> outs) = quoteRo my ga ins lvy >>= \case
@@ -159,6 +173,16 @@ quoteRo m ga (RPr (p, t) r) lvy = do
 quoteRo m ga (REx pk r) lvy = do
   (ga, Some (r :* lvy)) <- quoteRo m (ga :<< semLvl lvy) r (Sy lvy)
   pure (ga, Some (REx pk r :* lvy))
+
+-- Maintains NumSum invariants through use of (<>)
+numSumEval :: forall n. Stack Z Sem n -> NumSum (VVar n) -> Checking (NumSum SVar)
+numSumEval ga (NumSum c vs) = (NumSum c [] <>) . mconcat <$> traverse aux vs
+ where
+  aux :: (Monotone (VVar n), Integer) -> Checking (NumSum SVar)
+  aux (mono, n) = (flip multNumSum n) . nv_to_sum <$> numEval ga mono
+
+numSumUpdate :: NumSum (VVar Z) -> Checking (NumSum (VVar Z))
+numSumUpdate ns = numSumEval S0 ns >>= pure . fmap (quoteVar Zy)
 
 class NumEval (f :: Type -> Type) where
   numEval :: Stack Z Sem n -> f (VVar n) -> Checking (NumVal SVar)
@@ -300,13 +324,22 @@ eqTests tm lvkz = go
   go _ us vs = pure . Left . TypeErr $ "Arity mismatch in type constructor arguments:\n  "
                    ++ show us ++ "\n  " ++ show vs
 
-getNumVar :: NumVal (VVar n) -> Maybe End
-getNumVar (NumValue _ (StrictMonoFun (StrictMono _ mono))) = case mono of
-  Linear v -> case v of
-    VPar e -> Just e
-    _ -> Nothing
-  Full sm -> getNumVar (numValue sm)
-getNumVar _ = Nothing
+class GetNumVar nv where
+  getNumVar :: nv -> Maybe End
+
+instance GetNumVar (NumVal (VVar n)) where
+  getNumVar (NumValue _ sm) = getNumVar sm
+
+instance GetNumVar (Fun00 (VVar n)) where
+  getNumVar Constant0 = Nothing
+  getNumVar (StrictMonoFun sm) = getNumVar sm
+
+instance GetNumVar (StrictMono (VVar n)) where
+  getNumVar (StrictMono _ mono) = getNumVar mono
+
+instance GetNumVar (Monotone (VVar n)) where
+  getNumVar (Linear (VPar e)) = Just e
+  getNumVar (Full sm) = getNumVar sm
 
 -- Be conservative, fail if in doubt. Not dangerous like being wrong while succeeding
 -- We can have bogus failures here because we're not normalising under lambdas
@@ -322,6 +355,10 @@ doesntOccur e (VLam body) = doesntOccur e body
 doesntOccur e (VFun my (ins :->> outs)) = case my of
   Braty -> doesntOccurRo my e ins *> doesntOccurRo my e outs
   Kerny -> doesntOccurRo my e ins *> doesntOccurRo my e outs
+doesntOccur e (VEqn lhs rhs) = doesntOccurNS e lhs *> doesntOccurNS e rhs
+
+doesntOccurNS :: End -> NumSum (VVar n) -> Either ErrorMsg ()
+doesntOccurNS e (NumSum _ vs) = traverse_ (\(mono,_) -> traverse_ (collision e) (getNumVar mono)) vs
 
 -- This should only be called after checking we have the right to solve the end
 instantiateMeta :: String -> End -> Val Z -> Checking ()

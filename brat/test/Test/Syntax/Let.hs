@@ -28,8 +28,8 @@ test = testCase "let" $
       tm = Let
         (dummyFC ("x" :||: "y"))
         (dummyFC (dummyFC (num 1 :|: num 2)
-               ::: [("a", Right (Con (plain "Int") (dummyFC Empty)))
-                   ,("b", Right (Con (plain "Int") (dummyFC Empty)))
+               ::: [Named "a" (Right (Con (plain "Int") (dummyFC Empty)))
+                   ,Named "b" (Right (Con (plain "Int") (dummyFC Empty)))
                    ])
         )
         (dummyFC (Var "x"))

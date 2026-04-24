@@ -6,12 +6,12 @@ import Data.List.NonEmpty (NonEmpty(..), toList)
 import Data.Maybe (mapMaybe)
 
 import Brat.FC
+import Brat.Load (VDecl(..))
 import Brat.LSP.State
 import Brat.Syntax.Common
 import Brat.Syntax.Concrete (Flat(..))
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
-import Brat.Syntax.Value (VDecl(..))
 import Brat.Unelaborator (unelab)
 
 data Context

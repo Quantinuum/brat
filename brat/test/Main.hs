@@ -2,6 +2,7 @@ import Test.Tasty  (testGroup)
 import Test.Tasty.Silver.Interactive (defaultMain)
 
 import Test.Abstractor
+import Test.Arithmetic
 import Test.Examples
 import Test.Graph
 import Test.Elaboration
@@ -35,7 +36,7 @@ coroT1 = do
           Just _ -> err $ InternalError "already defined"
           Nothing -> defineEnd "test" e (VCon (PrefixName [] "nil") [])
       )
-  mkYield "coroT1" (S.singleton e) >> pure ()
+  mkYield (TypeErr "coroT1") "coroT1" (S.singleton e) >> pure ()
   --traceM "Yield continued"
   v <- req $ ELup e
   case v of
@@ -48,7 +49,7 @@ coroT2 = do
   let e = InEnd $ In name 0
   req $ Declare e Braty (Left $ Star []) Definable
   v <- do
-    mkYield "coroT2" (S.singleton e)
+    mkYield (TypeErr "coroT2") "coroT2" (S.singleton e)
     req $ ELup e
   -- No way to execute this without a 'v'
   mkFork "t2" $ defineEnd "test" e (VCon (PrefixName [] "nil") [])
@@ -79,4 +80,5 @@ main = do
                                 ,typeArithTests
                                 ,coroTests
                                 ,spliceTests
+                                ,test_simplify
                                 ]

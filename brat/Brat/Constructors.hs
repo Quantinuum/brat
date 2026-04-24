@@ -30,6 +30,7 @@ defaultConstructors = M.fromList
   [(CSucc, M.fromList
      [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
      ,(CInt, CArgs [] Zy R0 (RPr ("value", TInt) R0))
+     ,(CThin, CArgs [VPNum (NP1Plus NPVar), VPNum (NP1Plus NPVar)] (Sy (Sy Zy)) (REx ("wee", Nat) (REx ("big", Nat) R0)) (RPr ("thinning", TThin (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ)))) R0))
      ])
   ,(CDoub, M.fromList
      [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
@@ -38,6 +39,7 @@ defaultConstructors = M.fromList
   ,(CZero, M.fromList
      [(CNat, CArgs [] Zy R0 R0)
      ,(CInt, CArgs [] Zy R0 R0)
+     ,(CThin, CArgs [VPNum NP0, VPNum NP0] Zy R0 R0)
      ])
   ,(CNil, M.fromList
      [(CList, CArgs [VPVar] (Sy Zy) (REx ("elementType", Star []) R0) R0)
@@ -102,6 +104,19 @@ defaultConstructors = M.fromList
         (RPr ("value", VApp (VInx VZ) B0) R0))])
   ,(CTrue, M.fromList [(CBool, CArgs [] Zy R0 R0)])
   ,(CFalse, M.fromList [(CBool, CArgs [] Zy R0 R0)])
+  ,(COmit, M.fromList
+    [(CThin, CArgs [VPNum NPVar, VPNum (NP1Plus NPVar)] (Sy (Sy Zy))
+      -- args to type constructor
+      (REx ("wee", Nat) (REx ("big", Nat) R0)) -- n <= m'
+      -- Args to val constructor
+      (RPr ("thinning", TThin (VNum (nVar (VInx (VS VZ)))) (VNum (nVar (VInx VZ))))
+       (REx ("k", Nat) (RPr ("eq",VEqn
+                                  (NumSum 0 [(Linear (VInx (VS VZ)), 1)]) -- m'
+                                  (NumSum 0 [(Linear (VInx VZ), 1) -- k
+                                            ,(Linear (VInx (VS (VS VZ))), 1) -- n
+                                            ])
+                            ) R0)))
+     )])
   ]
 
 kernelConstructors :: ConstructorMap Kernel
@@ -138,6 +153,7 @@ defaultTypeConstructors = M.fromList
   ,((Brat, CNat),    [])
   ,((Brat, CNil),    [])
   ,((Brat, CCons),   [("head", Star []), ("tail", Star [])])
+  ,((Brat, CThin),   [("wee", Nat), ("big", Nat)])
   ,((Kernel, CQubit), [])
   ,((Kernel, CMoney), [])
   ,((Kernel, CVec), [("X", Dollar []), ("n", Nat)])

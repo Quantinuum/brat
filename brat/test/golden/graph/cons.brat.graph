@@ -30,8 +30,8 @@ Nodes:
 (cons.brat_globals_Vec_6,BratNode (Constructor Vec) [("X",[]),("n",Nat)] [("value",[])])
 (cons.brat_globals_const_3,BratNode (Const 2) [] [("value",Nat)])
 (cons.brat_globals_const_8,BratNode (Const 3) [] [("value",Nat)])
-(cons.brat_globals_decl_4_two,BratNode Id [("a1",Vec(Int, 2))] [("a1",Vec(Int, 2))])
-(cons.brat_globals_decl_9_three,BratNode Id [("a1",Vec(Int, 3))] [("a1",Vec(Int, 3))])
+(cons.brat_globals_decl_4_two,BratNode Id [("_0",Vec(Int, 2))] [("_0",Vec(Int, 2))])
+(cons.brat_globals_decl_9_three,BratNode Id [("_0",Vec(Int, 3))] [("_0",Vec(Int, 3))])
 
 Wires:
 (Ex cons.brat_check_defs_1_three_2_$rhs_check'Con__2 0,[],In cons.brat_check_defs_1_three_2_$rhs_check'Con_$!_pat2val 0)

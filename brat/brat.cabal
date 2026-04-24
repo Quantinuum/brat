@@ -47,7 +47,7 @@ common warning-flags
     -Werror=unused-imports
     -Werror=unused-matches
     -Werror=missing-methods
-    -Werror=unused-top-binds
+--    -Werror=unused-top-binds
     -Werror=unused-local-binds
     -Werror=redundant-constraints
     -Werror=orphans
@@ -64,10 +64,12 @@ library
   exposed-modules:     Brat.Checker.Quantity,
                        Brat.Dot,
                        Brat.Eval,
-                       Brat.Lexer
+                       Brat.Lexer,
+                       Brat.Checker.Arithmetic,
                        Brat.Checker.Helpers,
                        Brat.Checker.Helpers.Nodes,
                        Brat.Checker.Monad,
+                       Brat.Checker.SolveConstraints,
                        Brat.Checker.SolveHoles,
                        Brat.Checker.SolveNumbers,
                        Brat.Checker.SolvePatterns,
@@ -162,6 +164,7 @@ test-suite tests
   hs-source-dirs:      test
   main-is:             Main.hs
   other-modules:       Test.Abstractor,
+                       Test.Arithmetic,
                        Test.Checking,
                        Test.Compile.Hugr,
                        Test.Elaboration,

@@ -25,25 +25,15 @@ module Brat.Syntax.Value {-(VDecl
 import Brat.Error
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.Core (Term (..))
-import Brat.Syntax.FuncDecl (FunBody, FuncDecl(..))
 import Bwd
 import Hasochism
+import Util (log2)
 
 import Data.List (intercalate, minimumBy)
 import Data.Ord (comparing)
 import Data.Kind (Type)
 import Data.Maybe (isJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
-
-newtype VDecl = VDecl (FuncDecl (Some (Ro Brat Z)) (FunBody Term Noun))
-
-instance MODEY Brat => Show VDecl where
-  show (VDecl decl) = show $ aux decl
-   where
-    aux :: FuncDecl (Some (Ro Brat Z)) body -> FuncDecl String body
-    aux (FuncDecl { .. }) = case fnSig of
-      Some sig -> FuncDecl { fnName = fnName, fnSig = show sig, fnBody = fnBody, fnLoc = fnLoc, fnLocality = fnLocality }
 
 ------------------------------------ Variable Indices ------------------------------------
 -- Well scoped de Bruijn indices
@@ -161,6 +151,7 @@ data Val :: N -> Type where
   VLam :: Val (S n) -> Val n -- Just body (binds DeBruijn index n)
   VFun :: MODEY m => Modey m -> CTy m n -> Val n
   VApp :: VVar n -> Bwd (Val n) -> Val n
+  VEqn :: NumSum (VVar n) -> NumSum (VVar n) -> Val n
 
 -- Define a naive version of equality, which only says whether the data
 -- structures are on-the-nose equal
@@ -188,7 +179,7 @@ instance MODEY m => Eq (CTy m i) where
     roEq _ _ _ = Nothing
 
 data SVar = SPar End | SLvl Int
- deriving (Show, Eq)
+ deriving (Show, Eq, Ord)
 
 -- Semantic value, used internally by normalization; contains Lvl's but no Inx's
 data Sem where
@@ -201,6 +192,7 @@ data Sem where
   SApp :: SVar -> Bwd Sem -> Sem
   -- Sum types, stash like SLam (shared between all variants)
   SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+  SEqn :: NumSum SVar -> NumSum SVar -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -237,7 +229,7 @@ instance forall m top bot. MODEY m => Show (Ro m bot top) where
                                       Braty -> show ty
                                       Kerny -> show ty
                                 in  ('(':p ++ " :: " ++ tyStr ++ ")"):roToList ro
-    roToList  (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
+    roToList (REx (p, k) ro) = ('(':p ++ " :: " ++ show k ++ ")"):roToList ro
 
 instance Show (Val n) where
   show v@(VCon _ _) | Just vs <- asList v = show vs
@@ -251,6 +243,7 @@ instance Show (Val n) where
   show (VFun m cty) = "{ " ++ modily m (show cty) ++ " }"
   show (VApp v ctx) = "VApp " ++ show v ++ " " ++ show ctx
   show (VLam body) = "VLam " ++ show body
+  show (VEqn lhs rhs) = show lhs ++ " = " ++ show rhs
 
 ---------------------------------- Patterns -----------------------------------
 pattern TNat, TInt, TFloat, TBool, TText, TUnit, TNil :: Val n
@@ -266,9 +259,11 @@ pattern TList, TOption :: Val n -> Val n
 pattern TList ty = VCon (PrefixName [] "List") [ty]
 pattern TOption ty = VCon (PrefixName [] "Option") [ty]
 
-pattern TVec, TCons :: Val n -> Val n -> Val n
+pattern TVec, TCons, TEq, TThin :: Val n -> Val n -> Val n
 pattern TVec ty n = VCon (PrefixName [] "Vec") [ty, n]
 pattern TCons x ys = VCon (PrefixName [] "cons") [x, ys]
+pattern TEq a b = VCon (PrefixName [] "Eq") [a,b]
+pattern TThin a b = VCon (PrefixName [] "Thin") [a,b]
 
 pattern TQ, TMoney, TBit :: Val n
 pattern TQ = VCon (PrefixName [] "Qubit") []
@@ -288,7 +283,7 @@ type family BinderVal (m :: Mode) where
 data NumVal x = NumValue
   { upshift :: Integer
   , grower  :: Fun00 x
-  } deriving (Eq, Foldable, Functor, Traversable)
+  } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (NumVal x) where
   show (NumValue 0 g) = show g
@@ -299,7 +294,7 @@ instance Show x => Show (NumVal x) where
 data Fun00 x
  = Constant0
  | StrictMonoFun (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Fun00 x) where
   show Constant0 = "0"
@@ -309,7 +304,7 @@ instance Show x => Show (Fun00 x) where
 data StrictMono x = StrictMono
  { multBy2ToThe :: Integer
  , monotone :: Monotone x
- } deriving (Eq, Foldable, Functor, Traversable)
+ } deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (StrictMono x) where
   show (StrictMono 0 m) = show m
@@ -320,7 +315,7 @@ instance Show x => Show (StrictMono x) where
 data Monotone x
  = Linear x
  | Full (StrictMono x)
- deriving (Eq, Foldable, Functor, Traversable)
+ deriving (Eq, Foldable, Functor, Ord, Traversable)
 
 instance Show x => Show (Monotone x) where
   show (Linear v) = show v
@@ -546,6 +541,8 @@ instance DeBruijn Val where
     = VFun Braty $ changeVar vc cty
   changeVar vc (VFun Kerny cty)
     = VFun Kerny $ changeVar vc cty
+  changeVar vc (VEqn lhs rhs)
+    = VEqn (changeVar vc <$> lhs) (changeVar vc <$> rhs)
 
 varChangerThroughRo :: VarChanger src tgt
                     -> Ro m src src'
@@ -636,6 +633,10 @@ numVars nv = [e | VPar e <- vvars nv]
 class DepEnds t where
   depEnds :: t -> [End]
 
+instance DepEnds (VVar n) where
+  depEnds (VPar e) = [e]
+  depEnds _ = []
+
 instance DepEnds (NumVal (VVar n)) where
   depEnds nv = [e | VPar e <- vvars nv]
    where
@@ -649,6 +650,7 @@ instance DepEnds (Val n) where
   depEnds (VFun _ cty) = depEnds cty
   depEnds (VApp (VPar e) args) = e : depEnds args
   depEnds (VApp _ args) = depEnds args
+  depEnds (VEqn lhs rhs) = (foldMap depEnds lhs) ++ (foldMap depEnds rhs)
 
 instance DepEnds t => DepEnds [t] where
   depEnds = concatMap depEnds
@@ -663,3 +665,69 @@ instance DepEnds (Ro m i j) where
 
 instance DepEnds (CTy m n) where
   depEnds (ss :->> ts) = depEnds ss ++ depEnds ts
+
+-- number plus sum over a sequence of (variable/Full * number), ordered and distinct
+-- All Integers positive, all multipliers strictly so
+data NumSum var = NumSum Integer [(Monotone var, Integer)]
+  deriving (Eq, Foldable, Functor, Ord, Traversable)
+
+instance Show var => Show (NumSum var) where
+  show (NumSum i vars) = let const = case (i == 0, null vars) of
+                               (True, True) -> "0"
+                               (True, False) -> ""
+                               (False, True) -> show i
+                               (False, False) -> show i ++ " + "
+                             showMult (v,1) = show v
+                             showMult (v,m) = show m ++ "*(" ++ show v ++ ")"
+                         in  const ++ intercalate " + " (showMult <$> vars)
+
+
+instance Ord var => Monoid (NumSum var) where
+    mempty = NumSum 0 []
+    mappend (NumSum n ts) (NumSum n' ts') = NumSum (n + n') (merge ts ts')
+     where
+      merge [] ys = ys
+      merge xs [] = xs
+      merge xxs@((x, n):xs) yys@((y, m):ys) = case compare x y of
+        LT -> (x, n):(merge xs yys)
+        EQ -> (x, n+m):(merge xs ys)
+        GT -> (y, m):(merge xxs ys)
+
+instance Ord var => Semigroup (NumSum var) where
+    (<>) = mappend
+
+numSumVar :: var -> NumSum var
+numSumVar v = NumSum 0 [(Linear v, 1)]
+
+multNumSum :: NumSum v -> Integer -> NumSum v
+multNumSum (NumSum c vs) m = NumSum (c*m) [ (v, n*m) | (v, n) <- vs ]
+
+changeNumSumVars :: VarChanger src tgt -> NumSum (VVar src) -> NumSum (VVar tgt)
+changeNumSumVars ch = fmap (changeVar ch)
+
+nv_to_sum :: NumVal var -> NumSum var
+nv_to_sum (NumValue up grow) = NumSum up $ case grow of
+    Constant0 -> []
+    (StrictMonoFun (StrictMono numDoub mono)) -> [(mono, 2 ^ numDoub)]
+
+nvs_to_sum :: Ord var => [NumVal var] -> NumSum var
+nvs_to_sum = foldMap nv_to_sum
+
+numSumToNum :: NumSum var -> Maybe (NumVal var)
+numSumToNum (NumSum c []) = Just (nConstant c)
+numSumToNum (NumSum c [(mono, n)])
+ | Just k <- log2 n = Just $ NumValue c (StrictMonoFun $ StrictMono k mono)
+numSumToNum _ = Nothing
+
+instance DepEnds v => DepEnds (StrictMono v) where
+  depEnds (StrictMono _ v) = depEnds v
+
+instance DepEnds v => DepEnds (Monotone v) where
+  depEnds (Linear v) = depEnds v
+  depEnds (Full sm) = depEnds sm
+
+instance DepEnds (NumSum (VVar Z)) where
+  depEnds (NumSum _ vs) = concat [depEnds v | (v,_) <- vs]
+
+instance (DepEnds a, DepEnds b) => DepEnds (a, b) where
+  depEnds (a, b) = depEnds a ++ depEnds b

@@ -320,6 +320,8 @@ evalConstructor CTrue [] = BoolV True
 evalConstructor CFalse [] = BoolV False
 evalConstructor CZero [] = IntV 0
 evalConstructor CSucc [IntV n] = IntV (n + 1)
+evalConstructor CSucc [th@(ThinConsV _ _)] = ThinConsV True th
+evalConstructor COmit [th] = ThinConsV False th
 evalConstructor CDoub [IntV n] = IntV (2 * n)
 evalConstructor CFull [IntV n] = IntV ((2 ^ n) - 1)
 evalConstructor CNil [] = VecV []
@@ -381,6 +383,10 @@ testCtor CBool CTrue (BoolV True) = Just []
 testCtor CBool CFalse (BoolV False) = Just []
 testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
+testCtor CThin CZero (IntV 0) = Just []
+testCtor CThin CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
+testCtor CThin CSucc (ThinConsV True th) = Just [th]
+testCtor CThin COmit (ThinConsV False th) = Just [th]
 testCtor CVec CNil (VecV []) = Just []
 testCtor CVec CCons (VecV (v:vs)) = Just [v, VecV vs]
 testCtor CVec CSnoc (VecV vs@(_:_)) = Just [VecV (init vs), last vs]
@@ -414,6 +420,7 @@ data Value =
   | VecV [Value]
   | ThunkV BratThunk
   | KernelV (HG.HugrGraph HG.NodeId)
+  | ThinConsV Bool Value
   | DummyV
   | StringV String
 
@@ -431,6 +438,7 @@ instance Show Value where
   show (ThunkV (VectorisedThunks ths)) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
+  show (ThinConsV b val) = (if b then "1" else "0") ++ "-" ++ show val
   show DummyV = "Dummy"
   show (StringV str) = show str
 

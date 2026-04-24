@@ -13,13 +13,14 @@ module Brat.Checker (checkBody
 import Control.Monad (foldM, forM, zipWithM_)
 import Control.Monad.Freer
 import Data.Bifunctor
-import Data.Foldable (for_)
+import Data.Foldable (for_, traverse_)
 import Data.Functor (($>), (<&>))
 import Data.List ((\\), intercalate)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
@@ -27,6 +28,7 @@ import Prelude hiding (filter)
 import Brat.Checker.Helpers
 import Brat.Checker.Monad
 import Brat.Checker.Quantity
+import Brat.Checker.SolveConstraints (fulbournConstraint, simplify)
 import Brat.Checker.SolveHoles (typeEq)
 import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd)
 import Brat.Checker.Types
@@ -48,7 +50,9 @@ import Brat.Syntax.Simple
 import Brat.Syntax.Value
 import Bwd
 import Hasochism
-import Util (zipSameLength)
+import Util (log2, zipSameLength)
+
+import Debug.Trace
 
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
@@ -231,6 +235,11 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
           let srcMap = fromJust $ zipSameLength (fst <$> usedOvers) (fst <$> fakeOvers)
           let fakeProblem = [ (fromJust (lookup src srcMap), pat) | (src, pat) <- problem ]
           fakeEnv <- localFC abstFC $ solve ?my fakeProblem >>= (solToEnv . snd)
+          case ?my of
+            Braty -> do
+              constraints <- constraintsFromEnv (concat . M.elems $ fakeEnv)
+              traverse_ fulbournConstraint constraints
+            _ -> pure ()
           pure (fakeEnv, fakeAcc)
         localEnv fakeEnv $ do
           (_, fakeUnders, [], _) <- anext "lambda_fake_target" Hypo fakeAcc outs R0
@@ -387,16 +396,19 @@ check' (Var x) ((), ()) = (, ((), ())) . ((),) <$> case ?my of
   Kerny -> req (KLup x) >>= \case
     Just (p, ty) -> pure [(p, ty)]
     Nothing -> err $ KVarNotFound (show x)
-check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
-  (Braty, ty) -> do
-    ty <- evalBinder Braty ty
-    case ty of
-      Right TNat -> check_arith TNat
-      Right TInt -> check_arith TInt
-      Right TFloat -> check_arith TFloat
-      _ -> err . ArithNotExpected $ show u
+check' (Arith op l r) ((), (hungry, ty):unders) = case (?my, ty) of
+  (Braty, ty) -> checkNumTy ty
   (Kerny, _) -> err ArithInKernel
  where
+  checkNumTy :: BinderType Brat -> Checking (SynConnectors m d k, ChkConnectors m d k)
+  checkNumTy (Right ty) | ty `elem` [TNat, TInt, TFloat] = check_arith ty
+  -- Why don't we allow Left Nat??
+  checkNumTy (Right ty@(VApp (VPar e) B0)) = do
+    mkYield (NeedToKnow e) "WaitingForArithHope" (S.singleton e)
+    ty <- eval S0 ty
+    checkNumTy (Right ty)
+  checkNumTy _ = err $ ArithNotExpected (show ty)
+
   check_arith ty = let ?my = Braty in do
     let inRo = RPr ("left", ty) $ RPr ("right", ty) R0
     let outRo = RPr ("out", ty) R0
@@ -707,10 +719,39 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
     req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
-  (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
+  (Braty, Right (VEqn lhs rhs)) -> do
+    mkFork "SolveHopedConstraint" $ solveConstraint ident tgt (lhs, rhs)
+    pure (((), ()), ((), unders))
+  (Braty, Right _ty) -> typeErr "Can only infer kinded things or equations with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
 check' tm _ = error $ "check' " ++ show tm
 
+solveConstraint :: String -> Tgt -> (NumSum (VVar Z), NumSum (VVar Z))
+                -> Checking ()
+solveConstraint ident tgt (lhs,rhs) = do
+  CtxEnv _ locals <- req AskVEnv
+  constraints <- constraintsFromEnv (concat (M.elems locals))
+  traceM ("Got:\n> " ++ show constraints)
+  lhs <- numSumUpdate lhs
+  rhs <- numSumUpdate rhs
+  let eqSimp@(lhsSimp, rhsSimp) = simplify (lhs, rhs)
+  traceM ("Want:\n> " ++ show eqSimp)
+  if eqSimp `elem` ((NumSum 0 [], NumSum 0 []):constraints)
+  then defineTgt' ident tgt (VEqn lhsSimp rhsSimp)
+  else do
+   mkFork "" $ fulbournConstraint eqSimp
+   mkYield (WaitingForConstraint (show eqSimp)) ident (S.fromList $ depEnds eqSimp)
+   solveConstraint ident tgt eqSimp
+
+
+constraintsFromEnv :: [(a, BinderType Brat)] -> Checking [(NumSum (VVar Z), NumSum (VVar Z))]
+constraintsFromEnv [] = pure []
+constraintsFromEnv ((_, Right (VEqn lhs rhs)):overs) = do
+  lhs <- numSumUpdate lhs
+  rhs <- numSumUpdate rhs
+  let eqn = simplify (lhs, rhs)
+  (eqn:) <$> constraintsFromEnv overs
+constraintsFromEnv (_:xs) = constraintsFromEnv xs
 
 -- Clauses from either function definitions or case statements, as we get
 -- them from the elaborator
@@ -744,7 +785,13 @@ checkClause my fnName cty clause = modily my $ do
     problem <- argProblems (fst <$> overs) (unWC $ lhs clause) []
     (tests, sol) <- localFC (fcOf (lhs clause)) $ solve my problem
     (sol, defs) :: ([(String, (Src, BinderType m))], [((String, TypeKind), Val Z)]) <- case my of
-      Braty -> postProcessSolAndOuts sol unders
+      Braty -> do
+        (sol, defs) <- postProcessSolAndOuts sol unders
+        constraints <- constraintsFromEnv (second snd <$> sol)
+        traverse fulbournConstraint constraints
+        --traceM ("We've got (checkClause):\n  " ++ show constraints)
+        pure (sol, defs)
+
       Kerny -> pure (sol, [])
     -- The solution gives us the variables bound by the patterns.
     -- We turn them into a row
@@ -789,7 +836,8 @@ checkClause my fnName cty clause = modily my $ do
   (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
-  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)]
+                        -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
    where
     worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
@@ -805,9 +853,6 @@ checkClause my fnName cty clause = modily my $ do
          zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
          (sol, defs) <- worker (zx {-:< entry-}) sol
          pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
-    -- Pat vars beginning with '_' aren't in scope, we can ignore them
-    -- (but if they're kinded they might come up later as the dependency of something else)
-    worker zx (('_':_, _):sol) = worker zx sol
     worker zx (entry@(_patVar, (_src, Right ty)):sol) = do
       trackM ("processSol (typed): " ++ show entry)
       ty <- eval S0 ty
@@ -1043,13 +1088,92 @@ kindCheck ((hungry, Nat):unders) (Con c arg)
      defineTgt' "kind8" hungry v
      pure ([v], unders)
 
+kindCheck ((hungry, Star []):unders) (Eqn (WC lwc lhs) (WC rwc rhs)) = do
+  -- Should we make a new `NodeType` for this?
+  (_, [(lunder,_),(runder,_)], [(dangling,_)], _) <- next "Eq" Hypo (S0, Some (Zy :* S0))
+                                                        (REx ("lhs", Nat) (REx ("rhs", Nat) R0))
+                                                        (REx ("out", Star []) R0)
+  lns <- localFC lwc $ kindCheckNumSum lunder lhs
+  rns <- localFC rwc $ kindCheckNumSum runder rhs
+  wire (dangling, TUnit, hungry)
+  pure ([VEqn lns rns], unders)
 kindCheck ((_, k):_) tm = typeErr $ "Expected " ++ show tm ++ " to have kind " ++ show k
 
+
+-- N.B. We're not really doing any defining that would be useful for the
+-- typechecker yet. The obvious defining isn't possible because NumSum is not a
+-- `Val`.
+kindCheckNumSum :: Tgt -- Nat kinded tgt to wire numsum to
+                -> Term Chk Noun -- The term to turn into a numsum
+                -> Checking (NumSum (VVar Z))
+kindCheckNumSum hungry (Arith op (WC lwc lhs) (WC rwc rhs)) = do
+  (_, [(lunder,_),(runder,_)], [(dangling, _)], _) <- next (show op ++ "NS") (ArithNode op)
+                                                      (S0, Some (Zy :* S0))
+                                                      (REx ("lhs", Nat) (REx ("rhs", Nat) R0))
+                                                      (REx ("out", Nat) R0)
+
+  ns <- case op of
+    Add -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      pure (lns <> rns)
+    Mul -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case (lns, rns) of
+        (NumSum c [], _) -> let ns = multNumSum rns c in ns <$ wire (dangling, TNat, hungry)
+        (_, NumSum c []) -> let ns = multNumSum lns c in ns <$ wire (dangling, TNat, hungry)
+        _ -> localFC eqFC $ typeErr "Constraint too complicated: must be between sums"
+    Sub -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case numSumSub lns rns of
+        Just ns -> ns <$ wire (dangling, TNat, hungry)
+        Nothing -> localFC rwc $ typeErr "Subtraction too complicated"
+    Pow -> do
+      lns <- kindCheckNumSum lunder lhs
+      rns <- kindCheckNumSum runder rhs
+      case (lns, rns) of
+        (NumSum n [], rns)
+         | Just k <- log2 n, Just nv <- sumToVal rns -> pure (nv_to_sum (powN k nv))
+        _ -> localFC eqFC $ typeErr "Power too confusing"
+
+    Div -> localFC eqFC $ typeErr "Won't handle division in equations"
+  wire (dangling, TNat, hungry)
+  pure ns
+ where
+  eqFC = spanFC lwc rwc
+
+  -- Take 2^n
+  powN :: Integer -> NumVal v -> NumVal v
+  powN 0 nv = nv
+  powN k nv = powN (k - 1) (nPlus 1 (nFull nv))
+
+  numSumSub :: NumSum (VVar Z) -> NumSum (VVar Z) -> Maybe (NumSum (VVar Z))
+  numSumSub (NumSum c vs) (NumSum d ws) | c >= d = NumSum (c-d) <$> aux vs ws
+   where
+    -- blah blah O(n^2)
+    aux :: [(Monotone (VVar Z), Integer)] -> [(Monotone (VVar Z), Integer)]
+        -> Maybe [(Monotone (VVar Z), Integer)]
+    aux monos [] = Just monos
+    aux monos ((v, n):vs) = case [ m | (w, m) <- monos, w == v ] of
+      [m] | m >= n -> ((v, m - n):) <$> aux monos vs
+      [] -> Nothing
+
+  sumToVal :: NumSum v -> Maybe (NumVal v)
+  sumToVal (NumSum up [(n, k)]) | Just l <- log2 k = Just $ nPlus up (n2PowTimes l (numValue n))
+  sumToVal _ = Nothing
+
+kindCheckNumSum under tm = do
+  ([val], []) <- kindCheck [(under, Nat)] tm
+  case val of
+    VNum nv -> let ns = nv_to_sum nv in pure ns -- TODO: Wiring
+    x -> error $ "Didn't expect: " ++ show x
 
 -- Checks the kinds of the types in a dependent row
 kindCheckRow :: Modey m
              -> String -- for node name
-             -> [(PortName, ThunkRowType m)] -- The row to process
+             -> [TypeRowElem TermConstraint (ThunkRowType m)] -- The row to process
              -> Checking (Some (Ro m Z))
 kindCheckRow my name r = do
   name <- req $ Fresh $ "__kcr_" ++ name
@@ -1060,7 +1184,7 @@ kindCheckRow my name r = do
 -- evaluation of the type of an Id node passing through such values
 kindCheckAnnotation :: Modey m
                     -> String -- for node name
-                    -> [(PortName, ThunkRowType m)]
+                    -> [TypeRowElem TermConstraint (ThunkRowType m)]
                     -> Checking (CTy m Z)
 kindCheckAnnotation my name outs = do
   trackM "kca"
@@ -1080,17 +1204,19 @@ kindCheckRow' :: forall m n
               -> Endz n -- kind outports so far
               -> VEnv -- from string variable names to VPar's
               -> (Name, Int) -- node name and next free input (under to 'kindCheck' a type)
-              -> [(PortName, ThunkRowType m)]
+              -> [TypeRowElem TermConstraint (ThunkRowType m)]
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
-kindCheckRow' Braty (ny :* s) env (name,i) ((p, Left k):rest) = do -- s is Stack Z n
+
+kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named ('_':show i) ty):rest)
+kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
   let dangling = Ex name (ny2int ny)
   req (Declare (ExEnd dangling) Braty (Left k) Definable) -- assume none are SkolemConst??
   env <- pure $ M.insert (plain p) [(NamedPort dangling p, Left k)] env
   (i, env, ser) <- kindCheckRow' Braty (Sy ny :* (s :<< ExEnd dangling)) env (name, i) rest
   case ser of
     Some (s_m :* ro) -> pure (i, env, Some (s_m :* REx (p,k) ro))
-kindCheckRow' my ez@(ny :* s) env (name, i) ((p, bty):rest) = case (my, bty) of
+kindCheckRow' my ez@(ny :* s) env (name, i) ((Named p bty):rest) = case (my, bty) of
   (Braty, Right ty) -> helper ty (Star [])
   (Kerny, ty) -> helper ty (Dollar [])
 
@@ -1229,6 +1355,9 @@ abstractPattern my (dangling, bty) pat@(PCon pcon abst) = case (my, bty) of
                                                      ,"with type"
                                                      ,show ty])
 
+  -- N.B. We desperately want to delete these functions and have Let binding use
+  -- the normal SolvePatterns logic, so we haven't bothered to solve equations
+  -- from the CArgs here.
   abstractCon :: Modey m
               -> (QualName -> QualName -> Checking (CtorArgs m))
               -> (QualName, [Val Z])

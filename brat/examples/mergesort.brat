@@ -1,0 +1,16 @@
+leq(n :: Nat, m :: Nat) -> Bool
+leq(0, _) = true
+leq(_, 0) = false
+leq(succ(n), succ(m)) = leq(n, m)
+
+ifthenelse(X :: *, b :: Bool, { -> X }, { -> X }) -> X
+ifthenelse(_, true, then, _) = then()
+ifthenelse(_, false, _, else) = else()
+
+merge(l :: #, n :: #, m :: #, Vec(Nat, l), Vec(Nat, n), l + n = m) -> Vec(Nat, m)
+merge(_, _, _, [], ys, _) = ys
+merge(_, _, _, xs, [], _) = xs
+merge(_, _, _, x ,- xs, y ,- ys, _) =
+ ifthenelse(!, leq(x, y),
+            { => x ,- merge(!, !, !, xs, y ,- ys, !) },
+            { => y ,- merge(!, !, !, x ,- xs, ys, !) })

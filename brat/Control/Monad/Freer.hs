@@ -1,5 +1,6 @@
 module Control.Monad.Freer where
 
+import Brat.Error (ErrorMsg(..))
 import Brat.Syntax.Port (End)
 import Brat.Syntax.Value (Val)
 import Hasochism (N(..))
@@ -13,7 +14,7 @@ import qualified Data.Set as S
 --  * e -> Unstuck means e has been solved
 --  * e -> Awaiting es means the problem's been transferred
 --  * e not in news means no change to e
-newtype News = News (M.Map End Stuck)
+newtype News = News (M.Map End Stuck) deriving Show
 
 updateEnd :: News -> End -> Stuck
 updateEnd (News m) e = case M.lookup e m of
@@ -44,14 +45,14 @@ data Free (sig :: Type -> Type) (v :: Type) where
   Ret :: v -> Free sig v
   Req ::  sig t -> (t -> Free sig v) -> Free sig v
   Define :: String -> End -> Val Z -> (News -> Free sig v) -> Free sig v
-  Yield :: Stuck -> (News -> Free sig v) -> Free sig v
+  Yield :: ErrorMsg -> Stuck -> (News -> Free sig v) -> Free sig v
   Fork :: String -> Free sig () -> Free sig v -> Free sig v
 
 instance Functor (Free sig) where
   fmap f (Ret v) = Ret (f v)
   fmap f (Req sig k) = Req sig (fmap f . k)
   fmap f (Define lbl e v k) = Define lbl e v (fmap f . k)
-  fmap f (Yield st k) = Yield st (fmap f . k)
+  fmap f (Yield err st k) = Yield err st (fmap f . k)
   fmap f (Fork d par c) = Fork d par (fmap f c)
 
 class NewsWatcher t where
@@ -68,7 +69,7 @@ instance NewsWatcher (Free sig v) where
   Ret v /// _ = Ret v
   Req sig k /// n = Req sig $ \v -> k v /// n
   Define lbl e v k /// n = Define lbl e v (k /// n)
-  Yield st k /// n = Yield (st /// n) (k /// n)
+  Yield err st k /// n = Yield err (st /// n) (k /// n)
   Fork d par c /// n = Fork d (par /// n) (c /// n)
 
 instance Applicative (Free sig) where
@@ -76,8 +77,8 @@ instance Applicative (Free sig) where
 
   -- Left biased scheduling of commands:
   -- First, get rid of Yield Unstuck
-  Yield Unstuck k <*> a = k mempty <*> a
-  f <*> Yield Unstuck k = f <*> k mempty
+  Yield _ Unstuck k <*> a = k mempty <*> a
+  f <*> Yield _ Unstuck k = f <*> k mempty
 
   -- Aggressively forward Forks
   Fork d par c <*> ma = Fork d par (c <*> ma)
@@ -91,7 +92,7 @@ instance Applicative (Free sig) where
   -- What happens when Yield is on the left
   y <*> Ret v = fmap ($ v) y
   y <*> Req sig k = Req sig $ \v -> y <*> k v
-  y1@(Yield st1 _) <*> y2@(Yield st2 _) = Yield (st1 <> st2) $
+  y1@(Yield err1 st1 _) <*> y2@(Yield err2 st2 _) = Yield (Both err1 err2) (st1 <> st2) $
     \n -> (y1 /// n) <*> (y2 /// n)
   y <*> Define lbl e v k = Define lbl e v $ \n -> (y /// n) <*> k n
 
@@ -99,7 +100,7 @@ instance Monad (Free sig) where
   Ret v >>= k = k v
   Req r j >>= k = Req r (j >=> k)
   Define lbl e v k1 >>= k2 = Define lbl e v (k1 >=> k2)
-  Yield st k1 >>= k2 = Yield st (k1 >=> k2)
+  Yield err st k1 >>= k2 = Yield err st (k1 >=> k2)
   --- equivalent to
   -- Yield st k1 >>= k2 = Yield st (\n -> (k1 n) >>= k2)
   Fork d par k1 >>= k2 = Fork d par (k1 >>= k2)
