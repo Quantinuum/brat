@@ -94,8 +94,10 @@ data Task where
 
 lookupOutport :: Bwd Frame -> OutPort -> Maybe Value
 lookupOutport B0 _ = Nothing
--- TODO: Highly suspect that we keep looking beyond the most local cache
-lookupOutport (_ :< BratValues env) p | Just v <- M.lookup p env = Just v
+-- TODO: Might we need to look beyond the most local cache?
+-- Believe "CaptureSets" are computed to ensure we don't need to.
+lookupOutport (_ :< BratValues env) p = M.lookup p env
+--lookupOutport (_ :< BratValues env) p | Just v <- M.lookup p env = Just v
 lookupOutport (fz :< _) p = lookupOutport fz p
 
 evalPorts :: GraphInfo -> Bwd Frame -> Bwd Value -> [OutPort] -> Task
