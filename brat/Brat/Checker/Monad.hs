@@ -348,7 +348,7 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                                                  (M.delete inport (dynamicSet ctx))
                                         Nothing -> dynamicSet ctx
                           }) g
-handler (Yield err Unstuck k) ctx g = handler (k mempty) ctx g
+handler (Yield _err Unstuck k) ctx g = handler (k mempty) ctx g
 handler (Yield err (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ Both
                                                                    (TypeErr $ unlines $
   ("Typechecking blocked on:":(show <$> S.toList ends))

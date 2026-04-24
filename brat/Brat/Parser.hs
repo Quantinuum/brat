@@ -13,10 +13,7 @@ import Brat.Syntax.Common hiding (end)
 import qualified Brat.Syntax.Common as Syntax
 import Brat.Syntax.FuncDecl (FuncDecl(..), Locality(..))
 import Brat.Syntax.Concrete
-import Brat.Syntax.Raw
 import Brat.Syntax.Simple
-import Brat.Elaborator
-import Brat.Syntax.Value (NumSum(..))
 import Data.Bracket
 import Util ((**^))
 

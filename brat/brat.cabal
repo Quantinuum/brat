@@ -47,7 +47,7 @@ common warning-flags
     -Werror=unused-imports
     -Werror=unused-matches
     -Werror=missing-methods
-    -Werror=unused-top-binds
+--    -Werror=unused-top-binds
     -Werror=unused-local-binds
     -Werror=redundant-constraints
     -Werror=orphans

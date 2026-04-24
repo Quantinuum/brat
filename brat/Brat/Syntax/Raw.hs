@@ -6,15 +6,12 @@ import Control.Monad (unless, when)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Bifunctor
 import Data.Kind (Type)
-import Data.List.NonEmpty (fromList, NonEmpty(..))
 import Data.Map (disjoint, member, union)
 import qualified Data.Map as M
 import Data.Tuple.HT (thd3)
 
 import Bwd
-import Brat.Checker.Arithmetic
 import Brat.Constructors
 import Brat.Error
 import Brat.FC hiding (end)
@@ -24,8 +21,7 @@ import Brat.Syntax.Common
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Simple
-import Brat.Syntax.Value (NumFun(numValue), NumSum(..), NumVal, nFull, nPlus, n2PowTimes, nVar, nv_to_sum)
-import Util (log2, names, (**^))
+import Util ((**^))
 
 type family TypeOf (k :: Kind) :: Type where
   TypeOf Noun = [InOut]

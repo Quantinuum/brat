@@ -28,7 +28,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Type.Equality ((:~:)(..), testEquality)
 
-import Debug.Trace
+--import Debug.Trace
 
 -- Refine clauses from function definitions (and potentially future case statements)
 -- by processing each one in sequence. This will involve repeating tests for various
@@ -80,7 +80,7 @@ solve my ((src, DontCare):p) = do
       -- characters to the later instances in the row to avoid name collisions.
       let newName = '_':portName src
       let bump x = if newName `isPrefixOf` x then x ++ "'" else x
-      traceM ("Adding " ++ newName ++ " :: " ++ show ty)
+      --traceM ("Adding " ++ newName ++ " :: " ++ show ty)
       pure (tests, (newName, (src, ty)):(first bump <$> sol))
 solve my ((src, Bind x):p) = do
   ty <- typeOfSrc my src -- TODO: Check if VEqn

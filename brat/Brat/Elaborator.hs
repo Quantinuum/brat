@@ -1,6 +1,6 @@
 module Brat.Elaborator where
 
-import Control.Monad (forM, (>=>))
+import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (empty)

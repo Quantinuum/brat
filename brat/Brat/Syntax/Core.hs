@@ -18,7 +18,6 @@ import Brat.FC
 import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.FuncDecl
 import Brat.Syntax.Simple
 import Brat.Syntax.Value (NumSum)
 

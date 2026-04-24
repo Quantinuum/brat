@@ -1,14 +1,13 @@
 module Brat.Unelaborator (unelab) where
 
-import Brat.FC (dummyFC, spanFC, unWC, WC(..))
+import Brat.FC (dummyFC, unWC, WC(..))
 import Brat.QualName (QualName(..))
 import Brat.Syntax.Common (ArithOp(..), Dir(..), Kind(..), Diry(..), Kindy(..)
-                          ,KindOr, PortName, TypeRowElem(..), CType'(..)
-                          ,TypeKind(..)
+                          ,KindOr, TypeRowElem(..), CType'(..)
                           )
 import Brat.Syntax.Concrete (Flat(..))
 import Brat.Syntax.Core (Term(..), TermConstraint)
-import Brat.Syntax.Raw (Raw(..), RawIO, RawVType)
+import Brat.Syntax.Raw (Raw(..))
 import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.Syntax.Value (Monotone(..), NumSum(..), StrictMono(..))
 

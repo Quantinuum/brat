@@ -2,7 +2,6 @@ module Brat.Constructors where
 
 import qualified Data.Map as M
 
-import Brat.Checker.Arithmetic (nsVar)
 import Brat.Constructors.Patterns
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Common

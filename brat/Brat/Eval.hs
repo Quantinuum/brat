@@ -37,7 +37,6 @@ import Bwd
 import Hasochism
 import Util (zipSameLength)
 
-import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.Functor
 import Data.Kind (Type)

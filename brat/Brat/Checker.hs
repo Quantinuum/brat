@@ -52,7 +52,7 @@ import Bwd
 import Hasochism
 import Util (log2, zipSameLength)
 
-import Debug.Trace
+--import Debug.Trace
 
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
@@ -396,7 +396,7 @@ check' (Var x) ((), ()) = (, ((), ())) . ((),) <$> case ?my of
   Kerny -> req (KLup x) >>= \case
     Just (p, ty) -> pure [(p, ty)]
     Nothing -> err $ KVarNotFound (show x)
-check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
+check' (Arith op l r) ((), (hungry, ty):unders) = case (?my, ty) of
   (Braty, ty) -> checkNumTy ty
   (Kerny, _) -> err ArithInKernel
  where
@@ -719,7 +719,7 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     defineSrc' "check hope (src)" dangling (endVal k (toEnd hungry))
     req (ANewDynamic (end hungry) fc)
     pure (((), ()), ((), unders))
-  (Braty, Right eqn@(VEqn lhs rhs)) -> do
+  (Braty, Right (VEqn lhs rhs)) -> do
     mkFork "SolveHopedConstraint" $ solveConstraint ident tgt (lhs, rhs)
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things or equations with !"
@@ -788,7 +788,7 @@ checkClause my fnName cty clause = modily my $ do
         (sol, defs) <- postProcessSolAndOuts sol unders
         constraints <- constraintsFromEnv (second snd <$> sol)
         traverse fulbournConstraint constraints
-        traceM ("We've got (checkClause):\n  " ++ show constraints)
+        --traceM ("We've got (checkClause):\n  " ++ show constraints)
         pure (sol, defs)
 
       Kerny -> pure (sol, [])

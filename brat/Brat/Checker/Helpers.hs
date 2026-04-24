@@ -5,7 +5,7 @@ module Brat.Checker.Helpers where
 import Brat.Checker.Monad (Checking, CheckingSig(..), captureOuterLocals, err, typeErr, kindArgRows, defineEnd, tlup, isSkolem, mkYield, throwLeft)
 import Brat.Checker.Types
 import Brat.Error (ErrorMsg(..))
-import Brat.Eval (eval, EvMode(..), kindType, quote, quoteVar, doesntOccur, numSumEval, numSumUpdate)
+import Brat.Eval (eval, EvMode(..), kindType, quote, doesntOccur)
 import Brat.FC (FC)
 import Brat.Graph (Node(..), NodeType(..))
 import Brat.Naming (FreshMonad(..), Name(..))

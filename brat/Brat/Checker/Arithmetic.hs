@@ -1,11 +1,7 @@
 module Brat.Checker.Arithmetic where
 
-import Data.Functor ((<&>))
-import Data.List (minimumBy)
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
-import qualified Data.Map as M
-import Data.Ord (comparing)
 
 import Brat.Syntax.Value
 
