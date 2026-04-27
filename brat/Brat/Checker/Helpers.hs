@@ -46,7 +46,7 @@ simpleCheck my ty tm = case (my, ty) of
     else isSkolem e >>= \case
       SkolemConst -> throwLeft $ helper Braty ty tm
       Definable -> do
-        mkYield "simpleCheck" (S.singleton e)
+        mkYield (NeedToKnow e) "simpleCheck" (S.singleton e)
         ty <- eval S0 ty
         simpleCheck Braty ty tm
   _ -> throwLeft $ helper my ty tm
@@ -731,7 +731,7 @@ mineToSolve = allowedToSolve <$> whoAmI
 -- defined is passed in.
 awaitTypeDefinition :: Val Z -> Checking (Val Z)
 awaitTypeDefinition ty = eval S0 ty >>= \case
-  VApp (VPar e) _ -> mkYield "awaitTypeDefinition" (S.singleton e) >> awaitTypeDefinition ty
+  VApp (VPar e) _ -> mkYield (NeedToKnow e) "awaitTypeDefinition" (S.singleton e) >> awaitTypeDefinition ty
   ty -> pure ty
 
 mkGraph :: TypeKind -> Val Z -> Checking Src

@@ -93,7 +93,7 @@ typeEqEta tm stuff@(ny :* _ks :* _sems) _ k exp act = do
   unless (exp == act) $ case flexes act ++ flexes exp of
     [] -> typeEqRigid tm stuff k exp act -- easyish, both rigid i.e. already defined
     -- tricky: must wait for one or other to become more defined
-    es -> mkYield "typeEqEta" (S.fromList es) >> typeEq' tm stuff k exp act
+    es@(e:_) -> mkYield (NeedToKnow e) "typeEqEta" (S.fromList es) >> typeEq' tm stuff k exp act
 
 typeEqs :: String -> (Ny :* Stack Z TypeKind :* Stack Z Sem) n -> [TypeKind] -> [Val n] -> [Val n] -> Checking ()
 typeEqs _ _ [] [] [] = pure ()
