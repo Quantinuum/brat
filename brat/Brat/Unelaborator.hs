@@ -1,12 +1,11 @@
 module Brat.Unelaborator (unelab) where
 
-import Brat.FC (unWC)
+import Brat.FC (WC(..), dummyFC, unWC)
 import Brat.Syntax.Concrete (Flat(..))
 import Brat.Syntax.Common (Dir(..), Kind(..), Diry(..), Kindy(..)
-                          ,KindOr, PortName, TypeRowElem(Named), CType'(..)
+                          ,KindOr, TypeRowElem(..), CType'(..)
                           )
 import Brat.Syntax.Core (Term(..))
-import Brat.Syntax.Raw (Raw(..), RawVType)
 
 import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -28,49 +27,28 @@ unelab _ ky (Pull ps tm) = FPull ps (unelab Chky ky <$> tm)
 unelab _ _ (Var v) = FVar v
 unelab dy ky (Arith op lhs rhs) = FArith op (unelab dy ky <$> lhs) (unelab dy ky <$> rhs)
 unelab dy _ (Of n e) = FOf (unelab Chky Nouny <$> n) (unelab dy Nouny <$> e)
-unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (toRawRo outs)
+unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (f outs)
+ where
+  f :: [TypeRowElem (KindOr (Term Chk Noun))] -> [TypeRowElem (WC (KindOr Flat))]
+  f = fmap (fmap (dummyFC . fmap (unelab Chky Nouny)))
 unelab dy ky (top :-: bot) = case ky of
   Nouny -> FInto (unelab Syny Nouny <$> top) (unelab dy UVerby <$> bot)
   _ -> FApp (unelab Syny ky <$> top) (unelab dy UVerby <$> bot)
 unelab dy ky (f :$: s) = FApp (unelab dy KVerby <$> f) (unelab Chky ky <$> s)
 unelab dy _ (Lambda (abs,rhs) cs) = FLambda ((abs, unelab dy Nouny <$> rhs) :| (second (fmap (unelab Chky Nouny)) <$> cs))
 unelab _ _ (Con c args) = FCon c (unelab Chky Nouny <$> args)
-unelab _ _ (C (ss :-> ts)) = FFn (toRawRo ss :-> toRawRo ts)
-unelab _ _ (K cty) = FKernel $ fmap (\(p, ty) -> Named p (toRaw ty)) cty
+unelab _ _ (C (ss :-> ts)) = FFn ((unelabRo ss)
+                                  :->
+                                  (unelabRo ts)
+                                 )
+unelab _ _ (K (ss :-> ts)) = FKernel (unelabKernRo ss :-> unelabKernRo ts)
 unelab _ _ Identity = FIdentity
 unelab _ _ (Hope ident) = FHope ident
 unelab _ _ FanIn = FFanIn
 unelab _ _ FanOut = FFanOut
 
--- This is needed for concrete terms which embed a type as a list of `Raw` things
-toRaw :: Term d k -> Raw d k
-toRaw (Simple tm) = RSimple tm
-toRaw (Let abs thing body) = RLet abs (toRaw <$> thing) (toRaw <$> body)
-toRaw (NHole name) = RNHole (show name)
-toRaw (VHole name) = RVHole (show name)
-toRaw Empty = REmpty
-toRaw (a :|: b) = (toRaw <$> a) ::|:: (toRaw <$> b)
-toRaw Pass = RPass
-toRaw (Th th) = RTh $ toRaw <$> th
-toRaw (TypedTh th) = RTypedTh $ toRaw <$> th
-toRaw (Force tm) = RForce $ toRaw <$> tm
-toRaw (Emb tm) = REmb $ toRaw <$> tm
-toRaw (Forget tm) = RForget $ toRaw <$> tm
-toRaw (Pull ps tm) = RPull ps $ toRaw <$> tm
-toRaw (Var v) = RVar v
-toRaw (Arith op lhs rhs) = RArith op (toRaw <$> lhs) (toRaw <$> rhs)
-toRaw (Of n e) = ROf (toRaw <$> n) (toRaw <$> e)
-toRaw (tm ::: outs) = (toRaw <$> tm) ::::: toRawRo outs
-toRaw (top :-: bot) = (toRaw <$> top) ::-:: (toRaw <$> bot)
-toRaw (f :$: s) = (toRaw <$> f) ::$:: (toRaw <$> s)
-toRaw (Lambda (abs,rhs) cs) = RLambda (abs, toRaw <$> rhs) (second (fmap toRaw) <$> cs)
-toRaw (Con c args) = RCon c (toRaw <$> args)
-toRaw (C (ss :-> ts)) = RFn (toRawRo ss :-> toRawRo ts)
-toRaw (K cty) = RKernel $ (\(p, ty) -> Named p (toRaw ty)) <$> cty
-toRaw Identity = RIdentity
-toRaw (Hope ident) = RHope ident
-toRaw FanIn = RFanIn
-toRaw FanOut = RFanOut
+unelabKernRo :: [TypeRowElem (Term Chk Noun)] -> [TypeRowElem (WC Flat)]
+unelabKernRo = fmap (fmap (dummyFC . unelab Chky Nouny))
 
-toRawRo :: [(PortName, KindOr (Term Chk Noun))] -> [TypeRowElem (KindOr RawVType)]
-toRawRo = fmap (\(p, bty) -> Named p (second toRaw bty))
+unelabRo :: [(TypeRowElem (KindOr (Term Chk Noun)))] -> [TypeRowElem (WC (KindOr Flat))]
+unelabRo = fmap (fmap (dummyFC . fmap (unelab Chky Nouny)))

@@ -2,5 +2,5 @@ Error in test/golden/error/toplevel-leftovers3.brat on line 2:
 f(x) = x
   ^
 
-  Type error: Inputs (b1 :: Bool) weren't used
+  Type error: Inputs (_1 :: Bool) weren't used
 

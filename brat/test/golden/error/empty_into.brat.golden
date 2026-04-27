@@ -3,7 +3,7 @@ intoErr = |> makeInt
           ^^^^^^^^^^
 
   Type mismatch when checking makeInt()(())
-Expected: (a1 :: Bool)
-But got:  (a1 :: Int)
+Expected: (_0 :: Bool)
+But got:  (_0 :: Int)
 
 
