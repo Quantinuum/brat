@@ -266,9 +266,10 @@ pattern TList, TOption :: Val n -> Val n
 pattern TList ty = VCon (PrefixName [] "List") [ty]
 pattern TOption ty = VCon (PrefixName [] "Option") [ty]
 
-pattern TVec, TCons :: Val n -> Val n -> Val n
+pattern TVec, TCons, TThin :: Val n -> Val n -> Val n
 pattern TVec ty n = VCon (PrefixName [] "Vec") [ty, n]
 pattern TCons x ys = VCon (PrefixName [] "cons") [x, ys]
+pattern TThin a b = VCon (PrefixName [] "Thin") [a,b]
 
 pattern TQ, TMoney, TBit :: Val n
 pattern TQ = VCon (PrefixName [] "Qubit") []
