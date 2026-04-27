@@ -13,7 +13,7 @@ Nodes:
 (swap.brat_globals_Qubit_3,BratNode (Constructor Qubit) [] [("value",[])])
 (swap.brat_globals_Qubit_5,BratNode (Constructor Qubit) [] [("value",[])])
 (swap.brat_globals_Qubit_6,BratNode (Constructor Qubit) [] [("value",[])])
-(swap.brat_globals_decl_7_main,BratNode Id [("a1",{ (a :: Qubit), (b :: Qubit) -o (b :: Qubit), (a :: Qubit) })] [("a1",{ (a :: Qubit), (b :: Qubit) -o (b :: Qubit), (a :: Qubit) })])
+(swap.brat_globals_decl_7_main,BratNode Id [("_0",{ (a :: Qubit), (b :: Qubit) -o (b :: Qubit), (a :: Qubit) })] [("_0",{ (a :: Qubit), (b :: Qubit) -o (b :: Qubit), (a :: Qubit) })])
 
 Wires:
 (Ex swap.brat_check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs/in_1 0,Qubit,In swap.brat_check_defs_1_main_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs/out_2 1)

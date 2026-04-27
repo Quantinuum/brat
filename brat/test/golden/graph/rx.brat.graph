@@ -13,7 +13,7 @@ Nodes:
 (rx.brat_check_defs_1_nums_$rhs_const,BratNode (Const 1) [] [("value",Int)])
 (rx.brat_check_defs_1_nums_$rhs_const_1,BratNode (Const 2) [] [("value",Int)])
 (rx.brat_check_defs_1_nums_$rhs_const_2,BratNode (Const 3) [] [("value",Int)])
-(rx.brat_check_defs_1_xish_1_$rhs_Eval,BratNode (Eval (Ex rx.brat_globals_prim_7_Rx 0)) [("th",Float)] [("a1",{ (rxa :: Qubit) -o (rxb :: Qubit) })])
+(rx.brat_check_defs_1_xish_1_$rhs_Eval,BratNode (Eval (Ex rx.brat_globals_prim_7_Rx 0)) [("th",Float)] [("_1",{ (rxa :: Qubit) -o (rxb :: Qubit) })])
 (rx.brat_check_defs_1_xish_1_$rhs_const_1,BratNode (Const 30.0) [] [("value",Float)])
 (rx.brat_globals_Float_2,BratNode (Constructor Float) [] [("value",[])])
 (rx.brat_globals_Int_9,BratNode (Constructor Int) [] [("value",[])])
@@ -26,9 +26,9 @@ Nodes:
 (rx.brat_globals_Qubit_21,BratNode (Constructor Qubit) [] [("value",[])])
 (rx.brat_globals_Qubit_23,BratNode (Constructor Qubit) [] [("value",[])])
 (rx.brat_globals_decl_12_nums,BratNode Id [("x",Int),("y",Int),("z",Int)] [("x",Int),("y",Int),("z",Int)])
-(rx.brat_globals_decl_18_xish,BratNode Id [("a1",{ (rxa :: Qubit) -o (rxb :: Qubit) })] [("a1",{ (rxa :: Qubit) -o (rxb :: Qubit) })])
-(rx.brat_globals_decl_24_main,BratNode Id [("a1",{ (a :: Qubit) -o (b :: Qubit) })] [("a1",{ (a :: Qubit) -o (b :: Qubit) })])
-(rx.brat_globals_prim_7_Rx,BratNode (Prim ("","Rx")) [] [("thunk",{ (th :: Float) -> (a1 :: { (rxa :: Qubit) -o (rxb :: Qubit) }) })])
+(rx.brat_globals_decl_18_xish,BratNode Id [("_0",{ (rxa :: Qubit) -o (rxb :: Qubit) })] [("_0",{ (rxa :: Qubit) -o (rxb :: Qubit) })])
+(rx.brat_globals_decl_24_main,BratNode Id [("_0",{ (a :: Qubit) -o (b :: Qubit) })] [("_0",{ (a :: Qubit) -o (b :: Qubit) })])
+(rx.brat_globals_prim_7_Rx,BratNode (Prim ("","Rx")) [] [("thunk",{ (th :: Float) -> (_1 :: { (rxa :: Qubit) -o (rxb :: Qubit) }) })])
 
 Wires:
 (Ex rx.brat_check_defs_1_main_3_$rhs_check'Th_LambdaChk_6_checkClauses_1_$rhs_4_Splice 0,Qubit,In rx.brat_check_defs_1_main_3_$rhs_check'Th_LambdaChk_6_checkClauses_1_lambda.0_rhs/out_2 0)
