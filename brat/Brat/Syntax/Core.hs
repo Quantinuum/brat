@@ -4,6 +4,7 @@ module Brat.Syntax.Core (Term(..)
                         ,InOut
                         ,CType
                         ,Precedence(..)
+                        ,TypeAlias
                         ,precedence
                         ) where
 
@@ -26,6 +27,8 @@ type Output = InOut
 type InOut = (PortName, KindOr (Term Chk Noun))
 
 type CType = CType' InOut
+
+type TypeAlias = TypeAliasF (Term Chk Noun)
 
 data Term :: Dir -> Kind -> Type where
   Simple   :: SimpleTerm -> Term Chk Noun

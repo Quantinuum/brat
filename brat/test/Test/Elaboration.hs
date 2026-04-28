@@ -3,9 +3,9 @@ module Test.Elaboration (elaborationTests) where
 import Brat.Elaborator
 import Brat.Error (showError)
 import Brat.QualName (plain)
+import Brat.Naming (root)
 import Brat.Syntax.Concrete
 import Brat.Syntax.Common
-import Brat.Syntax.Raw (kind, dir)
 import Brat.Syntax.Simple (SimpleTerm(..))
 import Brat.FC
 
@@ -43,15 +43,15 @@ ykind KVerby = KVerb
 ykind UVerby = UVerb
 
 elabTest :: String -> DirAndKind -> Flat -> Assertion
-elabTest s dk f = case elaborate (dummyFC f) of
+elabTest s dk f = case runElab Nothing root (elaborate (dummyFC f)) of
   Left err -> assertFailure (showError err)
-  Right (SomeRaw (WC _ r)) -> let actual = DK (ydir $ dir r) (ykind $ kind r)
+  Right (SomeTerm (WC _ r)) -> let actual = DK (ydir $ dir r) (ykind $ kind r)
     in if actual == dk then pure ()
        else assertFailure $ s ++ " should have been " ++ show dk
                   ++ " but got " ++ show actual ++ " from: " ++ show r
 
 elabFails :: String -> Flat -> Assertion
-elabFails s f | Right (SomeRaw (WC _ r)) <- elaborate (dummyFC f) =
+elabFails s f | Right (SomeTerm (WC _ r)) <- runElab Nothing root (elaborate (dummyFC f)) =
   assertFailure $ s ++ " should have failed elaboration, but produced " ++ show r
 elabFails _ _ = pure ()
 

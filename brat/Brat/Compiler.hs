@@ -20,7 +20,7 @@ import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
 import Brat.Syntax.Value (Val(VFun))
 
 import Control.Exception (evaluate)
-import Control.Monad (forM, when)
+import Control.Monad (forM)
 import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -53,15 +53,13 @@ banner s m = putStrLn startText *> m <* putStrLn endText
   len = length s + 2
   hlen = len `div` 2
 
-printAST :: Bool -> Bool -> String -> IO ()
-printAST printRaw printAST file = do
+printAST :: String -> IO ()
+printAST file = do
   cts <- readFile file
   (_, env@(decls,_)) <- eitherIO $ parseFile file cts
   banner "Flat AST" $ mapM_ print decls
-  env'@(decls, _, _) <- eitherIO $ addSrcContext file cts (elabEnv env)
-  when printRaw $ banner "Raw AST" $ mapM_ print decls
-  when printAST $
-    banner "desugared AST" (mapM_ print =<< eitherIO (addSrcContext file cts (desugarEnv env')))
+  (decls, _) <- eitherIO $ addSrcContext file cts (elabEnv root env)
+  banner "Desugared AST" $ mapM_ print decls
 
 writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do

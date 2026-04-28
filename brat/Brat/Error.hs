@@ -74,7 +74,6 @@ data ErrorMsg
  | ParseErr ParseError
  | LexErr ParseError
  | ElabErr String
- | DesugarErr String
  | EvalErr String
  | NameClash String
  | MainNotFound
@@ -152,7 +151,6 @@ instance Show ErrorMsg where
   show (ParseErr x) = "Parse error " ++ show x
   show (LexErr x) = "Lex error " ++ show x
   show (ElabErr x) = "Elab error " ++ show x
-  show (DesugarErr x) = "Desugar error " ++ x
   show (EvalErr x) = "Eval error " ++ x
   show (NameClash x) = "Name clash: " ++ x
   show (VarNotFound x) = x ++ " not found in (value) environment"

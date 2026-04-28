@@ -103,7 +103,6 @@ library
                        Brat.Syntax.Common,
                        Brat.FC,
                        Brat.Naming,
-                       Brat.Syntax.Raw,
                        Brat.Syntax.Value,
                        Brat.Unelaborator
 

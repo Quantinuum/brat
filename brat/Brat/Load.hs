@@ -1,7 +1,6 @@
 module Brat.Load (loadFilename
                  ,loadFiles
                  ,parseFile
-                 ,desugarEnv
                  ,VMod
                  ) where
 
@@ -19,7 +18,6 @@ import Brat.Syntax.Common
 import Brat.Syntax.Concrete (FEnv)
 import Brat.Syntax.Core
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..), Locality(..))
-import Brat.Syntax.Raw
 import Brat.Syntax.Value
 import Brat.QualName
 import Util (duplicates,duplicatesWith)
@@ -129,7 +127,8 @@ withAliases (a:as) m = loadAlias a >>= \a -> localAlias a $ withAliases as m
 loadStmtsWithEnv :: Namespace -> VMod -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
 loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
   -- hacky mess - cleanup!
-  (decls, aliases) <- desugarEnv =<< elabEnv stmts
+  (ns, elabNS) <- pure $ split "elab" ns
+  (decls, aliases) <- elabEnv elabNS stmts
   -- Note the duplicates here works for anything Eq, but is O(n^2).
   -- TODO Since decl names can be ordered/hashed, we could be much faster.
   let declNames = M.keys oldDeclEnv
