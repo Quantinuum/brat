@@ -105,11 +105,11 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
        | Just _ <- mine e' -> do
           req (Wire (dangling, TNat, p))
           defineSrc' ("flex-flex In Ex") (NamedPort dangling "") (VNum (nVar v))
-       | otherwise -> mkYield "flexFlex" (S.singleton e) >> unifyNum mine (nVar v) (nVar v')
+       | otherwise -> mkYield (NeedToKnow e) "flexFlex" (S.singleton e) >> unifyNum mine (nVar v) (nVar v')
       (VPar e@(InEnd p), VPar e'@(InEnd p'))
        | Just _ <- mine e -> defineTgt' "flex-flex In In1" (NamedPort p "") (VNum (nVar v'))
        | Just _ <- mine e' -> defineTgt' "flex-flex In In0"(NamedPort p' "") (VNum (nVar v))
-       | otherwise -> mkYield "flexFlex" (S.fromList [e, e']) >> unifyNum mine (nVar v) (nVar v')
+       | otherwise -> mkYield (Both (NeedToKnow e) (NeedToKnow e')) "flexFlex" (S.fromList [e, e']) >> unifyNum mine (nVar v) (nVar v')
 
   lhsStrictMono :: StrictMono (VVar Z) -> NumVal (VVar Z) -> Checking ()
   lhsStrictMono (StrictMono 0 mono) num = lhsMono mono num
@@ -123,13 +123,13 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
   lhsMono lhs@(Linear (VPar e)) num | [e'] <- numVars num, e == e' = case num of
     (NumValue 0 (StrictMonoFun sm)) -> case anyDoubsAnyFulls sm of
       (True, _) -> lhsMono lhs (nConstant 0)
-      (False, True) -> mkYield "lhsMono2Sols" (S.singleton e) >>
+      (False, True) -> mkYield (NeedToKnow e) "lhsMono2Sols" (S.singleton e) >>
                        unifyNum mine (nVar (VPar e)) num
       (False, False) -> pure ()
     _ -> err . UnificationError $ "Can't make " ++ show e ++ " = " ++ show num
   lhsMono (Linear (VPar e)) num = case mine e of
     Just loc -> loc -! solveNumMeta mine e num
-    _ -> mkYield "lhsMono" (S.singleton e) >>
+    _ -> mkYield (NeedToKnow e) "lhsMono" (S.singleton e) >>
          unifyNum mine (nVar (VPar e)) num
   lhsMono (Full sm) (NumValue 0 (StrictMonoFun (StrictMono 0 (Full sm'))))
     = lhsFun00 (StrictMonoFun sm) (NumValue 0 (StrictMonoFun sm'))
@@ -169,7 +169,7 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
   -- = 2^k + 2^(k + 1) * full(n)
 
     | otherwise = do
-      mkYield "demandSucc" (S.singleton e)
+      mkYield (NeedToKnow e) "demandSucc" (S.singleton e)
       nv <- quoteNum Zy <$> numEval S0 mono
       demandSucc nv
 
@@ -196,7 +196,7 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
           half <- traceChecking "makeHalf" makeHalf e
           pure (NumValue 0 (StrictMonoFun (StrictMono 0 (Linear (VPar half)))))
         | otherwise -> do
-          mkYield "evenGro" (S.singleton e)
+          mkYield (NeedToKnow e) "evenGro" (S.singleton e)
           nv <- quoteNum Zy <$> numEval S0 mono
           demandEven nv
       Full sm -> nConstant 0 <$ demand0 (NumValue 0 (StrictMonoFun sm))
