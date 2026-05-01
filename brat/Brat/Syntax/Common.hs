@@ -38,7 +38,8 @@ module Brat.Syntax.Common (PortName,
                            ArithOp(..),
                            pattern Dollar,
                            pattern Star,
-                           Precedence(..)
+                           Precedence(..),
+                           TypeAliasF(..)
                           ) where
 
 import Brat.FC
@@ -46,7 +47,6 @@ import Brat.QualName
 import Brat.Syntax.Abstractor
 import Brat.Syntax.Port
 
-import Data.Bifunctor (first)
 import Data.List (intercalate)
 import Data.Kind (Type)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
@@ -200,14 +200,18 @@ instance Show Import where
     showSelection (ImportPartial fns) = "(":(unWC <$> fns) ++ [")"]
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
-showSig :: Show ty => [(String, ty)] -> String
+showSig :: (Show ty) => [TypeRowElem ty] -> String
 showSig [] = "()"
-showSig (x:xs)
-  = intercalate ", " [ '(':p ++ " :: " ++ show ty ++ ")"
-                     | (p, ty) <- x:xs]
+showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) | x <- tl])
+ where
+  parens x = '(':x ++ ")"
+
+  showElem (Anon ty) = [",", show ty]
+  showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
-showRow = showSig . fmap (first portName)
+showRow = parens . intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])
+ where parens x = '(':x ++ ")"
 
 
 data ArithOp = Add | Sub | Mul | Div | Pow deriving (Eq, Show)
@@ -228,3 +232,5 @@ data Precedence
  | PAnn
  | PApp
  deriving (Bounded, Enum, Eq, Ord, Show)
+
+data TypeAliasF tm = TypeAlias FC QualName [(PortName,TypeKind)] tm deriving Show

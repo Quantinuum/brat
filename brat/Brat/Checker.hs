@@ -789,7 +789,8 @@ checkClause my fnName cty clause = modily my $ do
   (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
-  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)]
+                        -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
    where
     worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
@@ -1049,7 +1050,7 @@ kindCheck ((_, k):_) tm = typeErr $ "Expected " ++ show tm ++ " to have kind " +
 -- Checks the kinds of the types in a dependent row
 kindCheckRow :: Modey m
              -> String -- for node name
-             -> [(PortName, ThunkRowType m)] -- The row to process
+             -> [TypeRowElem (ThunkRowType m)] -- The row to process
              -> Checking (Some (Ro m Z))
 kindCheckRow my name r = do
   name <- req $ Fresh $ "__kcr_" ++ name
@@ -1060,7 +1061,7 @@ kindCheckRow my name r = do
 -- evaluation of the type of an Id node passing through such values
 kindCheckAnnotation :: Modey m
                     -> String -- for node name
-                    -> [(PortName, ThunkRowType m)]
+                    -> [TypeRowElem (ThunkRowType m)]
                     -> Checking (CTy m Z)
 kindCheckAnnotation my name outs = do
   trackM "kca"
@@ -1080,17 +1081,19 @@ kindCheckRow' :: forall m n
               -> Endz n -- kind outports so far
               -> VEnv -- from string variable names to VPar's
               -> (Name, Int) -- node name and next free input (under to 'kindCheck' a type)
-              -> [(PortName, ThunkRowType m)]
+              -> [TypeRowElem (ThunkRowType m)]
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
-kindCheckRow' Braty (ny :* s) env (name,i) ((p, Left k):rest) = do -- s is Stack Z n
+
+kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named ('_':show i) ty):rest)
+kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
   let dangling = Ex name (ny2int ny)
   req (Declare (ExEnd dangling) Braty (Left k) Definable) -- assume none are SkolemConst??
   env <- pure $ M.insert (plain p) [(NamedPort dangling p, Left k)] env
   (i, env, ser) <- kindCheckRow' Braty (Sy ny :* (s :<< ExEnd dangling)) env (name, i) rest
   case ser of
     Some (s_m :* ro) -> pure (i, env, Some (s_m :* REx (p,k) ro))
-kindCheckRow' my ez@(ny :* s) env (name, i) ((p, bty):rest) = case (my, bty) of
+kindCheckRow' my ez@(ny :* s) env (name, i) ((Named p bty):rest) = case (my, bty) of
   (Braty, Right ty) -> helper ty (Star [])
   (Kerny, ty) -> helper ty (Dollar [])
 
