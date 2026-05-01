@@ -92,11 +92,15 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
       GV.Style [style label],
       GV.arrowTo (arrow label)
     ],
-    GV.clusterBy = \n@(name, _) -> case clusterMap M.!? name of
-        Just clust -> GV.C clust $ GV.N n
-        Nothing -> GV.N n,
+    GV.clusterBy = \n@(name, _) -> nestClusters name (GV.N n),
     GV.clusterID = GV.Str . pack . show
   }
+
+  nestClusters :: Name' -> GV.NodeCluster Name (Name', Node) -> GV.NodeCluster Name (Name', Node)
+  nestClusters name n = case clusterMap M.!? name of
+    Nothing -> n
+    -- put n in clust, which may itself be in another cluster
+    Just clust -> nestClusters (Name' clust) (GV.C clust n)
 
   showNodeType :: Node -> String
   -- Do not repeat the internal links that have been turned into edges
