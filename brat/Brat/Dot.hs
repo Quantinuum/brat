@@ -1,5 +1,6 @@
 module Brat.Dot (toDotString) where
 
+import Brat.Checker.Monad (CaptureSets)
 import Brat.Naming
 import Brat.Graph
 import Brat.Syntax.Common
@@ -11,7 +12,9 @@ import qualified Data.GraphViz.Printing as GV
 import qualified Data.GraphViz.Attributes.Complete as GV
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Text.Lazy (pack, unpack)
+import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
 import Data.Graph (reachable, transposeG)
 import Data.Maybe (fromJust)
@@ -34,9 +37,10 @@ instance Show EdgeType where
   show (GraphEdge ty) = show ty
 
 
-toDotString :: Graph -> String
-toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params verts edges
+toDotString :: Graph -> CaptureSets -> String
+toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params verts edges
  where
+  _ = cs
   verts :: [(Name', Node)]
   verts = first Name' <$> M.toList ns
 
@@ -58,16 +62,21 @@ toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params vert
   clusterMap = foldr f M.empty verts
    where
     (g, toNode, toVert) = toGraph (ns, ws)
-    f (_, node) m = case node of
-      BratNode (Box src tgt) _ _ ->
-        -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
-        -- reachable from src *or* that can reach tgt
-        let srcReaches = reachable g (fromJust (toVert src))
-            reachesTgt = reachable (transposeG g) (fromJust (toVert tgt))
-            nodesInBox = Name' . snd3 . toNode <$> (srcReaches ++ reachesTgt)
-            cluster = show src
-        in foldr (`M.insert` cluster) m nodesInBox
-      _ -> m
+    f (Name' boxNode, BratNode (Box src tgt) _ _) m =
+      -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
+      -- reachable from src that can reach tgt
+      let srcReaches = reachable g (fromJust (toVert src))
+          reachesTgt = reachable (transposeG g) (fromJust (toVert tgt))
+          nodesUsedInBox = snd3 . toNode <$> (srcReaches ++ reachesTgt)
+          -- exclude nodes that are captured by the box - these are not in the box
+          -- (TODO: we might consider adding extra edges from these to the box itself,
+          --  but for now they'll just have "normal" value edges *entering* the box)
+          captures = fromMaybe M.empty (M.lookup boxNode cs)
+          captureNodes = S.fromList [n | vs <- M.elems captures, (NamedPort (Ex n _) _, _) <- vs]
+          nodesInBox = [Name' n | n <- nodesUsedInBox, S.notMember n captureNodes]
+          cluster = show src
+      in foldr (`M.insert` cluster) m nodesInBox
+    f _ m = m
 
   -- GV.GraphVisParams vertexType vertexLabelType edgeLabelType clusterType clusterLabelType
   params :: GV.GraphvizParams Name' Node EdgeType String Node

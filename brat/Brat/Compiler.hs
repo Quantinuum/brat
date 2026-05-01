@@ -60,8 +60,8 @@ writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do
   env <- runExceptT $ loadFilename root libDirs file
   -- Discard captureSets; perhaps we could incorporate into the graph
-  (_, _, _, graph, _) <- eitherIO env
-  writeFile out (toDotString graph)
+  (_, _, _, graph, cs) <- eitherIO env
+  writeFile out (toDotString graph cs)
 {-
  where
   isMain (PrefixName [] "main", _) = True
