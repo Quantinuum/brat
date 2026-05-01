@@ -40,7 +40,6 @@ instance Show EdgeType where
 toDotString :: Graph -> CaptureSets -> String
 toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params verts edges
  where
-  _ = cs
   verts :: [(Name', Node)]
   verts = first Name' <$> M.toList ns
 
