@@ -53,23 +53,24 @@ toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params vert
   getRefEdge x (BratNode (Box src tgt) _ _) = [(x, Name' src, SrcEdge), (x, Name' tgt, SrcEdge)]
   getRefEdge _ _ = []
 
-  -- Map all nodes in a box to the src node
-  clusterMap :: M.Map Name' Name'
+  -- Map from node to cluster. Clusters are named after the Src node of the box.
+  clusterMap :: M.Map Name' String
   clusterMap = foldr f M.empty verts
    where
     (g, toNode, toVert) = toGraph (ns, ws)
     f (_, node) m = case node of
       BratNode (Box src tgt) _ _ ->
         -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
-        -- reachable from src that can reach tgt
+        -- reachable from src *or* that can reach tgt
         let srcReaches = reachable g (fromJust (toVert src))
             reachesTgt = reachable (transposeG g) (fromJust (toVert tgt))
-            box = Name' . snd3 . toNode <$> (srcReaches ++ reachesTgt) in
-        foldr (`M.insert` Name' src) m box
+            nodesInBox = Name' . snd3 . toNode <$> (srcReaches ++ reachesTgt)
+            cluster = show src
+        in foldr (`M.insert` cluster) m nodesInBox
       _ -> m
 
   -- GV.GraphVisParams vertexType vertexLabelType edgeLabelType clusterType clusterLabelType
-  params :: GV.GraphvizParams Name' Node EdgeType Name' Node
+  params :: GV.GraphvizParams Name' Node EdgeType String Node
   params = GV.defaultParams {
     GV.fmtNode = \(Name' name, node) -> [
       GV.textLabel (pack $ show name ++ ":\\n" ++ showNodeType node),
@@ -84,9 +85,9 @@ toDotString (ns,ws) = unpack . GV.printDotGraph $ GV.graphElemsToDot params vert
       GV.arrowTo (arrow label)
     ],
     GV.clusterBy = \n@(name, _) -> case clusterMap M.!? name of
-        Just parent -> GV.C parent $ GV.N n
+        Just clust -> GV.C clust $ GV.N n
         Nothing -> GV.N n,
-    GV.clusterID = \(Name' name) -> GV.Str (pack $ show name)
+    GV.clusterID = GV.Str . pack
   }
 
   showNodeType :: Node -> String
