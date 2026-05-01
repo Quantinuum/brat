@@ -142,7 +142,7 @@ type family ThunkRowType (m :: Mode) where
   ThunkRowType Kernel = Term Chk Noun
 
 simpleTypeRow :: [(PortName, ty)] -> [TypeRowElem ty]
-simpleTypeRow = fmap aux where aux (p, ty) = Named p ty
+simpleTypeRow = fmap (uncurry Named)
 
 mkThunkTy :: Modey m
           -> ThunkFCType m

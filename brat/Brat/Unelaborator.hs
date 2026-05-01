@@ -27,10 +27,7 @@ unelab _ ky (Pull ps tm) = FPull ps (unelab Chky ky <$> tm)
 unelab _ _ (Var v) = FVar v
 unelab dy ky (Arith op lhs rhs) = FArith op (unelab dy ky <$> lhs) (unelab dy ky <$> rhs)
 unelab dy _ (Of n e) = FOf (unelab Chky Nouny <$> n) (unelab dy Nouny <$> e)
-unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (f outs)
- where
-  f :: [TypeRowElem (KindOr (Term Chk Noun))] -> [TypeRowElem (WC (KindOr Flat))]
-  f = fmap (fmap (dummyFC . fmap (unelab Chky Nouny)))
+unelab _ _ (tm ::: outs) = FAnnotation (unelab Chky Nouny <$> tm) (unelabRo outs)
 unelab dy ky (top :-: bot) = case ky of
   Nouny -> FInto (unelab Syny Nouny <$> top) (unelab dy UVerby <$> bot)
   _ -> FApp (unelab Syny ky <$> top) (unelab dy UVerby <$> bot)

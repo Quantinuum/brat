@@ -201,13 +201,12 @@ instance Show Import where
     showSelection (ImportHiding fns) = "hiding (":(unWC <$> fns) ++ [")"]
 
 showSig :: (Show ty) => [TypeRowElem ty] -> String
-showSig [] = "()"
-showSig (hd:tl) = parens $ concat (tail (showElem hd) ++ [unwords (showElem x) | x <- tl])
+showSig xs = parens $ intercalate ", " (showElem <$> xs)
  where
   parens x = '(':x ++ ")"
 
-  showElem (Anon ty) = [",", show ty]
-  showElem (Named p ty) = [",", '(':p ++ " :: " ++ show ty ++ ")"]
+  showElem (Anon ty) = show ty
+  showElem (Named p ty) = '(':p ++ " :: " ++ show ty ++ ")"
 
 showRow :: Show ty => [(NamedPort e, ty)] -> String
 showRow = parens . intercalate ", " . fmap (\(np, ty) -> unwords [portName np, "::", show ty])

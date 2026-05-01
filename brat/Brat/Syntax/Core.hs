@@ -1,6 +1,4 @@
 module Brat.Syntax.Core (Term(..)
-                        ,Input
-                        ,Output
                         ,InOut
                         ,CType
                         ,Precedence(..)
@@ -21,8 +19,6 @@ import Brat.Syntax.Simple
 import Data.Kind (Type)
 import Data.Maybe (fromJust)
 
-type Input = InOut
-type Output = InOut
 type InOut = (PortName, KindOr (Term Chk Noun))
 
 type CType = CType' InOut
