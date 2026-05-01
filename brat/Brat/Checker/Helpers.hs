@@ -227,14 +227,14 @@ endPorts :: forall m i j port
          -> Ro m i j
          -> Checking ([(NamedPort port, BinderType m)], (Semz j, Some Endz))
 endPorts _ _ _ stuff R0 = pure ([], stuff)
-endPorts node rowPol n (ga, ez) (RPr (p,ty) ro) = do
+endPorts node polarity n (ga, ez) (RPr (p,ty) ro) = do
   ty <- eval ga ty
-  (row, stuff) <- endPorts node rowPol (n + 1) (ga, ez) ro
-  pure ((NamedPort (mkPort rowPol node n) p, tyBinder @m ty):row, stuff)
-endPorts node rowPol n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
-  let port = mkPort rowPol node n
-  let end = port2End rowPol port
-  (row, stuff) <- endPorts node rowPol (n + 1)
+  (row, stuff) <- endPorts node polarity (n + 1) (ga, ez) ro
+  pure ((NamedPort (mkPort polarity node n) p, tyBinder @m ty):row, stuff)
+endPorts node polarity n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
+  let port = mkPort polarity node n
+  let end = port2End polarity port
+  (row, stuff) <- endPorts node polarity (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
 
