@@ -13,6 +13,7 @@ import qualified Data.GraphViz.Attributes.Complete as GV
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text.Lazy (pack, unpack)
 import Data.Maybe (fromMaybe)
 import Data.Bifunctor (first)
@@ -64,6 +65,10 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
   clusterMap = foldr f M.empty verts
    where
     (g, toNode, toVert) = toGraph (ns, ws)
+    f (Name' patNode, BratNode (PatternMatch pats) _ _) m =
+      -- Put the boxes for each case in a cluster for the whole PatternMatch.
+      -- (This will be nested inside whatever cluster the PatternMatch node is in.)
+      foldr (\(_, innerBox) -> M.insert (Name' innerBox) patNode) m pats
     f (Name' boxNode, BratNode (Box src tgt) _ _) m =
       -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
       -- reachable from src that can reach tgt
