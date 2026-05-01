@@ -18,6 +18,7 @@ pattern CSnoc = PrefixName [] "snoc"
 pattern CConcatEqEven = PrefixName [] "concatEqEven"
 pattern CConcatEqOdd = PrefixName [] "concatEqOdd"
 pattern CRiffle = PrefixName [] "riffle"
+-- N.B. The opposite of `COmit` is `CSucc`
 pattern COmit = PrefixName [] "omit"
 
 pattern CList, CVec, CNat, CInt, COption, CBool, CBit, CFloat, CString, CThin :: QualName
