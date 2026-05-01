@@ -222,7 +222,8 @@ abstractor = do ps <- many (try portPull)
       abs <- inBracketsFC Paren (unWC <$> abstractor)
       pure $ WC (spanFCOf str abs) (PCon (plain c) (unWC abs))
 
-    constructorsWithArgs = msum (try . constructorWithArgs <$> ["succ", "doub", "cons", "some"])
+    -- TODO: Consult the constructor table!
+    constructorsWithArgs = msum (try . constructorWithArgs <$> ["succ", "doub", "cons", "some", "omit"])
 
 simpleTerm :: Parser (WC SimpleTerm)
 simpleTerm =
