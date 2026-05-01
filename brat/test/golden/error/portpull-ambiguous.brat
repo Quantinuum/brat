@@ -3,4 +3,4 @@ id = x => x
 
 -- This should fail because there are multiple ports called "a1"
 id2(Nat, Nat) -> Nat, Nat
-id2 = x, y => (id,id)(a1:x, y)
+id2 = x, y => (id,id)(_0:x, y)

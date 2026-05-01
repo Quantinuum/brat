@@ -286,19 +286,19 @@ flatIO = rowElem `sepBy` void (try comma)
     WC kFC k <- typekind
     pure (Named p (WC (spanFC pFC kFC) (Left k)))
 
-flatIO' :: Parser ty -> Parser (TypeRow ty)
-flatIO' tyP = rowElem `sepBy` void (try comma)
+flatIO' :: Parser (TypeRow (WC Flat))
+flatIO' = rowElem `sepBy` void (try comma)
  where
   rowElem = try (inBrackets Paren rowElem') <|> rowElem'
 
-  -- Look out if we can find ::. If not, backtrack and just do tyP.
+  -- Look out if we can find ::. If not, backtrack and just do `vtype`.
   -- For example, if we get an invalid primitive type (e.g. `Int` in
   -- a kernel or a misspelled type like `Intt`), we get the better
-  -- error message from tyP instead of complaining about a missing ::
+  -- error message from vtype instead of complaining about a missing ::
   -- (since the invalid type can be parsed as a port name)
   rowElem' = optional (try $ port <* match TypeColon) >>= \case
-       Just (WC _ p) -> Named p <$> tyP
-       Nothing -> Anon <$> tyP
+       Just (WC _ p) -> Named p <$> vtype
+       Nothing -> Anon <$> vtype
 
 spanningFC :: TypeRow (WC ty) -> Parser (WC (TypeRow (WC ty)))
 spanningFC [] = customFailure (Custom "Internal: FlatIO shouldn't be empty")
@@ -343,9 +343,9 @@ cthunk = try bratFn <|> try kernel <|> thunk
     pure $ FFn (ss :-> ts)
 
   kernel = inBracketsFC Brace $ do
-    ss <- flatIO' vtype
+    ss <- flatIO'
     match Lolly
-    ts <- flatIO' vtype
+    ts <- flatIO'
     pure $ FKernel (ss :-> ts)
 
 
@@ -782,9 +782,9 @@ declSignature = try nDecl <|> vDecl where
 
    kernel :: Parser (WC (CType' (TypeRowElem (WC Flat))))
    kernel = do
-     WC startFC ins <- inBracketsFC Paren $ flatIO' vtype
+     WC startFC ins <- inBracketsFC Paren $ flatIO'
      match Lolly
-     WC endFC outs <- spanningFC =<< flatIO' vtype
+     WC endFC outs <- spanningFC =<< flatIO'
      pure (WC (spanFC startFC endFC) (ins :-> outs))
 
 pfile :: Parser ([Import], FEnv)
