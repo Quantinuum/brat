@@ -108,6 +108,7 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
   -- Do not repeat the internal links that have been turned into edges
   showNodeType (BratNode (Box _ _) _ _) = "Box"
   showNodeType (BratNode (Eval _) _ _) = "Eval"
+  showNodeType (BratNode (PatternMatch _) _ _) = "PatternMatch"
   showNodeType (BratNode thing _ _) = show thing
   showNodeType (KernelNode thing _ _) = show thing
 
