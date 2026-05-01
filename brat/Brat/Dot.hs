@@ -57,8 +57,8 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
   getRefEdge x (BratNode (Box src tgt) _ _) = [(x, Name' src, SrcEdge), (x, Name' tgt, SrcEdge)]
   getRefEdge _ _ = []
 
-  -- Map from node to cluster. Clusters are named after the Src node of the box.
-  clusterMap :: M.Map Name' String
+  -- Map from node to cluster. Clusters are identified by their containing Box node.
+  clusterMap :: M.Map Name' Name
   clusterMap = foldr f M.empty verts
    where
     (g, toNode, toVert) = toGraph (ns, ws)
@@ -74,12 +74,11 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
           captures = fromMaybe M.empty (M.lookup boxNode cs)
           captureNodes = S.fromList [n | vs <- M.elems captures, (NamedPort (Ex n _) _, _) <- vs]
           nodesInBox = [Name' n | n <- nodesUsedInBox, S.notMember n captureNodes]
-          cluster = show src
-      in foldr (`M.insert` cluster) m nodesInBox
+      in foldr (`M.insert` boxNode) m nodesInBox
     f _ m = m
 
   -- GV.GraphVisParams vertexType vertexLabelType edgeLabelType clusterType clusterLabelType
-  params :: GV.GraphvizParams Name' Node EdgeType String Node
+  params :: GV.GraphvizParams Name' Node EdgeType Name Node
   params = GV.defaultParams {
     GV.fmtNode = \(Name' name, node) -> [
       GV.textLabel (pack $ show name ++ ":\\n" ++ showNodeType node),
@@ -96,7 +95,7 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
     GV.clusterBy = \n@(name, _) -> case clusterMap M.!? name of
         Just clust -> GV.C clust $ GV.N n
         Nothing -> GV.N n,
-    GV.clusterID = GV.Str . pack
+    GV.clusterID = GV.Str . pack . show
   }
 
   showNodeType :: Node -> String
