@@ -1,17 +1,2 @@
 f(Nat) -> { Nat -> Nat }
 f(x) = { y => x + y }
-
-g(Nat) -> { Nat -> { Nat -> Nat } }
-g(x) = { y => { z => x + y + z } }
-
-
-h(Nat) -> { Nat -> Nat }
-h(x) = let y = x in { z => x + y + z }
-
-ff(Vec(Nat,2)) -> { Nat -> Nat }
-ff([a,b]) = { y => a + b*y }
-
-ext "to_float" i2f :: {Int -> Float}
-
-fi(Float) -> { Int -> Float }
-fi(x) = { y => x + i2f(y) }
