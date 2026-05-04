@@ -65,16 +65,16 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
   clusterMap = foldr f M.empty verts
    where
     (g, toNode, toVert) = toGraph (ns, ws)
-    f (Name' patNode, BratNode (PatternMatch pats) _ _) m =
-      -- Put the boxes for each case in a cluster for the whole PatternMatch.
-      -- (This will be nested inside whatever cluster the PatternMatch node is in.)
-      foldr (\(_, innerBox) -> M.insert (Name' innerBox) patNode) m pats
     f (Name' boxNode, BratNode (Box src tgt) _ _) m =
       -- Find all nodes in the box spanned by src and tgt, i.e. all nodes
       -- reachable from src that can reach tgt
       let srcReaches = reachable g (fromJust (toVert src))
           reachesTgt = reachable (transposeG g) (fromJust (toVert tgt))
-          nodesUsedInBox = snd3 . toNode <$> (srcReaches ++ reachesTgt)
+          nodesReachedInBox = snd3 . toNode <$> (srcReaches ++ reachesTgt)
+          -- Add any Box nodes used by PatternMatch nodes in the cluster
+          matches = M.fromList [(n, p:ps) | n <- nodesReachedInBox,
+                                            Just (BratNode (PatternMatch (p:|ps)) _ _) <- [ns M.!? n]]
+          nodesUsedInBox = nodesReachedInBox ++ map snd (concat (M.elems matches))
           -- exclude nodes that are captured by the box - these are not in the box
           -- (TODO: we might consider adding extra edges from these to the box itself,
           --  but for now they'll just have "normal" value edges *entering* the box)
