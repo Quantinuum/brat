@@ -157,19 +157,19 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
   trackM "finished kind checking"
   unless (length holes == 0) $ error "Should be no holes from kind-checking"
   unless (M.null capSets) $ error "Should be no captures from kind-checking"
-  -- We used to check there were no holes from that, but for now we do not bother
   -- A list of local functions (read: with bodies) to define with checkDecl
   let to_define = M.fromList [ (name, unders) | ((name, VDecl decl), (unders, _)) <- entries, fnLocality decl == Local ]
   let vdecls = map fst entries
   -- Now generate environment mapping usernames to nodes in the graph
   let newDecls :: DeclEnv = M.fromList [(name, (overs, vdecl)) | ((name, vdecl), (_, overs)) <- entries]
-  declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names) $
-    TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)) $
-      combineDisjointEnvs oldDeclEnv newDecls
+  declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names)
+                                  (TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)))
+                   (combineDisjointEnvs oldDeclEnv newDecls)
 
   ((), (holes, newStore, graph, capSets)) <- runChecking (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
-    if M.null remaining then pure () else error $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
+    if M.null remaining then pure ()
+    else err $ InternalError $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
   pure (declEnv, oldHoles <> holes, oldStore <> newStore, oldGraph <> kcGraph <> graph, oldCaps <> capSets)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]
@@ -219,7 +219,7 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
       let main = (cwd </> fname ++ ".brat", [], mainStmts, mainCts)
       pure (deps ++ [main])
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
-  -- keep VEnv as we fold but discard holes, graph and captures except from the last file in the list
+  -- keep VMod and Namespace as we fold but discard Namespace at end
   liftEither $ fst <$> foldM loadStmtsSplitNS (emptyMod, ns) allStmts'
   where
     loadStmtsSplitNS :: (VMod, Namespace) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr (VMod, Namespace)
