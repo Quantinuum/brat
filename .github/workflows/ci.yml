@@ -60,10 +60,8 @@ jobs:
       run: stack build --ghc-options "-O0"
     - name: Build stack tests
       run: stack test --no-run-tests --no-run-benchmarks --ghc-options "-O0"
-    - name: Run stack tests
-      run: stack test --ta --hide-successes
 
-    # Validate the hugr outputs
+    # Install hugr_validator before running tests
     - name: Check for hugr_validator
       id: cached_validator
       run: |
@@ -82,5 +80,7 @@ jobs:
     - name: Install hugr_validator
       if: ${{ steps.cached_validator.outputs.out != 'true' }}
       run: cargo install --path ../hugr_validator
-    - name: Validate compilation output
-      run: tools/validate.sh
+
+    # Run tests
+    - name: Run stack tests
+      run: stack test --ta --hide-successes
