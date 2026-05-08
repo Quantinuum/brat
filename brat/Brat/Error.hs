@@ -4,7 +4,7 @@ module Brat.Error (ParseError(..)
                   ,ErrorMsg(..)
                   ,Error(..), showError
                   ,SrcErr(..)
-                  ,addSrcName, addSrcContext
+                  ,addSrcName, addSrcContext, mkSrcErr
                   ,eitherIO
                   ,dumbErr
                   ) where
@@ -13,6 +13,7 @@ import Brat.FC
 import Data.Bracket
 import Brat.Syntax.Port (PortName)
 
+import Data.Bifunctor (first)
 import Data.List (intercalate)
 import System.Exit
 
@@ -215,8 +216,10 @@ addSrcName :: String -> Error -> SrcErr
 addSrcName fname = SrcErr (errHeader fname)
 
 addSrcContext :: String -> String -> Either Error t -> Either SrcErr t
-addSrcContext _ _ (Right r) = Right r
-addSrcContext fname cts (Left err@Err{fc=fc}) = Left (SrcErr msg err)
+addSrcContext fname cts = first (mkSrcErr fname cts)
+
+mkSrcErr :: String -> String -> Error -> SrcErr
+mkSrcErr fname cts err@Err{fc=fc} = SrcErr msg err
  where
   msg = case fc of
     Just fc -> unlines (errHeader (fname ++ prettyFC fc)
