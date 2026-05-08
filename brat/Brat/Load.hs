@@ -139,7 +139,7 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
     --  * A map from names to VDecls (aka an Env)
     --  * Some overs and outs??
   let (globalNS, newRoot) = split "globals" ns
-  (entries, (holes, kcStore, kcGraph, capSets)) <- run (M.map fst oldDeclEnv) initStore globalNS $
+  (entries, (holes, kcStore, kcGraph, capSets)) <- runChecking (M.map fst oldDeclEnv) initStore globalNS $
     withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
       let name = PrefixName pre (fnName d)
       (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
@@ -167,7 +167,7 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
     TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)) $
       combineDisjointEnvs oldDeclEnv newDecls
 
-  ((), (holes, newStore, graph, capSets)) <- run (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
+  ((), (holes, newStore, graph, capSets)) <- runChecking (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
     remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
     if M.null remaining then pure () else error $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
   pure (declEnv, oldHoles <> holes, oldStore <> newStore, oldGraph <> kcGraph <> graph, oldCaps <> capSets)

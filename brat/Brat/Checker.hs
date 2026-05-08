@@ -2,7 +2,7 @@
 
 module Brat.Checker (checkBody
                     ,check
-                    ,run
+                    ,runChecking
                     ,kindCheck
                     ,kindCheckAnnotation
                     ,kindCheckRow
@@ -1255,12 +1255,12 @@ weaken n = changeVar (Thinning (thEmpty n))
 abstractEndz :: DeBruijn v => Stack Z End n -> v Z -> v n
 abstractEndz ez = changeVar (ParToInx (AddZ (stackLen ez)) ez)
 
-run :: VEnv
+runChecking :: VEnv
     -> Store
     -> Namespace
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-run ve initStore ns m = do
+runChecking ve initStore ns m = do
   let ctx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors
