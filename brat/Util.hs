@@ -1,5 +1,8 @@
 module Util where
 
+import qualified Data.Map as M
+import qualified Data.Set as S
+
 zipSameLength :: [a] -> [b] -> Maybe [(a,b)]
 zipSameLength (x:xs) (y:ys) = ((x,y):) <$> zipSameLength xs ys
 zipSameLength [] [] = Just []
@@ -49,3 +52,13 @@ log2 :: Integer -> Maybe Integer
 log2 m | m > 1, (n, 0) <- m `divMod` 2 = (1+) <$> log2 n
 log2 1 = pure 0
 log2 _ = Nothing
+
+-- To help with rendering, debugging, general display; may belong elsewhere:
+shorten :: S.Set String -> M.Map String String
+shorten names =
+    let byFirstChar = M.fromListWith S.union [(ch, S.singleton rest) | (ch:rest) <- S.toList names]
+        longer = case M.toList byFirstChar of
+          [] -> M.empty
+          [(c, suffixes)] -> M.fromList [(c:k, v) | (k, v) <- M.toList (shorten suffixes)]
+          groups -> M.fromList $ groups >>= \(c, group) -> [(c:k, c:v) | (k, v) <- M.toList (shorten group)]
+    in if "" `S.member` names then M.insert "" "" longer else longer
