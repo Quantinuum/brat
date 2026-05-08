@@ -300,22 +300,16 @@ handler (Req s k) ctx
                               st { typeMap = M.insert end (EndType my bty, skol) m }
                             })
       -- TODO: Use the kind argument for partially applied constructors
-      TLup key -> do
+      TLup key ->
         let args = M.lookup key (typeConstructors ctx)
-        handler (k args) ctx
+        in handler (k args) ctx
 
       CLup fc vcon tycon -> do
-        tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon) $
-               M.lookup vcon (constructors ctx)
-        args <- maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon)) $
-                M.lookup tycon tbl
+        args <- lookupCon fc vcon tycon (constructors ctx)
         handler (k args) ctx
 
       KCLup fc vcon tycon -> do
-        tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon) $
-               M.lookup vcon (kconstructors ctx)
-        args <- maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon)) $
-                M.lookup tycon tbl
+        args <- lookupCon fc vcon tycon (kconstructors ctx)
         handler (k args) ctx
 
       ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) })
@@ -324,6 +318,13 @@ handler (Req s k) ctx
 
       AddCapture n (var, ends) ->
         handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)}
+ where
+  lookupCon :: FC -> QualName -> QualName -> ConstructorMap m -> Either Error (CtorArgs m)
+  lookupCon fc vcon tycon conMap = do
+    tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon)
+            (M.lookup vcon conMap)
+    maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon))
+            (M.lookup tycon tbl)
 
 handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
   case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
