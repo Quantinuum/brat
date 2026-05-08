@@ -1261,7 +1261,7 @@ runChecking :: VEnv
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
 runChecking ve initStore ns m = do
-  let ctx = Ctx { globalVEnv = ve
+  let initCtx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors
                 , constructors = defaultConstructors
@@ -1273,7 +1273,8 @@ runChecking ve initStore ns m = do
                 , captureSets = M.empty
                 , graph = mempty
                 }
-  (a, ctx, holes) <- handler (localNS ns m) ctx
+      (ctx, res) = handler (localNS ns m) initCtx
+  (a, holes) <- res -- discard ctx if error
   let tyMap = typeMap $ store ctx
   -- If the `hopes` set has any remaining holes with kind Nat, we need to abort.
   -- Even though we didn't need them for typechecking problems, our runtime

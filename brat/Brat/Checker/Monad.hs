@@ -263,16 +263,17 @@ catchErr (Fork desc par c) = thTrace ("Spawning(catch) " ++ desc) $ catchErr $ p
 
 handler :: Free CheckingSig v
         -> Context
-        -> Either Error (v,Context,[TypedHole])
-handler (Ret v) ctx = return (v, ctx, [])
+        -> (Context, Either Error (v, [TypedHole]))
+handler (Ret v) ctx = (ctx, Right (v, []))
 handler (Req s k) ctx
   = case s of
       Fresh _ -> error "Fresh in handler, should only happen under `-!`"
       SplitNS _ -> error "SplitNS in handler, should only happen under `-!`"
       AskNS -> error "AskNS in handler, should only happen under `-!`"
-      Throw err -> Left err
-      LogHole hole -> do (v,ctx,holes) <- handler (k ()) ctx
-                         return (v,ctx,(hole:holes))
+      Throw err -> (ctx, Left err)
+      LogHole hole -> case handler (k ()) ctx of
+                         (ctx, Right (v, holes)) -> (ctx, Right (v, hole:holes))
+                         res -> res
       AskFC -> error "AskFC in handler - shouldn't happen, should always be in localFC"
       VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx
       ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx
@@ -285,14 +286,14 @@ handler (Req s k) ctx
       AskVEnv -> handler (k (CtxEnv { globals = globalVEnv ctx, locals = M.empty })) ctx
       ELup end -> case M.lookup end . typeMap . store $ ctx of
         Just _ -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx
-        Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
+        Nothing -> (ctx, Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared"))
       TypeOf end -> case M.lookup end . typeMap . store $ ctx of
         Just et -> handler (k et) ctx
-        Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
+        Nothing -> (ctx, Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared"))
       Declare end my bty skol ->
         let st@Store{typeMap=m} = store ctx
         in case M.lookup end m of
-          Just _ -> Left $ dumbErr (InternalError $ "Redeclaring " ++ show end)
+          Just _ -> (ctx, Left $ dumbErr (InternalError $ "Redeclaring " ++ show end))
           Nothing -> let bty_str = case my of { Braty -> show bty; Kerny -> show bty } in
                        track ("Declared " ++ show end ++ " :: " ++ bty_str) $
                        handler (k ())
@@ -304,15 +305,15 @@ handler (Req s k) ctx
         let args = M.lookup key (typeConstructors ctx)
         in handler (k args) ctx
 
-      CLup fc vcon tycon -> do
-        args <- lookupCon fc vcon tycon (constructors ctx)
-        handler (k args) ctx
+      CLup fc vcon tycon -> case lookupCon fc vcon tycon (constructors ctx) of
+        Left err -> (ctx, Left err)
+        Right ctorArgs -> handler (k ctorArgs) ctx
 
-      KCLup fc vcon tycon -> do
-        args <- lookupCon fc vcon tycon (kconstructors ctx)
-        handler (k args) ctx
+      KCLup fc vcon tycon -> case lookupCon fc vcon tycon (kconstructors ctx) of
+        Left err -> (ctx, Left err)
+        Right ctorArgs -> handler (k ctorArgs) ctx
 
-      ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) })
+      ANewDynamic e fc -> track ("ANewDynamic " ++ show e) $ handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) })
 
       AskDynamics -> handler (k (dynamicSet ctx)) ctx
 
@@ -328,9 +329,9 @@ handler (Req s k) ctx
 
 handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
   case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
-      Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
+      Just _ -> (ctx, Left $ dumbErr (InternalError $ "Redefining " ++ show end))
       Nothing -> case M.lookup end tm of
-        Nothing -> Left $ dumbErr (InternalError $ "Defining un-Declared " ++ show end ++ " in \n" ++ show tm)
+        Nothing -> (ctx, Left $ dumbErr (InternalError $ "Defining un-Declared " ++ show end ++ " in \n" ++ show tm))
         -- Allow even Skolems to be defined (e.g. clauses with unique soln)
         -- TODO(1) can we check the value is of the kind declared?
         -- TODO(2) it'd be better to figure out if the end is really Unstuck,
@@ -355,9 +356,9 @@ handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store
                                         Nothing -> dynamicSet ctx
                           })
 handler (Yield Unstuck k) ctx = handler (k mempty) ctx
-handler (Yield (AwaitingAny ends) _k) ctx = Left $ dumbErr $ TypeErr $ unlines $
+handler (Yield (AwaitingAny ends) _k) ctx = (ctx, Left $ dumbErr $ TypeErr $ unlines $
   ("Typechecking blocked on:":(show <$> S.toList ends))
-  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"]
+  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"])
 handler (Fork desc par c) ctx = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx
 
 type Checking = Free CheckingSig
