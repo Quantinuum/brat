@@ -139,21 +139,22 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
     --  * A map from names to VDecls (aka an Env)
     --  * Some overs and outs??
   let (globalNS, newRoot) = split "globals" ns
-  (entries, (holes, kcStore, kcGraph, capSets)) <- runChecking (M.map fst oldDeclEnv) initStore globalNS $
-    withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
-      let name = PrefixName pre (fnName d)
-      (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
-                        Local -> do
-                          -- kindCheckAnnotation gives the signature of an Id node,
-                          -- hence ins == outs (modulo haskell's knowledge about their scopes)
-                          ins :->> outs <- kindCheckAnnotation Braty (show name) (fnSig d)
-                          pure (Id, ins :->> outs, Some ins, "decl")
-                        Extern sym -> do
-                          (Some outs) <- kindCheckRow Braty (show name) (fnSig d)
-                          pure (Prim sym, R0 :->> outs, Some outs, "prim")
-      -- In the Extern case, unders will be empty
-      (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
-      pure ((name, VDecl d{fnSig=sig}), (unders, overs))
+      (kcStore, kcGraph, capSets, res) = runChecking (M.map fst oldDeclEnv) initStore globalNS $
+        withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
+          let name = PrefixName pre (fnName d)
+          (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
+                            Local -> do
+                              -- kindCheckAnnotation gives the signature of an Id node,
+                              -- hence ins == outs (modulo haskell's knowledge about their scopes)
+                              ins :->> outs <- kindCheckAnnotation Braty (show name) (fnSig d)
+                              pure (Id, ins :->> outs, Some ins, "decl")
+                            Extern sym -> do
+                              (Some outs) <- kindCheckRow Braty (show name) (fnSig d)
+                              pure (Prim sym, R0 :->> outs, Some outs, "prim")
+          -- In the Extern case, unders will be empty
+          (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
+          pure ((name, VDecl d{fnSig=sig}), (unders, overs))
+  (entries, holes) <- res -- (for now) discard Store, Graph, CaptureSets upon error
   trackM "finished kind checking"
   unless (length holes == 0) $ error "Should be no holes from kind-checking"
   unless (M.null capSets) $ error "Should be no captures from kind-checking"
@@ -165,11 +166,11 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
   declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names)
                                   (TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)))
                    (combineDisjointEnvs oldDeclEnv newDecls)
-
-  ((), (holes, newStore, graph, capSets)) <- runChecking (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
-    remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
-    if M.null remaining then pure ()
-    else err $ InternalError $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
+  let (newStore, graph, capSets, res) = runChecking (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
+        remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
+        if M.null remaining then pure ()
+        else err $ InternalError $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
+  ((), holes) <- res
   pure (declEnv, oldHoles <> holes, oldStore <> newStore, oldGraph <> kcGraph <> graph, oldCaps <> capSets)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]

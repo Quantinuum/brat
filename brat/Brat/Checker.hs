@@ -1259,8 +1259,8 @@ runChecking :: VEnv
     -> Store
     -> Namespace
     -> Checking a
-    -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-runChecking ve initStore ns m = do
+    -> (Store, Graph, CaptureSets, Either Error (a, [TypedHole]))
+runChecking ve initStore ns m =
   let initCtx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors
@@ -1274,16 +1274,17 @@ runChecking ve initStore ns m = do
                 , graph = mempty
                 }
       (ctx, res) = handler (localNS ns m) initCtx
-  (a, holes) <- res -- discard ctx if error
-  let tyMap = typeMap $ store ctx
-  -- If the `hopes` set has any remaining holes with kind Nat, we need to abort.
-  -- Even though we didn't need them for typechecking problems, our runtime
-  -- behaviour depends on the values of the holes, which we can't account for.
-  case M.toList $ M.filterWithKey (\e _ -> isNatKinded tyMap e) (dynamicSet ctx) of
-    [] -> pure (a, (holes, store ctx, graph ctx, captureSets ctx))
-    -- Just use the FC of the first hole while we don't have the capacity to
-    -- show multiple error locations
-    hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
+      tyMap = typeMap $ store ctx
+  in (store ctx, graph ctx, captureSets ctx, res >>= \(a, holes) ->
+    -- If the `hopes` set has any remaining holes with kind Nat, we need to abort.
+    -- Even though we didn't need them for typechecking problems, our runtime
+    -- behaviour depends on the values of the holes, which we can't account for.
+    case M.toList $ M.filterWithKey (\e _ -> isNatKinded tyMap e) (dynamicSet ctx) of
+      [] -> pure (a, holes)
+      -- Just use the FC of the first hole while we don't have the capacity to
+      -- show multiple error locations
+      hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
+  )
  where
   isNatKinded tyMap e = case tyMap M.! (InEnd e) of
     (EndType Braty (Left Nat), _) -> True
