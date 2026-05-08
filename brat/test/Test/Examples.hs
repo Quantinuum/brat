@@ -2,6 +2,7 @@ module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput, getHoles)
+import Test.Config (IgnoreValidation(..))
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
 import Data.HugrGraph (to_json)
@@ -10,8 +11,9 @@ import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.List (isPrefixOf)
-import qualified Data.Text.Lazy as T
 import Data.Maybe (fromJust)
+import Data.Proxy
+import qualified Data.Text.Lazy as T
 import System.Console.ANSI (Color(..), ColorIntensity(..), ConsoleLayer(..), SGR(..), setSGRCode)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode(..))
@@ -21,22 +23,31 @@ import Test.Tasty
 import Test.Tasty.Providers
 import Test.Tasty.Providers.ConsoleFormat (noResultDetails)
 import Test.Tasty.HUnit
-import Test.Tasty.Runners (FailureReason(..), Outcome(Failure), Result(..), TestTree(..))
+import Test.Tasty.Options (lookupOption, OptionDescription(..))
+import Test.Tasty.Runners (FailureReason(..), Outcome(..), Result(..), TestTree(..))
 import Test.Tasty.Silver
 import Test.Tasty.ExpectedFailure
 
 --import Debug.Trace
 
-data HugrTest = Validate TestTree | SkipValidation
+data HugrTest = Validate TestTree | ValidationConfigErr
 
 instance IsTest HugrTest where
   -- BAD: Uses implementation details
   run opts (Validate (SingleTest _ t)) f = run opts t f
-  run opts SkipValidation f = pure $ Result (Failure TestDepFailed) "hugr_validator not installed" (yellowText "SKIPPED") 0.0 noResultDetails
+  run opts ValidationConfigErr f = pure $ Result
+                                          outcome
+                                          "hugr_validator not installed"
+                                          (yellowText "SKIPPED")
+                                          0.0
+                                          noResultDetails
    where
+    outcome = case lookupOption @IgnoreValidation opts of
+      IgnoreValidation False -> Failure TestDepFailed
+      IgnoreValidation True  -> Success
     yellowText text = setSGRCode [SetColor Foreground Vivid Yellow] ++ text ++ setSGRCode [Reset]
 
-  testOptions = pure []
+  testOptions = pure [Option (Proxy :: Proxy IgnoreValidation)]
 
 outputDir :: FilePath
 outputDir = "test" </> "examples"
@@ -100,8 +111,8 @@ interpreterTestsForExample interpreterInPath path start =
                 BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
               validateTestCase = if interpreterInPath
                                  then Validate (testCase undefined (validateTest outFile))
-                                 else SkipValidation
-          in  [emitHugr, SingleTest ("validate(" ++ func_name ++")") validateTestCase]
+                                 else ValidationConfigErr
+          in  emitHugr : [SingleTest ("validate(" ++ func_name ++")") validateTestCase]
      else let (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of
                 Just out -> (True, out)
                 Nothing | Just out <- T.stripPrefix (T.pack " ") restLine -> (False, out)
