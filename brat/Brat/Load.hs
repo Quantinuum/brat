@@ -27,6 +27,7 @@ import Hasochism
 
 import Control.Monad (filterM, foldM, forM, forM_, unless)
 import Control.Monad.Except
+import Control.Monad.State
 import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (first)
 import Data.Functor ( (<&>), ($>) )
@@ -126,52 +127,73 @@ withAliases :: [TypeAlias] -> Checking a -> Checking a
 withAliases [] m = m
 withAliases (a:as) m = loadAlias a >>= \a -> localAlias a $ withAliases as m
 
-loadStmtsWithEnv :: Namespace -> VMod -> (FilePath, Prefix, FEnv, String) -> Either SrcErr VMod
-loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, pre, stmts, cts) = addSrcContext fname cts $ do
+runCheckingOnVMod :: Namespace -> Bool -> Checking a -> State VMod (Either Error a)
+runCheckingOnVMod ns checkNoHolesOrCaptures comp = do
+  (declEnv, holes, store, graph, capSets) <- get
+  let (newStore, newGraph, newCaps, res) = runChecking (M.map fst declEnv) store ns comp
+  (res', holes') <- case res of
+        Left err -> pure (Left err, holes)
+        Right (val, newHoles) -> do
+          unless (not checkNoHolesOrCaptures || null newHoles) $ 
+            error "Should be no holes from kind-checking"
+          pure (Right val, holes <> newHoles)
+  put (declEnv, holes', store <> newStore, graph <> newGraph, capSets <> newCaps)
+  unless (not checkNoHolesOrCaptures || M.null newCaps) $ error "Should be no captures from kind-checking"
+  pure res'
+
+loadStmtsWithEnv :: Namespace -> (FilePath, Prefix, FEnv, String) -> State VMod (Either SrcErr ())
+loadStmtsWithEnv ns (fname, pre, stmts, cts) = addSrcContext fname cts <$> do
+  (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) <- get
   -- hacky mess - cleanup!
-  (decls, aliases) <- desugarEnv =<< elabEnv stmts
-  -- Note the duplicates here works for anything Eq, but is O(n^2).
-  -- TODO Since decl names can be ordered/hashed, we could be much faster.
-  let declNames = M.keys oldDeclEnv
-  let dups = duplicates (declNames ++ map (PrefixName pre . fnName) decls) in unless (null dups) $
-    Left $ dumbErr $ NameClash $ show dups
-  -- Generate some stuff for each entry:
-    --  * A map from names to VDecls (aka an Env)
-    --  * Some overs and outs??
-  let (globalNS, newRoot) = split "globals" ns
-      (kcStore, kcGraph, capSets, res) = runChecking (M.map fst oldDeclEnv) initStore globalNS $
-        withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
-          let name = PrefixName pre (fnName d)
-          (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
-                            Local -> do
-                              -- kindCheckAnnotation gives the signature of an Id node,
-                              -- hence ins == outs (modulo haskell's knowledge about their scopes)
-                              ins :->> outs <- kindCheckAnnotation Braty (show name) (fnSig d)
-                              pure (Id, ins :->> outs, Some ins, "decl")
-                            Extern sym -> do
-                              (Some outs) <- kindCheckRow Braty (show name) (fnSig d)
-                              pure (Prim sym, R0 :->> outs, Some outs, "prim")
-          -- In the Extern case, unders will be empty
-          (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
-          pure ((name, VDecl d{fnSig=sig}), (unders, overs))
-  (entries, holes) <- res -- (for now) discard Store, Graph, CaptureSets upon error
-  trackM "finished kind checking"
-  unless (length holes == 0) $ error "Should be no holes from kind-checking"
-  unless (M.null capSets) $ error "Should be no captures from kind-checking"
-  -- A list of local functions (read: with bodies) to define with checkDecl
-  let to_define = M.fromList [ (name, unders) | ((name, VDecl decl), (unders, _)) <- entries, fnLocality decl == Local ]
-  let vdecls = map fst entries
-  -- Now generate environment mapping usernames to nodes in the graph
-  let newDecls :: DeclEnv = M.fromList [(name, (overs, vdecl)) | ((name, vdecl), (_, overs)) <- entries]
-  declEnv <- first (\names -> Err (Just $ declLoc newDecls $ head names)
-                                  (TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names)))
-                   (combineDisjointEnvs oldDeclEnv newDecls)
-  let (newStore, graph, capSets, res) = runChecking (M.map fst declEnv) kcStore newRoot $ withAliases aliases $ do
-        remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
-        if M.null remaining then pure ()
-        else err $ InternalError $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
-  ((), holes) <- res
-  pure (declEnv, oldHoles <> holes, oldStore <> newStore, oldGraph <> kcGraph <> graph, oldCaps <> capSets)
+  case desugarEnv =<< elabEnv stmts of
+    Left err -> pure $ Left err
+    Right (decls, aliases) -> do
+      -- Note the duplicates here works for anything Eq, but is O(n^2).
+      -- TODO Since decl names can be ordered/hashed, we could be much faster.
+      let declNames = M.keys oldDeclEnv
+      let dups = duplicates (declNames ++ map (PrefixName pre . fnName) decls)
+      if not (null dups)
+      then pure $ Left $ dumbErr $ NameClash $ show dups
+      else do
+        -- Generate some stuff for each entry:
+          --  * A map from names to VDecls (aka an Env)
+          --  * Some overs and outs??
+        let (globalNS, newRoot) = split "globals" ns
+        -- Should we use initStore (only) for this? (i.e. override locally)
+        entriesOrErr <- runCheckingOnVMod globalNS True $
+            withAliases aliases $ forM decls $ \d -> localFC (fnLoc d) $ do
+                let name = PrefixName pre (fnName d)
+                (thing, ins :->> outs, sig, prefix) <- case fnLocality d of
+                                  Local -> do
+                                    -- kindCheckAnnotation gives the signature of an Id node,
+                                    -- hence ins == outs (modulo haskell's knowledge about their scopes)
+                                    ins :->> outs <- kindCheckAnnotation Braty (show name) (fnSig d)
+                                    pure (Id, ins :->> outs, Some ins, "decl")
+                                  Extern sym -> do
+                                    (Some outs) <- kindCheckRow Braty (show name) (fnSig d)
+                                    pure (Prim sym, R0 :->> outs, Some outs, "prim")
+                -- In the Extern case, unders will be empty
+                (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
+                pure ((name, VDecl d{fnSig=sig}), (unders, overs))
+        trackM "finished kind checking"
+        case entriesOrErr of
+          Left err -> pure (Left err)
+          Right entries -> do
+            -- A list of local functions (read: with bodies) to define with checkDecl
+            let to_define = M.fromList [ (name, unders) | ((name, VDecl decl), (unders, _)) <- entries, fnLocality decl == Local ]
+            let vdecls = map fst entries
+            -- Now generate environment mapping usernames to nodes in the graph
+            let newDecls :: DeclEnv = M.fromList [(name, (overs, vdecl)) | ((name, vdecl), (_, overs)) <- entries]
+            case combineDisjointEnvs oldDeclEnv newDecls of
+              Left names -> pure $ Left $ Err (Just $ declLoc newDecls $ head names)
+                                              (TypeErr $ "Function(s) defined twice: " ++ intercalate "," (map show names))
+              Right declEnv -> do
+                modify $ \( _, holes, store, graph, capSets) -> (declEnv, holes, store, graph, capSets)
+                -- we used to pass in only the store from kindchecking this file, contrary to VMod docs...??
+                runCheckingOnVMod newRoot False $ withAliases aliases $ do
+                      remaining <- "check_defs" -! foldM checkDecl' to_define vdecls
+                      if M.null remaining then pure ()
+                      else err $ InternalError $ "loadStmtsWithEnv: expected to define " ++ show (M.keys remaining)
  where
   checkDecl' :: M.Map QualName [(Tgt, BinderType Brat)]
              -> (QualName, VDecl)
