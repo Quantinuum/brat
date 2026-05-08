@@ -232,15 +232,16 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
       pure (deps ++ [main])
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
   -- keep VMod and Namespace as we fold but discard Namespace at end
-  liftEither $ fst <$> foldM loadStmtsSplitNS (emptyMod, ns) allStmts'
-  where
-    loadStmtsSplitNS :: (VMod, Namespace) -> (FilePath, Prefix, FEnv, String) -> Either SrcErr (VMod, Namespace)
-    loadStmtsSplitNS (mod, ns) file@(fname, _, _, _) =
+  let loadAllStmts :: ExceptT SrcErr (State VMod) Namespace = foldM loadStmtsSplitNS ns allStmts'
+      (nsOrErr, mod') = runState (runExceptT loadAllStmts) emptyMod
+  (_ :: Namespace) <- liftEither nsOrErr
+  pure mod' -- return type discards VMod if there is an error
+ where
+    loadStmtsSplitNS :: Namespace -> (FilePath, Prefix, FEnv, String) -> ExceptT SrcErr (State VMod) Namespace
+    loadStmtsSplitNS ns file@(fname, _, _, _) = do
       let (subns, ns') = split (takeBaseName fname) ns
-          (unitOrErr, mod') = runState (runExceptT (loadStmtsWithEnv subns file)) mod
-      in case unitOrErr of
-           Left err -> Left err -- return type does not include the module if there's an error
-           Right () -> Right (mod', ns')
+      () <- loadStmtsWithEnv subns file
+      pure ns'
 
     emptyMod :: VMod
     emptyMod = (M.empty, [], initStore, (M.empty, []), M.empty)
