@@ -17,7 +17,8 @@ data Options = Opt {
   file    :: String,
   libs    :: String,
   raw     :: Bool,
-  runFunc :: String
+  runFunc :: String,
+  shorten :: Bool
 }
 
 compileFlag :: Parser Bool
@@ -33,8 +34,10 @@ libOption = strOption (long "lib" <> value "" <> help "Look in extra directories
 
 runFuncOption = strOption (long "run" <> value "" <> help "Run function with interpreter (must take no arguments)")
 
+shortenFlag = switch (long "shorten" <> help "Shorten graph names in Dot output")
+
 opts :: Parser Options
-opts = Opt <$> astFlag <*> dotOption <*> compileFlag <*> strArgument (metavar "FILE") <*> libOption <*> rawFlag <*> runFuncOption
+opts = Opt <$> astFlag <*> dotOption <*> compileFlag <*> strArgument (metavar "FILE") <*> libOption <*> rawFlag <*> runFuncOption <*> shortenFlag
 
 -- Parse a list of library directories delimited by a semicolon
 parseLibs :: String -> [String]
@@ -48,7 +51,7 @@ main = do
   Opt{..} <- execParser (info opts (progDesc "Compile a BRAT program"))
   when (ast || raw) $ printAST raw ast file
   let libDirs = parseLibs libs
-  when (dot /= "") $ writeDot libDirs file dot
+  when (dot /= "") $ writeDot libDirs file dot shorten
   if compile then compileAndPrintFile libDirs file
   else if runFunc == "" then printDeclsHoles libDirs file
   else do

@@ -19,12 +19,16 @@ import Brat.QualName (QualName)
 import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
 import Brat.Syntax.Value (Val(VFun))
 
+import Util (shorten)
+
 import Control.Exception (evaluate)
 import Control.Monad (forM, when)
+import Data.Bifunctor (first)
+import Data.Foldable (for_)
 import Data.List (intercalate)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import qualified Data.ByteString.Lazy as BS
-import Data.Foldable (for_)
 import Data.HugrGraph (HugrGraph, NodeId, to_json)
 import System.Exit (die)
 
@@ -62,16 +66,20 @@ printAST printRaw printAST file = do
   when printAST $
     banner "desugared AST" (mapM_ print =<< eitherIO (addSrcContext file cts (desugarEnv env')))
 
-writeDot :: [FilePath] -> String -> String -> IO ()
-writeDot libDirs file out = do
-  ((_, _, _, graph, cs), maybeErr) <- loadFilename root libDirs file
+writeDot :: [FilePath] -> String -> String -> Bool -> IO ()
+writeDot libDirs file out shortenFlag = do
+  ((_, _, _, graph@(ns, _), cs), maybeErr) <- loadFilename root libDirs file
+  let nameMap = case shortenFlag of
+        True -> shorten (S.fromList $ map show $ M.keys ns)
+        False -> M.empty
+  writeFile out (toDotString graph cs) -- TODO pass nameMap
+  maybeErr <- pure $ first (renameEnds nameMap) maybeErr
   eitherIO maybeErr
-  writeFile out (toDotString graph cs)
-{-
  where
-  isMain (PrefixName [] "main", _) = True
-  isMain _ = False
--}
+  renameEnds :: M.Map String String -> SrcErr -> SrcErr
+  renameEnds nameMap (SrcErr prelim (Err fc (EndErr msg groups))) =
+    SrcErr prelim $ Err fc $ TypeErr (fmtEndErr nameMap msg groups)
+  renameEnds _ err = err
 
 newtype CompilingHoles = CompilingHoles [TypedHole]
 
