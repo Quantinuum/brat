@@ -4,7 +4,6 @@ import Brat.Graph (Graph)
 import Brat.Load (loadFiles)
 import Brat.Naming (root)
 
-import Control.Monad.Except (runExceptT)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Text (pack)
@@ -19,10 +18,10 @@ mkGraphTest bratFile = do
   pure $ goldenVsAction (takeBaseName bratFile) (bratFile <.> "graph") (makeBratGraph contents) (pack . show)
  where
   makeBratGraph :: String -> IO Graph
-  makeBratGraph contents = runExceptT (loadFiles root includeDirs bratFile contents) >>= \case
+  makeBratGraph contents = (loadFiles root includeDirs bratFile contents) >>= \case
     -- ns is a map so will already be sorted
-    Right (_, _, _, (ns, es), _) -> pure (ns, sortOn endNames es)
-    Left err -> assertFailure (show err)
+    ((_, _, _, (ns, es), _), Right ()) -> pure (ns, sortOn endNames es)
+    (_, Left err) -> assertFailure (show err)
 
   endNames (inp, _, outp) = show inp ++ show outp
 

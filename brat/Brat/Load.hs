@@ -28,7 +28,7 @@ import Hasochism
 import Control.Monad (filterM, foldM, forM, forM_, unless)
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Bifunctor (first)
+import Data.Bifunctor (first, second)
 import Data.Functor ( (<&>), ($>) )
 import Data.List (intercalate, sort)
 import Data.List.HT (viewR)
@@ -198,17 +198,36 @@ loadStmtsWithEnv ns (fname, pre, stmts, cts) = withExceptT (mkSrcErr fname cts) 
 declLoc :: DeclEnv -> QualName -> FC
 declLoc declEnv name = let VDecl (FuncDecl {fnLoc=loc}) = snd (declEnv M.! name) in loc
 
-loadFilename :: Namespace -> [FilePath] -> String -> ExceptT SrcErr IO VMod
+loadFilename :: Namespace -> [FilePath] -> String -> IO (VMod, Either SrcErr ())
 loadFilename ns libDirs file = do
   unless (takeExtension file == ".brat") $ fail $ "Filename " ++ file ++ " must end in .brat"
   let (path, fname) = splitFileName $ dropExtension file
-  contents <- lift $ readFile file
+  contents <- readFile file
   loadFiles ns (path :| libDirs) fname contents
 
 -- Does not read the main file, but does read any imported files
 loadFiles :: Namespace -> NonEmpty FilePath -> String -> String
-         -> ExceptT SrcErr IO VMod
-loadFiles ns (cwd :| extraDirs) fname contents = do
+         -> IO (VMod, Either SrcErr ())
+loadFiles ns dirs fname contents =
+  runExceptT (loadFiles' dirs fname contents) >>= \case
+    Left err -> pure (emptyMod, Left err)
+    Right files ->
+      let loadAllStmts :: ExceptT SrcErr (State VMod) Namespace = foldM loadStmtsSplitNS ns files
+          (nsOrErr, mod) = runState (runExceptT loadAllStmts) emptyMod
+      in pure (mod, second (\_ -> ()) nsOrErr)
+ where
+    loadStmtsSplitNS :: Namespace -> (FilePath, Prefix, FEnv, String) -> ExceptT SrcErr (State VMod) Namespace
+    loadStmtsSplitNS ns file@(fname, _, _, _) = do
+      let (subns, ns') = split (takeBaseName fname) ns
+      () <- loadStmtsWithEnv subns file
+      pure ns'
+
+    emptyMod :: VMod
+    emptyMod = (M.empty, [], initStore, (M.empty, []), M.empty)
+
+loadFiles' :: NonEmpty FilePath -> String -> String
+           -> ExceptT SrcErr IO [(FilePath, Prefix, FEnv, String)]
+loadFiles' (cwd :| extraDirs) fname contents = do
   let mainImport = Import { importName = dummyFC (plain fname)
                           , importQualified = True
                           , importAlias = Nothing
@@ -222,7 +241,7 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
 
   let allStmts = getStmts . f <$> files
   -- remove the prefix for the starting file
-  allStmts' <- case viewR allStmts of
+  case viewR allStmts of
     -- the original file should be at the end of the allStmts list
     Just (rest, (_, mainPrf, mainStmts, mainCts)) -> do
       unless (mainPrf == [fname]) $
@@ -231,21 +250,8 @@ loadFiles ns (cwd :| extraDirs) fname contents = do
       let main = (cwd </> fname ++ ".brat", [], mainStmts, mainCts)
       pure (deps ++ [main])
     Nothing -> throwError (SrcErr "" $ dumbErr (InternalError "Empty dependency graph"))
-  -- keep VMod and Namespace as we fold but discard Namespace at end
-  let loadAllStmts :: ExceptT SrcErr (State VMod) Namespace = foldM loadStmtsSplitNS ns allStmts'
-      (nsOrErr, mod') = runState (runExceptT loadAllStmts) emptyMod
-  (_ :: Namespace) <- liftEither nsOrErr
-  pure mod' -- return type discards VMod if there is an error
+
  where
-    loadStmtsSplitNS :: Namespace -> (FilePath, Prefix, FEnv, String) -> ExceptT SrcErr (State VMod) Namespace
-    loadStmtsSplitNS ns file@(fname, _, _, _) = do
-      let (subns, ns') = split (takeBaseName fname) ns
-      () <- loadStmtsWithEnv subns file
-      pure ns'
-
-    emptyMod :: VMod
-    emptyMod = (M.empty, [], initStore, (M.empty, []), M.empty)
-
     -- builds a map from Import to (index in which discovered, module)
     depGraph :: M.Map Import (Int, FlatMod) -- input map to which to add
              -> Import -> String

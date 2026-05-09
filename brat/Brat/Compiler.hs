@@ -21,7 +21,6 @@ import Brat.Syntax.Value (Val(VFun))
 
 import Control.Exception (evaluate)
 import Control.Monad (forM, when)
-import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
@@ -31,8 +30,8 @@ import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
-  env <- runExceptT $ loadFilename root libDirs file
-  (declEnv, holes, _, _, _) <- eitherIO env
+  ((declEnv, holes, _, _, _), maybeErr) <- loadFilename root libDirs file
+  eitherIO maybeErr
   putStrLn "Decls:"
   forM (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
     putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
@@ -65,8 +64,8 @@ printAST printRaw printAST file = do
 
 writeDot :: [FilePath] -> String -> String -> IO ()
 writeDot libDirs file out = do
-  env <- runExceptT $ loadFilename root libDirs file
-  (_, _, _, graph, cs) <- eitherIO env
+  ((_, _, _, graph, cs), maybeErr) <- loadFilename root libDirs file
+  eitherIO maybeErr
   writeFile out (toDotString graph cs)
 {-
  where
@@ -83,8 +82,9 @@ instance Show CompilingHoles where
 compileToGraph :: [FilePath] -> String -> IO (Namespace, VMod)
 compileToGraph libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
-  env <- runExceptT $ loadFilename checkRoot libDirs file
-  (newRoot,) <$> eitherIO env
+  (env, maybeErr) <- loadFilename checkRoot libDirs file
+  eitherIO maybeErr
+  pure (newRoot, env)
 
 -- Map from box name to (compiled hugr, list of hole nodes in it)
 type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])

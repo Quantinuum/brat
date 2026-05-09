@@ -2,7 +2,6 @@
 
 import Control.Concurrent.MVar
 import Control.Lens hiding (Iso, to)
-import Control.Monad.Except
 import Control.Monad.IO.Class
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (fromMaybe)
@@ -114,9 +113,10 @@ loadVFile state _ msg = do
       -- current working directory because of this argument!
       --                                                ||
       --                                                vv
-      env <- liftIO . runExceptT $ loadFiles Name.root (cwd :| []) (show fileName) file
-      case env of
-        Right (declEnv, holes,_,_,_) -> do
+      (env, maybeErr) <- liftIO $ loadFiles Name.root (cwd :| []) (show fileName) file
+      case maybeErr of
+        Right () -> do
+          let (declEnv, holes,_,_,_) = env
           old <- liftIO $ takeMVar state
           liftIO $ putMVar state (updateState (snd <$> M.elems declEnv, holes) old)
           allGood fileName
