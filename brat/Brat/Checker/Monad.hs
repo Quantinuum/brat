@@ -283,7 +283,7 @@ handler (Req s k) ctx g
       -- Receiving KDone may become possible when merging the two check functions
       KDone -> error "KDone in handler - this shouldn't happen"
       AskVEnv -> handler (k (CtxEnv { globals = globalVEnv ctx, locals = M.empty })) ctx g
-      ELup end -> case M.lookup end . typeMap. store $ ctx of
+      ELup end -> case M.lookup end . typeMap . store $ ctx of
         Just _ -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx g
         Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
       TypeOf end -> case M.lookup end . typeMap . store $ ctx of
