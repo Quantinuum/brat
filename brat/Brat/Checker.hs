@@ -793,7 +793,7 @@ checkClause my fnName cty clause = modily my $ do
                         -> Checking (Solution Brat, [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
    where
-    worker :: Bwd (String, (Src, BinderType Brat)) -> Solution Brat -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+    worker :: Bwd (String, (Src, BinderType Brat)) -> Solution Brat -> Checking (Solution Brat, [((String, TypeKind), Val Z)])
     worker zx [] = (, []) <$> outputDeps zx [] outputs
     worker zx (entry@(patVar, (src, Left k)):sol) = let vsrc = VApp (VPar (toEnd src)) B0 in do
       trackM ("processSol (kinded): " ++ show entry)
