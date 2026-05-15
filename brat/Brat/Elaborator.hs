@@ -1,6 +1,6 @@
 module Brat.Elaborator where
 
-import Control.Monad (forM, (>=>))
+import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (empty)
@@ -179,6 +179,7 @@ elaborate' (FAnnotation a ts) = do
   (SomeRaw a) <- elaborate a
   a <- assertChk a
   a <- assertNoun a
+  ts <- fmap (fmap unWC) <$> elabIO ts
   pure $ SomeRaw' (a ::::: ts)
 elaborate' (FInto a b) = elaborate' (FApp b a)
 elaborate' (FOf n e) = do
@@ -187,14 +188,24 @@ elaborate' (FOf n e) = do
   SomeRaw e <- elaborate e
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
-elaborate' (FFn cty) = pure $ SomeRaw' (RFn cty)
-elaborate' (FKernel sty) = pure $ SomeRaw' (RKernel sty)
+elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> elabIO cty
+elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> elabSig cty
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
+
+elaborateKindOrFlat :: WC (KindOr Flat) -> Either Error (WC (KindOr (Raw Chk Noun)))
+elaborateKindOrFlat (WC fc (Left k)) = pure (WC fc (Left k))
+elaborateKindOrFlat (WC fc (Right ty)) = fmap Right <$> elaborateChkNoun (WC fc ty)
+
+elabSig :: Traversable t => t (TypeRowElem (WC Flat)) -> Either Error (t (TypeRowElem (WC (Raw Chk Noun))))
+elabSig = traverse (traverse elaborateChkNoun)
+
+elabIO :: Traversable t => t FlatIO -> Either Error (t (TypeRowElem (WC (KindOr (Raw Chk Noun)))))
+elabIO = traverse (traverse elaborateKindOrFlat)
 
 elabBody :: FBody -> FC -> Either Error (FunBody Raw Noun)
 elabBody (FClauses cs) fc = ThunkOf . WC fc . Clauses <$> traverse elab1Clause cs
@@ -217,14 +228,17 @@ elabBody FUndefined _ = pure Undefined
 elabFunDecl :: FDecl -> Either Error RawFuncDecl
 elabFunDecl d = do
   rc <- elabBody (fnBody d) (fnLoc d)
+  sig <- elabIO (fnSig d)
   pure $ FuncDecl
     { fnName = fnName d
     , fnLoc = fnLoc d
-    , fnSig = fnSig d
+    , fnSig = fmap unWC <$> sig -- sus
     , fnBody = rc
     , fnLocality = fnLocality d
     }
 
+elabAlias :: FAlias -> Either Error RawAlias
+elabAlias (TypeAlias fc name tys tm) = TypeAlias fc name tys . unWC <$> elaborateChkNoun (WC fc tm)
 
 elabEnv :: FEnv -> Either Error RawEnv
-elabEnv (ds, x) = (,x,empty) <$> forM ds elabFunDecl
+elabEnv (ds, as) = (,,empty) <$> traverse elabFunDecl ds <*> traverse elabAlias as

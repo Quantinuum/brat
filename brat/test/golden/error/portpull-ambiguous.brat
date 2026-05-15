@@ -1,6 +1,6 @@
-id(Nat) -> Nat
+id(n :: Nat) -> Nat
 id = x => x
 
--- This should fail because there are multiple ports called "a1"
+-- This should fail because there are multiple ports called "n"
 id2(Nat, Nat) -> Nat, Nat
-id2 = x, y => (id,id)(a1:x, y)
+id2 = x, y => (id,id)(n:x, y)

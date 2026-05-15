@@ -1,6 +1,6 @@
 Error in test/golden/error/portpull-ambiguous.brat on line 6:
-id2 = x, y => (id,id)(a1:x, y)
-                     ^^^^^^^^^
+id2 = x, y => (id,id)(n:x, y)
+                     ^^^^^^^^
 
-  Port a1 is ambiguous in (a1 :: Nat), (a1 :: Nat)
+  Port n is ambiguous in (n :: Nat, n :: Nat)
 

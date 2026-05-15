@@ -3,7 +3,7 @@ pair = row -- Distinct from a pair
        ^^^
 
   Type mismatch when checking row
-Expected: (a1 :: [Int,Bool])
-But got:  (a1 :: Int), (b1 :: Bool)
+Expected: (0 :: [Int,Bool])
+But got:  (0 :: Int, 1 :: Bool)
 
 

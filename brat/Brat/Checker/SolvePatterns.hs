@@ -1,4 +1,4 @@
-module Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd) where
+module Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd, Solution) where
 
 import Brat.Checker.Monad
 import Brat.Checker.Helpers
@@ -40,6 +40,8 @@ import Data.Type.Equality ((:~:)(..), testEquality)
 -- N.B. we make no assumptions about the values and types being normalised wrt `endVals`
 type Problem = [({-Int,-} Src, Pattern)] -- let's not do fiddly positional arithmetic on the fly
 
+type Solution m = [(String, (Src, BinderType m))]
+
 typeOfSrc my src = typeOfEnd my (ExEnd (end src))
 
 -- Solve is given a `Problem` (a mapping from wires to patterns) and uses this
@@ -59,7 +61,7 @@ solve :: forall m. Modey m
        -> Problem
        -> Checking (-- [(Int, Test)] -- too much too hugr too soon?
                     [(Src, PrimTest (BinderType m))]
-                   ,[(String, (Src, BinderType m))] -- Remember the names given by programmers
+                   ,Solution m -- Remember the names given by programmers
                    )
 solve _ [] = pure ([], [])
 solve my ((src, DontCare):p) = do
@@ -145,7 +147,7 @@ solveConstructor :: EvMode m
                  -> Val Z
                  -> Problem
                  -> Checking ([(Src, PrimTest (BinderType m))]
-                             ,[(String, (Src, BinderType m))]
+                             ,Solution m
                              )
 solveConstructor my src (c, abs) ty p = do
   (CArgs pats _ patRo argRo, (tycon, tyargs)) <- lookupConstructor my c ty

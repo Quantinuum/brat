@@ -4,7 +4,7 @@ f(x) = x
 
   Type mismatch when checking x => 「x」
 
-Expected: (a1 :: Nat), (b1 :: Bool)
-But got:  (a1 :: Nat)
+Expected: (1 :: Nat, 2 :: Bool)
+But got:  (1 :: Nat)
 
 

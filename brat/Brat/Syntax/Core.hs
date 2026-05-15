@@ -1,9 +1,6 @@
 module Brat.Syntax.Core (Term(..)
-                        ,Input
-                        ,Output
                         ,InOut
                         ,CType
-                        ,CoreFuncDecl
                         ,Precedence(..)
                         ,precedence
                         ) where
@@ -17,19 +14,14 @@ import Brat.FC
 import Brat.Naming
 import Brat.QualName
 import Brat.Syntax.Common
-import Brat.Syntax.FuncDecl
 import Brat.Syntax.Simple
 
 import Data.Kind (Type)
 import Data.Maybe (fromJust)
 
-type Input = InOut
-type Output = InOut
 type InOut = (PortName, KindOr (Term Chk Noun))
 
 type CType = CType' InOut
-
-type CoreFuncDecl = FuncDecl [InOut] (FunBody Term Noun)
 
 data Term :: Dir -> Kind -> Type where
   Simple   :: SimpleTerm -> Term Chk Noun
@@ -54,7 +46,7 @@ data Term :: Dir -> Kind -> Type where
   Of       :: WC (Term Chk Noun) -> WC (Term d Noun) -> Term d Noun
 
   -- Type annotations (annotating a term with its outputs)
-  (:::)    :: WC (Term Chk Noun) -> [Output] -> Term Syn Noun
+  (:::)    :: WC (Term Chk Noun) -> [TypeRowElem (KindOr (Term Chk Noun))] -> Term Syn Noun
   -- Composition: values fed from source (first) into dest (second),
   -- of number/type determined by the source
   (:-:)    :: WC (Term Syn k) -> WC (Term d UVerb) -> Term d k
@@ -67,9 +59,9 @@ data Term :: Dir -> Kind -> Type where
   -- Type constructors
   Con      :: QualName -> WC (Term Chk Noun) -> Term Chk Noun
   -- Brat function types
-  C        :: CType' (PortName, KindOr (Term Chk Noun)) -> Term Chk Noun
+  C        :: CType' (TypeRowElem (KindOr (Term Chk Noun))) -> Term Chk Noun
   -- Kernel types
-  K        :: CType' (PortName, Term Chk Noun) -> Term Chk Noun
+  K        :: CType' (TypeRowElem (Term Chk Noun)) -> Term Chk Noun
   FanOut   :: Term Syn UVerb
   FanIn    :: Term Chk UVerb
 
