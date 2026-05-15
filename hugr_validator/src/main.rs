@@ -31,11 +31,22 @@ fn parse_and_validate() -> Result<(), ValidationError> {
 }
 
 fn main() {
-    match parse_and_validate() {
-        Ok(()) => (),
-        Err(err) => {
-            println!("{}", err);
-            exit(1);
+    use std::env;
+    let args: Vec<String> = env::args().collect();
+    let num_args = args.len();
+    if num_args <= 1 {
+        match parse_and_validate() {
+            Ok(()) => (),
+            Err(err) => {
+                println!("{}", err);
+                exit(1);
+            }
         }
+    } else if num_args == 2 && args[1] == "--version" {
+        println!("hugr_validator 0.4.1");
+        exit(0);
+    } else {
+        println!("hugr_validator [--version] -- [HUGR]");
+        exit(2);
     }
 }

@@ -162,6 +162,7 @@ test-suite tests
   hs-source-dirs:      test
   main-is:             Main.hs
   other-modules:       Test.Abstractor,
+                       Test.Config,
                        Test.Checking,
                        Test.Compile.Hugr,
                        Test.Elaboration,
@@ -194,4 +195,7 @@ test-suite tests
                        utility-ht,
                        partial-order,
                        bytestring,
-                       directory
+                       directory,
+                       process,
+                       ansi-terminal,
+                       tagged
