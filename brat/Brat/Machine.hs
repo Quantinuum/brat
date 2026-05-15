@@ -226,7 +226,7 @@ run _ B0 t@(Suspend _ _) = t
 run gi (fz :< EvalPorts valz rem) (Use v) = evalPorts gi fz (valz :< v) rem
 run gi (fz :< DoSplices hugr nid rest) (Use v) =
     let (KernelV sub_hugr) = v
-        hugr' = execState (HG.splice_prepend nid sub_hugr) hugr
+        hugr' = execState (HG.splicePrepend nid sub_hugr) hugr
     in evalSplices gi fz hugr' rest
 run gi (fz :< CallWith inputs) (Use (ThunkV th)) = runThunk gi (B0 :< ReturnTo fz) th inputs
 

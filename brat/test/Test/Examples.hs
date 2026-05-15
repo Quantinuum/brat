@@ -4,7 +4,7 @@ import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput, getHoles)
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
-import Data.HugrGraph (to_json)
+import Data.HugrGraph (toJson)
 
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
@@ -65,7 +65,7 @@ getExamplesTests =  do
                 getHoles hugr @?= []
                 -- output the hugr for validation
                 createDirectoryIfMissing False outputDir
-                BS.writeFile outFile $! BS.toStrict (to_json hugr)
+                BS.writeFile outFile $! BS.toStrict (toJson hugr)
                 pure $ "Written hugr to " ++ outFile ++ " pending validation"
               else
                 let (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of

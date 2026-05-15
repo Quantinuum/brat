@@ -26,7 +26,7 @@ import Data.List (intercalate)
 import qualified Data.Map as M
 import qualified Data.ByteString.Lazy as BS
 import Data.Foldable (for_)
-import Data.HugrGraph (HugrGraph, NodeId, to_json)
+import Data.HugrGraph (HugrGraph, NodeId, toJson)
 import System.Exit (die)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
@@ -96,10 +96,10 @@ compileFile libDirs file = do
   let venv = M.map fst declEnv
   case holes of
     [] -> let box_decls = M.keys declEnv >>= findBoxes venv outerGraph
-          in Right <$> (evaluate -- turns 'error' into IO 'die'
-            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
-                               in (hugr, map fst holes))
-                         | n <- box_decls])
+          in Right <$> evaluate -- turns 'error' into IO 'die'
+              (M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
+                                in (hugr, map fst holes))
+                          | n <- box_decls])
     hs -> pure $ Left (CompilingHoles hs)
  where
   findBoxes :: VEnv -> Graph -> QualName -> [Name]
@@ -118,6 +118,6 @@ compileAndPrintFile :: [FilePath] -> String -> IO ()
 compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
   Right hs -> for_ (M.toList hs) $ \(n, (hugr, splices)) -> do
     putStrLn $ "Compiled box: " ++ show n
-    BS.putStr (to_json hugr)
+    BS.putStr (toJson hugr)
     putStrLn $ "With splices: " ++ show splices
   Left err -> die (show err)

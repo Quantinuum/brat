@@ -7,8 +7,8 @@ module Data.HugrGraph(NodeId,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
-                      splice, splice_new, splice_prepend, inlineDFG,
-                      serialize, to_json
+                      splice, spliceNew, splicePrepend, inlineDFG,
+                      serialize, toJson
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
@@ -152,8 +152,8 @@ splice hole add non_root_k = modify $ \host -> case M.lookup hole (nodes host) >
 -- Replace the specified hole of the host Hugr (in the State monad), with a new Hugr,
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
 -- the hole
-splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
-splice_prepend hole add = splice hole add (keyMap M.!)
+splicePrepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
+splicePrepend hole add = splice hole add (keyMap M.!)
  where
   prefixRoot :: NodeId -> NodeId
   prefixRoot (NodeId (MkName ids)) = let NodeId (MkName rs) = hole in NodeId $ MkName (rs ++ ids)
@@ -166,8 +166,8 @@ splice_prepend hole add = splice hole add (keyMap M.!)
 -- Replace the specified hole of a host Hugr (in the State monad, with NodeId keys) with
 -- a new Hugr of any key type, using a Namespace to generate a fresh NodeId for each node
 -- of the new Hugr
-splice_new :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
-splice_new hole add = modify $ \(host, ns) ->
+spliceNew :: forall n. (Ord n, Show n) => NodeId -> HugrGraph n -> State (HugrGraph NodeId, Namespace) ()
+spliceNew hole add = modify $ \(host, ns) ->
   let
    (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add))
    newMapping :: n -> (Namespace, M.Map n NodeId) -> (Namespace, M.Map n NodeId)
@@ -198,7 +198,7 @@ inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
       -- or combine with splicing so we only iterate through the inserted
       -- hugr (which we do anyway) rather than the host.
       parents = M.fromList [(n, if p==dfg then newp else p)
-                          | (n,p) <- M.assocs (parents h), notElem n to_remove]
+                          | (n,p) <- M.assocs (parents h), n `notElem` to_remove]
     }
   other -> error $ "Expected DFG, found " ++ show other
  where
@@ -240,8 +240,8 @@ takeOutEdges src = do
   removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
   removeFromInList (e:es) r = e:removeFromInList es r
 
-to_json :: HugrGraph NodeId -> BS.ByteString
-to_json = encode . serialize
+toJson :: HugrGraph NodeId -> BS.ByteString
+toJson = encode . serialize
 
 serialize :: forall n. (Ord n, Show n) => HugrGraph n -> Hugr Int
 serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)

@@ -260,13 +260,13 @@ compileTarget parent tgtN tgt = do
   -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
   for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
 
-in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
-in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
+inEdges :: Name -> Compile [((OutPort, Val Z), Int)]
+inEdges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
 
 compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
 compileInEdges parent name = do
-  in_edges <- in_edges name
-  catMaybes <$> for in_edges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
+  inEdges <- inEdges name
+  catMaybes <$> for inEdges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
 compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case

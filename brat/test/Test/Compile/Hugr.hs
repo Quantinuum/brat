@@ -9,7 +9,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 import Data.Hugr (isHole)
-import Data.HugrGraph (to_json, getOp, HugrGraph, getNodes)
+import Data.HugrGraph (toJson, getOp, HugrGraph, getNodes)
 import Data.List (sort)
 import Data.Maybe (isJust)
 import Brat.Compiler (compileFile, CompilingHoles(..))
@@ -24,10 +24,10 @@ compileToOutput name file = testCaseInfo name $ do
         Right hs -> mconcat <$> forM (M.toList hs) (\(boxName, (hugr, holes)) -> do
             sort (getHoles hugr) @?= sort holes
             -- ignore splices for now
-            let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ ".json")
+            let outFile = outputDir </> replaceExtension (takeFileName file) (show boxName ++ ".json")
             -- lots of fun with lazy and even strict bytestrings
             -- returning many bytes before evaluation has completed
-            BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+            BS.writeFile outFile $! BS.toStrict (toJson hugr)
             pure $ "Written to " ++ outFile ++ " pending validation\n")
         Left (CompilingHoles _) -> pure "Skipped as contains holes"
 

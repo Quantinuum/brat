@@ -66,6 +66,7 @@
 - ignore: {name: Use newtype instead of data}
 - ignore: {name: Fuse foldr/<$>}
 - ignore: {name: Redundant bracket, within: Brat.Syntax.Value}
+- ignore: {name: Redundant bracket, within: Data.HugrGraph}
 - ignore: {name: Avoid NonEmpty.unzip} # Buggy - false positives
 - ignore: {name: Redundant <&>} # Often making things worse
 

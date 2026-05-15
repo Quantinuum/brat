@@ -6,6 +6,7 @@ import Data.Hugr
 
 import Control.Monad.State (State, execState, get, runState, modify, state)
 import Data.Aeson (encode)
+import Data.Bifunctor (first)
 import Data.Functor ((<&>))
 import Data.Maybe (isJust, isNothing)
 import Data.List (find)
@@ -21,7 +22,7 @@ outputDir = prefix </> "output"
 addNode :: String -> NodeId -> HugrOp -> State (HugrGraph NodeId, Namespace) NodeId
 addNode nam parent op = do
   name <- H.freshNode parent nam
-  modify $ \(h, ns) -> (execState (H.setOp name op) h, ns)
+  modify (first execState (H.setOp name op))
   pure name
 
 getSpliceTests :: IO TestTree
@@ -36,8 +37,8 @@ testSplice inline prepend = testCaseInfo name $ do
   BS.writeFile (outPrefix ++ "_host.json") (encode $ H.serialize h)
   BS.writeFile (outPrefix ++ "_insertee.json") (encode $ H.serialize dfgHugr)
   let spliced = if prepend
-                then execState (H.splice_prepend holeId dfgHugr) h
-                else fst $ execState (H.splice_new holeId dfgHugr) (h, ns)
+                then execState (H.splicePrepend holeId dfgHugr) h
+                else fst $ execState (H.spliceNew holeId dfgHugr) (h, ns)
   let resHugr@(Hugr (ns, _))  = H.serialize $ if inline
         then execState (inlineDFG holeId) spliced else spliced
   let outFile = outPrefix ++ "_result.json"
@@ -49,7 +50,7 @@ testSplice inline prepend = testCaseInfo name $ do
   name = (if inline then "inline" else "noinline") ++ (if prepend then "_prepend" else "_new")
   host :: (NodeId, (HugrGraph NodeId, Namespace))
   host = flip runState (runState (H.new "root" rootDefn) N.root) $ do
-    root <- get <&> H.getRoot . fst
+    root <- gets (H.getRoot . fst)
     input <- addNode "inp" root (OpIn (InputNode tys []))
     output <- addNode "out" root (OpOut (OutputNode tys []))
     jh $setFirstChildren root [input, output]
@@ -63,7 +64,7 @@ testSplice inline prepend = testCaseInfo name $ do
   dfgHugr =
    let (initHugr, ns) = runState (H.new "root" rootDfg) N.root
    in fst $ flip execState (initHugr, ns) $ do
-    root <- get <&> H.getRoot . fst
+    root <- gets (H.getRoot . fst)
     input <- addNode "inp" root (OpIn (InputNode tys []))
     output <- addNode "out" root (OpOut (OutputNode tys []))
     jh $ setFirstChildren root [input, output]

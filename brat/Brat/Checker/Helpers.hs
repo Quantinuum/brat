@@ -698,6 +698,7 @@ valPats2Val (k:ks) (v:vs) = do
 valPats2Val [] [] = pure (B0, [])
 valPats2Val _ _ = err $ InternalError "Type args didn't match expected - kindCheck should've sorted it"
 
+{-# ANN traceChecking ("HLint: ignore Redundant pure" :: String) #-}
 traceChecking :: String -> (a -> Checking b) -> (a -> Checking b)
 traceChecking _lbl m a = do
   -- trackM ("Enter " ++ lbl ++ ": " ++ show a)
