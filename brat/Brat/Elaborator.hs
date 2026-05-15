@@ -188,8 +188,8 @@ elaborate' (FOf n e) = do
   SomeRaw e <- elaborate e
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
-elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> traverse (traverse elaborateKindOrFlat) cty
-elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> traverse (traverse elaborateChkNoun) cty
+elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> elabIO cty
+elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> elabSig cty
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered
@@ -201,10 +201,10 @@ elaborateKindOrFlat :: WC (KindOr Flat) -> Either Error (WC (KindOr (Raw Chk Nou
 elaborateKindOrFlat (WC fc (Left k)) = pure (WC fc (Left k))
 elaborateKindOrFlat (WC fc (Right ty)) = fmap Right <$> elaborateChkNoun (WC fc ty)
 
-elabSig :: [TypeRowElem (WC Flat)] -> Either Error [TypeRowElem (WC (Raw Chk Noun))]
+elabSig :: Traversable t => t (TypeRowElem (WC Flat)) -> Either Error (t (TypeRowElem (WC (Raw Chk Noun))))
 elabSig = traverse (traverse elaborateChkNoun)
 
-elabIO :: [FlatIO] -> Either Error [TypeRowElem (WC (KindOr (Raw Chk Noun)))]
+elabIO :: Traversable t => t FlatIO -> Either Error (t (TypeRowElem (WC (KindOr (Raw Chk Noun)))))
 elabIO = traverse (traverse elaborateKindOrFlat)
 
 elabBody :: FBody -> FC -> Either Error (FunBody Raw Noun)
