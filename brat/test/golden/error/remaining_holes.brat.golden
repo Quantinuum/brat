@@ -1,4 +1,4 @@
 Can't compile file with remaining holes
-  ?a_hole :: (_0 :: Bit)
-  ?b_hole :: (thunk :: { (_0 :: Int) -> (_1 :: List(Int)) })
+  ?a_hole :: (0 :: Bit)
+  ?b_hole :: (thunk :: { (0 :: Int) -> (1 :: List(Int)) })
 

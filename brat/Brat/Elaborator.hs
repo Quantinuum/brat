@@ -188,19 +188,20 @@ elaborate' (FOf n e) = do
   SomeRaw e <- elaborate e
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
-elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> elabSig cty
-elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> elabSig cty
+elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> traverse (traverse elab) cty
+elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> traverse (traverse elab) cty
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
+
 class Elaboratable t where
   type Elaborated t
   elab :: WC t -> Either Error (WC (Elaborated t))
 
--- This is a hack to make elabSigElem nice
+-- This is a hack to make elabSig nice
 instance Elaboratable Flat where
   type Elaborated Flat = Raw Chk Noun
   elab = elaborateChkNoun
@@ -236,7 +237,7 @@ elabBody FUndefined _ = pure Undefined
 elabFunDecl :: FDecl -> Either Error RawFuncDecl
 elabFunDecl d = do
   rc <- elabBody (fnBody d) (fnLoc d)
-  sig <- traverse elabSigElem (fnSig d)
+  sig <- elabSig (fnSig d)
   pure $ FuncDecl
     { fnName = fnName d
     , fnLoc = fnLoc d

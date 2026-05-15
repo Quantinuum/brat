@@ -1085,7 +1085,7 @@ kindCheckRow' :: forall m n
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
 
-kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named ('_':show i) ty):rest)
+kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named (show i) ty):rest)
 kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
   let dangling = Ex name (ny2int ny)
   req (Declare (ExEnd dangling) Braty (Left k) Definable) -- assume none are SkolemConst??

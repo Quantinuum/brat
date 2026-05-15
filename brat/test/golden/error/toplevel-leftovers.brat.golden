@@ -3,7 +3,7 @@ f = 42
     ^^
 
   Type mismatch when checking f
-Expected: (_0 :: Nat, _1 :: Bool)
-But got:  (_0 :: Nat)
+Expected: (0 :: Nat, 1 :: Bool)
+But got:  (0 :: Nat)
 
 
