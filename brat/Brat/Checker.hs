@@ -28,7 +28,7 @@ import Brat.Checker.Helpers
 import Brat.Checker.Monad
 import Brat.Checker.Quantity
 import Brat.Checker.SolveHoles (typeEq)
-import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd)
+import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd, Solution)
 import Brat.Checker.Types
 import Brat.Constructors
 import Brat.Error
@@ -789,11 +789,11 @@ checkClause my fnName cty clause = modily my $ do
   (Some stk) <><< (x:xs) = Some (stk :<< x) <><< xs
 
   -- Process a solution, finding Ends that support the solved types, and return a list of definitions for substituting later on
-  postProcessSolAndOuts :: [(String, (Src, BinderType Brat))] -> [(Tgt, BinderType Brat)]
-                        -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+  postProcessSolAndOuts :: Solution Brat -> [(Tgt, BinderType Brat)]
+                        -> Checking (Solution Brat, [((String, TypeKind), Val Z)])
   postProcessSolAndOuts sol outputs = worker B0 sol
    where
-    worker :: Bwd (String, (Src, BinderType Brat)) -> [(String, (Src, BinderType Brat))] -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
+    worker :: Bwd (String, (Src, BinderType Brat)) -> Solution Brat -> Checking ([(String, (Src, BinderType Brat))], [((String, TypeKind), Val Z)])
     worker zx [] = (, []) <$> outputDeps zx [] outputs
     worker zx (entry@(patVar, (src, Left k)):sol) = let vsrc = VApp (VPar (toEnd src)) B0 in do
       trackM ("processSol (kinded): " ++ show entry)
