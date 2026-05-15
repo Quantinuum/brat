@@ -2,7 +2,7 @@
 
 module Brat.Checker (checkBody
                     ,check
-                    ,run
+                    ,runChecking
                     ,kindCheck
                     ,kindCheckAnnotation
                     ,kindCheckRow
@@ -1255,12 +1255,12 @@ weaken n = changeVar (Thinning (thEmpty n))
 abstractEndz :: DeBruijn v => Stack Z End n -> v Z -> v n
 abstractEndz ez = changeVar (ParToInx (AddZ (stackLen ez)) ez)
 
-run :: VEnv
+runChecking :: VEnv
     -> Store
     -> Namespace
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-run ve initStore ns m = do
+runChecking ve initStore ns m = do
   let ctx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors
@@ -1271,14 +1271,15 @@ run ve initStore ns m = do
                 , hopes = M.empty
                 , dynamicSet = M.empty
                 , captureSets = M.empty
+                , graph = mempty
                 }
-  (a,ctx,(holes, graph)) <- handler (localNS ns m) ctx mempty
+  (a, ctx, holes) <- handler (localNS ns m) ctx
   let tyMap = typeMap $ store ctx
   -- If the `hopes` set has any remaining holes with kind Nat, we need to abort.
   -- Even though we didn't need them for typechecking problems, our runtime
   -- behaviour depends on the values of the holes, which we can't account for.
   case M.toList $ M.filterWithKey (\e _ -> isNatKinded tyMap e) (dynamicSet ctx) of
-    [] -> pure (a, (holes, store ctx, graph, captureSets ctx))
+    [] -> pure (a, (holes, store ctx, graph ctx, captureSets ctx))
     -- Just use the FC of the first hole while we don't have the capacity to
     -- show multiple error locations
     hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))

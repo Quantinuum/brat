@@ -78,6 +78,7 @@ data Context = Ctx { globalVEnv :: VEnv
                    -- Ends which need to be solved because they affect runtime behaviour
                    , dynamicSet :: M.Map InPort FC
                    , captureSets :: CaptureSets
+                   , graph :: Graph
                    }
 
 mkFork :: String -> Free sig () -> Free sig ()
@@ -262,32 +263,31 @@ catchErr (Fork desc par c) = thTrace ("Spawning(catch) " ++ desc) $ catchErr $ p
 
 handler :: Free CheckingSig v
         -> Context
-        -> Graph
-        -> Either Error (v,Context,([TypedHole],Graph))
-handler (Ret v) ctx g = return (v, ctx, ([], g))
-handler (Req s k) ctx g
+        -> Either Error (v,Context,[TypedHole])
+handler (Ret v) ctx = return (v, ctx, [])
+handler (Req s k) ctx
   = case s of
       Fresh _ -> error "Fresh in handler, should only happen under `-!`"
       SplitNS _ -> error "SplitNS in handler, should only happen under `-!`"
       AskNS -> error "AskNS in handler, should only happen under `-!`"
       Throw err -> Left err
-      LogHole hole -> do (v,ctx,(holes,g)) <- handler (k ()) ctx g
-                         return (v,ctx,(hole:holes,g))
+      LogHole hole -> do (v,ctx,holes) <- handler (k ()) ctx
+                         return (v,ctx,(hole:holes))
       AskFC -> error "AskFC in handler - shouldn't happen, should always be in localFC"
-      VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx g
-      ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx g
-      AddNode name node -> handler (k ()) ctx ((M.singleton name node, []) <> g)
-      Wire w -> handler (k ()) ctx ((M.empty,[w]) <> g)
+      VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx
+      ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx
+      AddNode name node -> handler (k ()) ctx { graph = (M.singleton name node, []) <> graph ctx }
+      Wire w -> handler (k ()) ctx { graph = (M.empty,[w]) <> graph ctx }
       -- We only get a KLup here if the variable has not been found in the kernel context
-      KLup _ -> handler (k Nothing) ctx g
+      KLup _ -> handler (k Nothing) ctx
       -- Receiving KDone may become possible when merging the two check functions
       KDone -> error "KDone in handler - this shouldn't happen"
-      AskVEnv -> handler (k (CtxEnv { globals = globalVEnv ctx, locals = M.empty })) ctx g
+      AskVEnv -> handler (k (CtxEnv { globals = globalVEnv ctx, locals = M.empty })) ctx
       ELup end -> case M.lookup end . typeMap . store $ ctx of
-        Just _ -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx g
+        Just _ -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx
         Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
       TypeOf end -> case M.lookup end . typeMap . store $ ctx of
-        Just et -> handler (k et) ctx g
+        Just et -> handler (k et) ctx
         Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
       Declare end my bty skol ->
         let st@Store{typeMap=m} = store ctx
@@ -298,34 +298,35 @@ handler (Req s k) ctx g
                        handler (k ())
                        (ctx { store =
                               st { typeMap = M.insert end (EndType my bty, skol) m }
-                            }) g
+                            })
       -- TODO: Use the kind argument for partially applied constructors
-      TLup key -> do
+      TLup key ->
         let args = M.lookup key (typeConstructors ctx)
-        handler (k args) ctx g
+        in handler (k args) ctx
 
       CLup fc vcon tycon -> do
-        tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon) $
-               M.lookup vcon (constructors ctx)
-        args <- maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon)) $
-                M.lookup tycon tbl
-        handler (k args) ctx g
+        args <- lookupCon fc vcon tycon (constructors ctx)
+        handler (k args) ctx
 
       KCLup fc vcon tycon -> do
-        tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon) $
-               M.lookup vcon (kconstructors ctx)
-        args <- maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon)) $
-                M.lookup tycon tbl
-        handler (k args) ctx g
+        args <- lookupCon fc vcon tycon (kconstructors ctx)
+        handler (k args) ctx
 
-      ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) }) g
+      ANewDynamic e fc -> trackM ("ANewDynamic " ++ show e) *> handler (k ()) (ctx { dynamicSet = M.insert e fc (dynamicSet ctx) })
 
-      AskDynamics -> handler (k (dynamicSet ctx)) ctx g
+      AskDynamics -> handler (k (dynamicSet ctx)) ctx
 
       AddCapture n (var, ends) ->
-        handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)} g
+        handler (k ()) ctx {captureSets=M.insertWith M.union n (M.singleton var ends) (captureSets ctx)}
+ where
+  lookupCon :: FC -> QualName -> QualName -> ConstructorMap m -> Either Error (CtorArgs m)
+  lookupCon fc vcon tycon conMap = do
+    tbl <- maybeToRight (Err (Just fc) $ VConNotFound $ show vcon)
+            (M.lookup vcon conMap)
+    maybeToRight (Err (Just fc) $ TyConNotFound (show tycon) (show vcon))
+            (M.lookup tycon tbl)
 
-handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
+handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store ctx in
   case track ("Define(" ++ lbl ++ ")" ++ show end ++ " = " ++ show v) $ M.lookup end vm of
       Just _ -> Left $ dumbErr (InternalError $ "Redefining " ++ show end)
       Nothing -> case M.lookup end tm of
@@ -352,12 +353,12 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                                                  (M.fromList (zip newDynamics (repeat fc)))
                                                  (M.delete inport (dynamicSet ctx))
                                         Nothing -> dynamicSet ctx
-                          }) g
-handler (Yield Unstuck k) ctx g = handler (k mempty) ctx g
-handler (Yield (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ TypeErr $ unlines $
+                          })
+handler (Yield Unstuck k) ctx = handler (k mempty) ctx
+handler (Yield (AwaitingAny ends) _k) ctx = Left $ dumbErr $ TypeErr $ unlines $
   ("Typechecking blocked on:":(show <$> S.toList ends))
   ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"]
-handler (Fork desc par c) ctx g = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx g
+handler (Fork desc par c) ctx = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx
 
 type Checking = Free CheckingSig
 
