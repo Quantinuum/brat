@@ -179,7 +179,7 @@ abstractor = do ps <- many (try portPull)
   list2Cons (APat x:xs) = PCons x <$> list2Cons xs
   list2Cons _ = customFailure (Custom "Internal error list2Cons")
 
-  portPull = (try port <|> (fmap show <$> number)) <* match PortColon
+  portPull = port <* match PortColon
 
   -- For simplicity, we can say for now that all of our infix vector patterns have
   -- the same precedence and associate to the right
@@ -574,7 +574,7 @@ expr' p = choice $ (try . getParser <$> enumFrom p) ++ [atomExpr]
    where
     portPull :: Parser (WC String)
     portPull = do
-      WC portFC portName <- try port <|> (fmap show <$> number)
+      WC portFC portName <- port
       WC colonFC _ <- matchFC PortColon
       pure (WC (spanFC portFC colonFC) portName)
 
