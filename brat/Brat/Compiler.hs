@@ -7,7 +7,7 @@ module Brat.Compiler (printAST
                      ,CompilingHoles(..)
                      ) where
 
-import Brat.Checker.Types (TypedHole, Modey(Kerny), VEnv)
+import Brat.Checker.Types (TypedHole, Modey(Kerny), VEnv, Store(typeMap))
 import Brat.Compile.Hugr
 import Brat.Dot (toDotString)
 import Brat.Elaborator
@@ -16,7 +16,7 @@ import Brat.Graph(Graph, Node(BratNode), NodeType(Box, Id))
 import Brat.Load
 import Brat.Naming (Namespace, root, split, Name)
 import Brat.QualName (QualName)
-import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
+import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..), endName)
 import Brat.Syntax.Value (Val(VFun))
 
 import Util (shorten)
@@ -68,10 +68,12 @@ printAST printRaw printAST file = do
 
 writeDot :: [FilePath] -> String -> String -> Bool -> IO ()
 writeDot libDirs file out shortenFlag = do
-  ((_, _, _, graph@(ns, _), cs), maybeErr) <- loadFilename root libDirs file
+  ((_, _, st, graph@(ns, _), cs), maybeErr) <- loadFilename root libDirs file
   let nameMap = case shortenFlag of
-        True -> shorten (S.fromList $ map show $ M.keys ns)
+        True -> let ends :: [Name] = M.keys ns ++ [endName e | e <- M.keys (typeMap st)]
+                in shorten $ S.fromList (map show ends)
         False -> M.empty
+  --forM (M.assocs nameMap) $ \(k,v) -> putStrLn $ "Shortening " ++ k ++ " to " ++ v
   writeFile out (toDotString graph cs) -- TODO pass nameMap
   maybeErr <- pure $ first (renameEnds nameMap) maybeErr
   eitherIO maybeErr
