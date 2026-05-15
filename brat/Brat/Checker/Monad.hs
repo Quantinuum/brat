@@ -356,9 +356,9 @@ handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store
                                         Nothing -> dynamicSet ctx
                           })
 handler (Yield Unstuck k) ctx = handler (k mempty) ctx
-handler (Yield (AwaitingAny ends) _k) ctx = (ctx, Left $ dumbErr $ TypeErr $ unlines $
-  ("Typechecking blocked on:":(show <$> S.toList ends))
-  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"])
+handler (Yield (AwaitingAny ends) _k) ctx = (ctx, Left $ dumbErr $ EndErr
+  "Typechecking blocked on group1, dynamic set is group2; try writing more types! :-)"
+  [S.toList ends, InEnd <$> M.keys (dynamicSet ctx)])
 handler (Fork desc par c) ctx = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx
 
 type Checking = Free CheckingSig

@@ -839,7 +839,7 @@ checkClause my fnName cty clause = modily my $ do
     depOutPorts :: (Show t, DepEnds t) => t -> Checking [OutPort]
     depOutPorts x = for (depEnds x) $ \case
       ExEnd outport -> pure outport
-      InEnd inport -> err . TypeErr $ "Type dependency of " ++ show x ++ " (" ++ show inport ++ ") had an ambiguous type."
+      inport@(InEnd _) -> err $ EndErr ("Type dependency of " ++ show x ++ " had an ambiguous type:") [[inport]]
 
   mkEnv :: (?my :: Modey m) => [String] -> [(Src, BinderType m)] -> Checking (Env (EnvData m))
   mkEnv (x:xs) (src:srcs) = do
