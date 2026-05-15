@@ -803,8 +803,8 @@ checkClause my fnName cty clause = modily my $ do
          outPorts <- depOutPorts def
          srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
          zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
-         (sol, defs) <- worker (zx {-:< entry-}) sol
-         pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
+         (sol, defs) <- worker zx sol
+         pure (sol, ((patVar, k), def):defs)
     -- Pat vars beginning with '_' aren't in scope, we can ignore them
     -- (but if they're kinded they might come up later as the dependency of something else)
     worker zx (('_':_, _):sol) = worker zx sol
