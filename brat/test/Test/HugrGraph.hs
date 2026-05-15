@@ -4,10 +4,9 @@ import Brat.Naming as N
 import Data.HugrGraph as H
 import Data.Hugr
 
-import Control.Monad.State (State, execState, get, runState, modify, state)
+import Control.Monad.State (State, execState, gets, runState, modify, state)
 import Data.Aeson (encode)
 import Data.Bifunctor (first)
-import Data.Functor ((<&>))
 import Data.Maybe (isJust, isNothing)
 import Data.List (find)
 import qualified Data.ByteString.Lazy as BS
@@ -22,7 +21,7 @@ outputDir = prefix </> "output"
 addNode :: String -> NodeId -> HugrOp -> State (HugrGraph NodeId, Namespace) NodeId
 addNode nam parent op = do
   name <- H.freshNode parent nam
-  modify (first execState (H.setOp name op))
+  modify (first (execState (H.setOp name op)))
   pure name
 
 getSpliceTests :: IO TestTree
@@ -53,7 +52,7 @@ testSplice inline prepend = testCaseInfo name $ do
     root <- gets (H.getRoot . fst)
     input <- addNode "inp" root (OpIn (InputNode tys []))
     output <- addNode "out" root (OpOut (OutputNode tys []))
-    jh $setFirstChildren root [input, output]
+    jh $ setFirstChildren root [input, output]
     hole <- addNode "hole" root (OpCustom $ holeOp 0 tq_ty)
     jh $ H.addEdge (Port input 0, Port hole 0)
     jh $ H.addEdge (Port input 1, Port hole 1)
