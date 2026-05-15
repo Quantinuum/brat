@@ -23,6 +23,7 @@ import Control.Monad.Freer
 import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Data.Bifunctor
 import Data.Foldable (foldrM)
+import Data.Kind (Type)
 import Data.List (partition)
 import Data.Maybe (isJust)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
@@ -183,8 +184,8 @@ anext' :: forall m i j k
 anext' str th vals0 ins outs skol = do
   node <- req (Fresh str) -- Pick a name for the thunk
   -- Use the new name to generate Ends with which to instantiate types
-  (unders, vals1) <- endPorts node InEnd In 0 vals0 ins
-  (overs, vals2)  <- endPorts node ExEnd Ex 0 vals1 outs
+  (unders, vals1) <- endPorts node InputRow 0 vals0 ins
+  (overs, vals2)  <- endPorts node OutputRow 0 vals1 outs
   () <- sequence_ $
         [ declareTgt tgt (modey @m) ty | (tgt, ty) <- unders ] ++
         [ req (Declare (ExEnd (end src)) (modey @m) ty skol) | (src, ty) <- overs ]
@@ -204,25 +205,39 @@ mkNode Kerny = KernelNode
 
 type Endz = Ny :* Stack Z End
 
+data RowPolarity :: Type -> Type where
+  InputRow :: RowPolarity InPort
+  OutputRow :: RowPolarity OutPort
+
+port2End :: RowPolarity port -> port -> End
+port2End InputRow = InEnd
+port2End OutputRow = ExEnd
+
+mkPort :: RowPolarity port -> Name -> Int -> port
+mkPort InputRow = In
+mkPort OutputRow = Ex
+
 -- endPorts instantiates the de Bruijn variables in a row with Ends
 endPorts :: forall m i j port
           . EvMode m
-         => Name -> (port -> End) -> (Name -> Int -> port)
+         => Name
+         -> RowPolarity port
          -> Int -- Next free port on the node
          -> (Semz i, Some Endz)
          -> Ro m i j
          -> Checking ([(NamedPort port, BinderType m)], (Semz j, Some Endz))
-endPorts _ _ _ _ stuff R0 = pure ([], stuff)
-endPorts node port2End mkPort n (ga, ez) (RPr (p,ty) ro) = do
+endPorts _ _ _ stuff R0 = pure ([], stuff)
+endPorts node polarity n (ga, ez) (RPr (p,ty) ro) = do
   ty <- eval ga ty
-  (row, stuff) <- endPorts node port2End mkPort (n + 1) (ga, ez) ro
-  pure ((NamedPort (mkPort node n) p, tyBinder @m ty):row, stuff)
-endPorts node port2End mkPort n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
-  let port = mkPort node n
-  let end = port2End port
-  (row, stuff) <- endPorts node port2End mkPort (n + 1)
+  (row, stuff) <- endPorts node polarity (n + 1) (ga, ez) ro
+  pure ((NamedPort (mkPort polarity node n) p, tyBinder @m ty):row, stuff)
+endPorts node polarity n (ga, Some (ny :* endz)) (REx (p, k) ro) = do
+  let port = mkPort polarity node n
+  let end = port2End polarity port
+  (row, stuff) <- endPorts node polarity (n + 1)
                   (ga :<< SApp (SPar end) B0, Some (Sy ny :* (endz :<< end))) ro
   pure ((NamedPort port p, Left k):row, stuff)
+
 next :: String -> NodeType Brat -> (Semz i, Some Endz)
      -> Ro Brat i j
      -> Ro Brat j k
