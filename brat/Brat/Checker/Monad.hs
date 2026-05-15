@@ -17,6 +17,7 @@ import Util
 import Control.Monad.Freer
 
 import Control.Monad.Fail ()
+import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -82,8 +83,11 @@ data Context = Ctx { globalVEnv :: VEnv
 mkFork :: String -> Free sig () -> Free sig ()
 mkFork d par = thTrace ("Forking " ++ d) $ Fork d par $ pure ()
 
-mkYield :: String -> S.Set End -> Free sig ()
-mkYield desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ Yield (AwaitingAny es) (\_ -> trackM ("woke up " ++ desc) >> Ret ())
+mkYield :: String -> S.Set End -> Checking ()
+mkYield desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $ do
+  -- Sanity check that the ends have been declared (TypeOf returns an error if not)
+  traverse_ (req . TypeOf) (S.toList es)
+  Yield (AwaitingAny es) (\_ -> trackM ("woke up " ++ desc) >> Ret ())
 
 -- Commands for synchronous operations
 data CheckingSig ty where
@@ -279,7 +283,9 @@ handler (Req s k) ctx g
       -- Receiving KDone may become possible when merging the two check functions
       KDone -> error "KDone in handler - this shouldn't happen"
       AskVEnv -> handler (k (CtxEnv { globals = globalVEnv ctx, locals = M.empty })) ctx g
-      ELup end -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx g
+      ELup end -> case M.lookup end . typeMap . store $ ctx of
+        Just _ -> handler (k (M.lookup end . valueMap . store $ ctx)) ctx g
+        Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
       TypeOf end -> case M.lookup end . typeMap . store $ ctx of
         Just et -> handler (k et) ctx g
         Nothing -> Left (dumbErr . InternalError $ "End " ++ show end ++ " isn't Declared")
