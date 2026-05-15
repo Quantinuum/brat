@@ -56,7 +56,7 @@ toDotString (ns,ws) cs = unpack . GV.printDotGraph $ GV.graphElemsToDot params v
   getRefEdge x (KernelNode (Splice (Ex y _)) _ _) = [(Name' y, x, EvalEdge)]
   getRefEdge x (BratNode (Box src tgt) _ _) = [(x, Name' src, SrcEdge), (x, Name' tgt, SrcEdge)]
   getRefEdge x (BratNode (PatternMatch (p:|pats)) _ _) =
-    [ (x, Name' innerBox, CaseEdge) | (_, innerBox) <- (p:pats) ]
+    [ (x, Name' innerBox, CaseEdge) | (_, innerBox) <- p:pats ]
   getRefEdge _ _ = []
 
   -- Map from node to cluster. Clusters are identified by their containing Box node.
