@@ -67,6 +67,7 @@
 - ignore: {name: Fuse foldr/<$>}
 - ignore: {name: Redundant bracket, within: Brat.Syntax.Value}
 - ignore: {name: Avoid NonEmpty.unzip} # Buggy - false positives
+- ignore: {name: Redundant <&>} # Often making things worse
 
 # Define some custom infix operators
 # - fixity: infixr 3 ~^#^~
