@@ -179,7 +179,7 @@ elaborate' (FAnnotation a ts) = do
   (SomeRaw a) <- elaborate a
   a <- assertChk a
   a <- assertNoun a
-  ts <- fmap (fmap unWC) <$> elabSig ts
+  ts <- fmap (fmap unWC) <$> elabIO ts
   pure $ SomeRaw' (a ::::: ts)
 elaborate' (FInto a b) = elaborate' (FApp b a)
 elaborate' (FOf n e) = do
@@ -188,8 +188,8 @@ elaborate' (FOf n e) = do
   SomeRaw e <- elaborate e
   e <- assertNoun e
   pure $ SomeRaw' (ROf n e)
-elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> traverse (traverse elab) cty
-elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> traverse (traverse elab) cty
+elaborate' (FFn cty) = SomeRaw' . RFn . fmap (fmap unWC) <$> traverse (traverse elaborateKindOrFlat) cty
+elaborate' (FKernel cty) = SomeRaw' . RKernel . fmap (fmap unWC) <$> traverse (traverse elaborateChkNoun) cty
 elaborate' FIdentity = pure $ SomeRaw' RIdentity
 -- We catch underscores in the top-level elaborate so this case
 -- should never be triggered
@@ -197,24 +197,15 @@ elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
 
-class Elaboratable t where
-  type Elaborated t
-  elab :: WC t -> Either Error (WC (Elaborated t))
+elaborateKindOrFlat :: WC (KindOr Flat) -> Either Error (WC (KindOr (Raw Chk Noun)))
+elaborateKindOrFlat (WC fc (Left k)) = pure (WC fc (Left k))
+elaborateKindOrFlat (WC fc (Right ty)) = fmap Right <$> elaborateChkNoun (WC fc ty)
 
--- This is a hack to make elabSig nice
-instance Elaboratable Flat where
-  type Elaborated Flat = Raw Chk Noun
-  elab = elaborateChkNoun
+elabSig :: [TypeRowElem (WC Flat)] -> Either Error [TypeRowElem (WC (Raw Chk Noun))]
+elabSig = traverse (traverse elaborateChkNoun)
 
-instance Elaboratable t => Elaboratable (KindOr t) where
-  type Elaborated (KindOr t) = KindOr (Elaborated t)
-  elab (WC fc (Left k)) = pure (WC fc (Left k))
-  elab (WC fc (Right ty)) = fmap Right <$> elab (WC fc ty)
-
-elabSig :: Elaboratable t
-        => [TypeRowElem (WC t)]
-        -> Either Error [TypeRowElem (WC (Elaborated t))]
-elabSig = traverse (traverse elab)
+elabIO :: [FlatIO] -> Either Error [TypeRowElem (WC (KindOr (Raw Chk Noun)))]
+elabIO = traverse (traverse elaborateKindOrFlat)
 
 elabBody :: FBody -> FC -> Either Error (FunBody Raw Noun)
 elabBody (FClauses cs) fc = ThunkOf . WC fc . Clauses <$> traverse elab1Clause cs
@@ -237,7 +228,7 @@ elabBody FUndefined _ = pure Undefined
 elabFunDecl :: FDecl -> Either Error RawFuncDecl
 elabFunDecl d = do
   rc <- elabBody (fnBody d) (fnLoc d)
-  sig <- elabSig (fnSig d)
+  sig <- elabIO (fnSig d)
   pure $ FuncDecl
     { fnName = fnName d
     , fnLoc = fnLoc d
