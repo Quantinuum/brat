@@ -20,7 +20,7 @@ import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
 import Brat.Syntax.Value (Val(VFun))
 
 import Control.Exception (evaluate)
-import Control.Monad (forM, when)
+import Control.Monad (forM_, when)
 import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -34,7 +34,7 @@ printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
   (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  forM (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
+  forM_ (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
     putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
   putStrLn ""
   putStrLn "Holes:"
@@ -95,7 +95,7 @@ compileFile libDirs file = do
   (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
   let venv = M.map fst declEnv
   case holes of
-    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
+    [] -> let box_decls = M.keys declEnv >>= findBoxes venv outerGraph
           in Right <$> (evaluate -- turns 'error' into IO 'die'
             $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
                                in (hugr, map fst holes))
@@ -104,7 +104,7 @@ compileFile libDirs file = do
  where
   findBoxes :: VEnv -> Graph -> QualName -> [Name]
   findBoxes venv (ns, es) name = case M.lookup name venv of
-        Nothing -> error $ (show name) ++ ".... not found in VEnv"
+        Nothing -> error $ show name ++ ".... not found in VEnv"
         Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
             Just (BratNode Id _ _) ->
                [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]

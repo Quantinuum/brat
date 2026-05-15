@@ -33,11 +33,11 @@ runInterpreter libDirs file runFunc = do
     (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
     let venv = M.map fst declEnv
     --print (show outerGraph)
-    let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
+    let outPorts = [op | (NamedPort op _, _ty) <- venv M.! plain runFunc]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
-      Finished [(KernelV hugr)] -> Right hugr
+      Finished [KernelV hugr] -> Right hugr
       _ -> Left $ T.pack $ show outTask
 
 data Frame where
@@ -124,8 +124,8 @@ evalNodeInputs gi fz name =
     -- might be good to check M.keys == [0,1,....] here
     evalPorts gi fz B0 (getNodeInputs gi name)
 
-updateCache (fz :< BratValues env) port_vals = fz :< (BratValues $ foldr (uncurry M.insert) env port_vals)
-updateCache (fz :< f) pvs = (updateCache fz pvs) :< f
+updateCache (fz :< BratValues env) port_vals = fz :< BratValues (foldr (uncurry M.insert) env port_vals)
+updateCache (fz :< f) pvs = updateCache fz pvs :< f
 -- updateCache B0 pvs = B0 :< (M.fromList pvs)
 
 evalSplices :: GraphInfo -> Bwd Frame -> HG.HugrGraph HG.NodeId -> [(HG.NodeId, OutPort)] -> Task
@@ -143,7 +143,7 @@ runVectorisedThunks gi fz [] outs = run gi fz (Finished $ transposeRows2V $ outs
   transposeRows2V rows = let rows' = map uncons rows
     in if all isNothing rows'
        then []
-       else let (hds, tls) = unzip (map fromJust rows') in (VecV hds) : (transposeRows2V tls)
+       else let (hds, tls) = unzip (map fromJust rows') in VecV hds : transposeRows2V tls
 runVectorisedThunks gi fz ((th, inputs):ths) outs =
     runThunk gi (fz :< VectorisedFuncs ths outs) th inputs
 
@@ -153,7 +153,7 @@ run :: GraphInfo -> Bwd Frame -> Task -> Task
 runThunk :: GraphInfo -> Bwd Frame -> BratThunk -> [Value] -> Task
 runThunk gi fz (BratClosure env src tgt) inputs =
     let env_with_args = foldr (uncurry M.insert) env [(Ex src off, val) | (off, val) <- zip [0..] inputs]
-    in evalNodeInputs gi (fz :< (BratValues env_with_args)) tgt
+    in evalNodeInputs gi (fz :< BratValues env_with_args) tgt
 runThunk (g,st,ns,cs) fz (BratPrim ext op _cty) inputs
  | (hugrNS,newRoot) <- split "hugr" ns, Just outs <- runPrim hugrNS (ext,op) inputs = run (g,st,newRoot,cs) fz (Finished outs)
 runThunk gi fz (VectorisedThunks ths) inputs =
@@ -164,7 +164,7 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   transposeV2Rows :: [Value] -> [[Value]]
   transposeV2Rows vs
     | all isEmptyVecV vs = []
-    | otherwise = let (hds, tls) = unzip $ map (\(VecV (hd:tl)) -> (hd, VecV tl)) vs in hds : (transposeV2Rows tls)
+    | otherwise = let (hds, tls) = unzip $ map (\(VecV (hd:tl)) -> (hd, VecV tl)) vs in hds : transposeV2Rows tls
   isEmptyVecV :: Value -> Bool
   isEmptyVecV (VecV []) = True
   isEmptyVecV _ = False
@@ -192,7 +192,7 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case nodes M.! n of
   (BratNode (Selector stor) _ _) -> case (stor, ins) of
       (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
   (BratNode Replicate _ _) -> case ins of
-    [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
+    [IntV n, elem] -> run gi fz (Finished [VecV (replicate n elem)])
   (BratNode MapFun _ _) -> case ins of
     -- We have a vector (or vec of vecs, n-dimensions) of functions
     [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])

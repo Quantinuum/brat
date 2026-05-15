@@ -14,10 +14,9 @@ import qualified Data.GraphViz.Attributes.Complete as GV
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text.Lazy (pack, unpack)
-import Data.Maybe (fromMaybe)
+import Data.Maybe ( fromMaybe, fromJust )
 import Data.Bifunctor (first)
 import Data.Graph (reachable, transposeG)
-import Data.Maybe (fromJust)
 import Data.Tuple.HT (snd3)
 
 
