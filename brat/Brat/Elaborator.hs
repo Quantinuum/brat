@@ -196,21 +196,21 @@ elaborate' FIdentity = pure $ SomeRaw' RIdentity
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
-class Elaborable t where
+class Elaboratable t where
   type Elaborated t
   elab :: WC t -> Either Error (WC (Elaborated t))
 
 -- This is a hack to make elabSigElem nice
-instance Elaborable Flat where
+instance Elaboratable Flat where
   type Elaborated Flat = Raw Chk Noun
   elab = elaborateChkNoun
 
-instance Elaborable t => Elaborable (KindOr t) where
+instance Elaboratable t => Elaboratable (KindOr t) where
   type Elaborated (KindOr t) = KindOr (Elaborated t)
   elab (WC fc (Left k)) = pure (WC fc (Left k))
   elab (WC fc (Right ty)) = fmap Right <$> elab (WC fc ty)
 
-elabSigElem :: Elaborable t
+elabSigElem :: Elaboratable t
             => TypeRowElem (WC t)
             -> Either Error (TypeRowElem (WC (Elaborated t)))
 elabSigElem (Anon ty) = Anon <$> elab ty
