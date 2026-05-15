@@ -8,6 +8,7 @@ import Brat.Machine (runInterpreter)
 import Data.HugrGraph (to_json)
 
 import qualified Data.ByteString as BS
+import Data.ByteString.Lazy (ByteString)
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.List (isPrefixOf)
@@ -24,29 +25,29 @@ import Test.Tasty.Providers
 import Test.Tasty.Providers.ConsoleFormat (noResultDetails)
 import Test.Tasty.HUnit
 import Test.Tasty.Options (lookupOption, OptionDescription(..))
-import Test.Tasty.Runners (FailureReason(..), Outcome(..), Result(..), TestTree(..))
+import Test.Tasty.Runners (FailureReason(..), Outcome(..), Result(..))
 import Test.Tasty.Silver
 import Test.Tasty.ExpectedFailure
 
 --import Debug.Trace
 
-data HugrTest = Validate TestTree | ValidationConfigErr
+data ValidationTest = VTest (IO ByteString) FilePath
 
-instance IsTest HugrTest where
-  -- BAD: Uses implementation details
-  run opts (Validate (SingleTest _ t)) f = run opts t f
-  run opts ValidationConfigErr f = pure $ Result
-                                          outcome
-                                          "hugr_validator not installed"
-                                          (yellowText "SKIPPED")
-                                          0.0
-                                          noResultDetails
+instance IsTest ValidationTest where
+  run opts (VTest hugr outFile) _ = do
+    hugr_bytes <- hugr
+    createDirectoryIfMissing True (takeDirectory outFile)
+    BS.writeFile outFile $! (BS.toStrict $ hugr_bytes)
+    (exitCode, stdout, stderr) <- readCreateProcessWithExitCode (shell $ "cat " ++ outFile ++ " | hugr_validator") ""
+    let (outcome, msg1, msg2) = case exitCode of
+          ExitSuccess -> (Success, "Validated hugr", "PASSED")
+          _ -> case lookupOption @IgnoreValidation opts of
+            IgnoreValidation False -> (Failure TestDepFailed, stderr, "FAILED")
+            -- should we include the error message in the output for the skipped case? It might be a useful diagnostic, or just noise.
+            IgnoreValidation True  -> (Success, "Validation failed", yellowText "SKIPPED")
+    pure $ Result outcome msg1 msg2 0.0 noResultDetails
    where
-    outcome = case lookupOption @IgnoreValidation opts of
-      IgnoreValidation False -> Failure TestDepFailed
-      IgnoreValidation True  -> Success
     yellowText text = setSGRCode [SetColor Foreground Vivid Yellow] ++ text ++ setSGRCode [Reset]
-
   testOptions = pure [Option (Proxy :: Proxy IgnoreValidation)]
 
 outputDir :: FilePath
@@ -99,20 +100,14 @@ interpreterTestsForExample interpreterInPath path start =
       restLine = fromJust $ T.stripPrefix execTestPrefix testLine
   in if (T.pack "-hugr") == restLine
      then let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
-              emitHugr = testCase func_name $ do
+              makeHugr = do
                 -- this completely recompiles the file for each test, which is pretty bad
                 hugr <- runInterpreter [] path func_name >>= \case
                   Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
                   Right hugr -> pure hugr
                 getHoles hugr @?= []
-                -- output the hugr for validation
-                createDirectoryIfMissing False outputDir
-                let hugr_string = to_json hugr
-                BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
-              validateTestCase = if interpreterInPath
-                                 then Validate (testCase undefined (validateTest outFile))
-                                 else ValidationConfigErr
-          in  emitHugr : [SingleTest ("validate(" ++ func_name ++")") validateTestCase]
+                pure $ to_json hugr
+          in [singleTest func_name (VTest makeHugr outFile)]
      else let (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of
                 Just out -> (True, out)
                 Nothing | Just out <- T.stripPrefix (T.pack " ") restLine -> (False, out)
