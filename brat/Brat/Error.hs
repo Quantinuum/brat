@@ -7,14 +7,17 @@ module Brat.Error (ParseError(..)
                   ,addSrcName, addSrcContext, mkSrcErr
                   ,eitherIO
                   ,dumbErr
+                  ,fmtEndErr
                   ) where
 
 import Brat.FC
 import Data.Bracket
-import Brat.Syntax.Port (PortName)
+import Brat.Syntax.Port (PortName, End(..), InPort(..), OutPort(..))
 
+import qualified Data.Map as M
 import Data.Bifunctor (first)
 import Data.List (intercalate)
+import Data.Maybe (fromMaybe)
 import System.Exit
 
 newtype ParseError = PE { pretty :: String }
@@ -53,6 +56,8 @@ instance Show BracketErrMsg where
 
 data ErrorMsg
  = TypeErr String
+ -- String explains meaning of ends, which may be grouped
+ | EndErr String [[End]]
  -- Term, Expected type, Actual type
  | TypeMismatch String String String
  -- Term, Expected kind, Actual kind
@@ -111,8 +116,27 @@ data ErrorMsg
  | BracketErr BracketErrMsg
  | RemainingNatHopes [String]
 
+fmtEndErr :: M.Map String String -> String -> [[End]] -> String
+fmtEndErr nameMap msg groups =  unlines $
+  ("Error with these groups of ends: " ++ msg): do
+    (gi, g) <- zip [1..] groups
+    gi <- pure $ show gi
+    es <- pure $ map showEnd g
+    case es of
+      [] -> []
+      [e] -> [gi ++ ". " ++ e]
+      e:es -> (gi ++ ".1. " ++ e):[
+          (replicate (length gi) ' ') ++ "." ++ show ei ++ ". " ++ e | (ei, e) <- zip [2..] es]
+ where
+  showEnd :: End -> String
+  showEnd (InEnd (In n p)) = "In " ++ fmtName n ++ " " ++ show p
+  showEnd (ExEnd (Ex n p)) = "Ex " ++ fmtName n ++ " " ++ show p
+
+  fmtName n = (fromMaybe (show n) $ M.lookup (show n) nameMap)
+
 instance Show ErrorMsg where
   show (TypeErr x) = "Type error: " ++ x
+  show (EndErr msg groups) = fmtEndErr M.empty msg groups
   show (TypeMismatch tm exp act)
     = unlines ["Type mismatch when checking " ++ tm
               ,"Expected: " ++ exp
