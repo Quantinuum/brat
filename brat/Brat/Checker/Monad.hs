@@ -84,9 +84,7 @@ mkFork d par = thTrace ("Forking " ++ d) $ Fork d par $ pure ()
 
 mkYield :: String -> S.Set End -> Free sig ()
 mkYield desc es = thTrace ("Yielding in " ++ desc ++ "\n  " ++ show es) $
-  Yield (NeedToKnow es) (AwaitingAny es) $ \n -> do
-    trackM ("woke up " ++ desc ++ "\n" ++ show n)
-    Ret ()
+  Yield (AwaitingAny es) (\_ -> trackM ("woke up " ++ desc) >> Ret ())
 
 -- Commands for synchronous operations
 data CheckingSig ty where
@@ -130,7 +128,7 @@ wrapper f (Req s k) = f s >>= \case
   Just v -> wrapper f (k v)
   Nothing -> Req s (wrapper f . k)
 wrapper f (Define lbl v e k) = Define lbl v e (wrapper f . k)
-wrapper f (Yield err st k) = Yield err st (wrapper f . k)
+wrapper f (Yield st k) = Yield st (wrapper f . k)
 wrapper f (Fork d par c) = Fork d (wrapper f par) (wrapper f c)
 
 wrapper2 :: (forall a. CheckingSig a -> Maybe a) -> Checking v -> Checking v
@@ -241,7 +239,7 @@ localKVar env (Req KDone k) = case [ x | (x,(One,_)) <- M.assocs env ] of
                                               ]
 localKVar env (Req r k) = Req r (localKVar env . k)
 localKVar env (Define lbl e v k) = Define lbl e v (localKVar env . k)
-localKVar env (Yield err st k) = Yield err st (localKVar env . k)
+localKVar env (Yield st k) = Yield st (localKVar env . k)
 localKVar env (Fork desc par c) =
   -- can't send end both ways, so until we can join (TODO), restrict Forks to local scope
   thTrace ("Spawning(LKV) " ++ desc) $ localKVar env $ par *> c
@@ -256,7 +254,7 @@ catchErr (Ret t) = Ret (Right t)
 catchErr (Req (Throw e) _) = pure $ Left e
 catchErr (Req r k) = Req r (catchErr . k)
 catchErr (Define lbl e v k) = Define lbl e v (catchErr . k)
-catchErr (Yield err st k) = Yield err st (catchErr . k)
+catchErr (Yield st k) = Yield st (catchErr . k)
 catchErr (Fork desc par c) = thTrace ("Spawning(catch) " ++ desc) $ catchErr $ par *> c
 
 handler :: Free CheckingSig v
@@ -350,13 +348,10 @@ handler (Define lbl end v k) ctx g = let st@Store{typeMap=tm, valueMap=vm} = sto
                                                  (M.delete inport (dynamicSet ctx))
                                         Nothing -> dynamicSet ctx
                           }) g
-handler (Yield _err Unstuck k) ctx g = handler (k mempty) ctx g
-handler (Yield err (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ Both
-                                                                   (TypeErr $ unlines $
+handler (Yield Unstuck k) ctx g = handler (k mempty) ctx g
+handler (Yield (AwaitingAny ends) _k) ctx _ = Left $ dumbErr $ TypeErr $ unlines $
   ("Typechecking blocked on:":(show <$> S.toList ends))
-  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx))
-  ++ "":["Try writing more types! :-)"])
- err
+  ++ "":"Dynamic set is":(show <$> M.keys (dynamicSet ctx)) ++ ["Try writing more types! :-)"]
 handler (Fork desc par c) ctx g = handler (thTrace ("Spawning " ++ desc) $ par *> c) ctx g
 
 type Checking = Free CheckingSig
@@ -410,7 +405,7 @@ localNS ns (Req (SplitNS str) k) = let (subSpace, newRoot) = split str ns in
 localNS ns (Req AskNS k) = localNS ns (k (fst ns))
 localNS ns (Req c k) = Req c (localNS ns . k)
 localNS ns (Define lbl e v k) = Define lbl e v (localNS ns . k)
-localNS ns (Yield err st k) = Yield err st (localNS ns . k)
+localNS ns (Yield st k) = Yield st (localNS ns . k)
 localNS ns (Fork desc par c) = let (subSpace, newRoot) = split desc ns in
                                  Fork desc (localNS subSpace par) (localNS newRoot c)
 
