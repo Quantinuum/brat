@@ -277,7 +277,7 @@ makeParametrisedGateHugr ns op th nqubits =
      -- TODO: Make this a rotation (using hvRotation) when we use the actual TKET
      -- ops, we're just targeting dummy ops in the BRAT extension for the sake of
      -- getting things going until hugr is updated.
-     constTh <- addNode "k_th" (parent, OpConst (ConstOp (hvFloat th)))
+     constTh <- addNode "k_th" (parent, OpConst (ConstOp (HVFloat th)))
      th <- addNode "th" (parent, OpLoadConstant (LoadConstantOp hugrFloat))
      gate <- addNode "gate" (parent, addMetadata [("Our","Gate")] $ OpCustom gateOp)
      addEdge (Port input 0, Port gate 0)

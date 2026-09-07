@@ -217,7 +217,9 @@ data HugrValue
  | HVTuple [HugrValue]
  | HVExtension [ExtensionName] HugrType CustomConst
  | HVUSize Int
+ | HVISize Int
  | HVString String
+ | HVFloat Double
  deriving (Eq, Show)
 
 instance ToJSON HugrValue where
@@ -237,16 +239,14 @@ instance ToJSON HugrValue where
                                             ]
 
 hvUnit = HVTuple []
-hvFloat x = HVExtension ["arithmetic.float_types"] hugrFloat
-            (CC "ConstF64" (KeyMap.singleton "value" x))
-hvInt x = HVExtension ["arithmetic.int_types"] hugrInt
-          (CC "ConstInt" (KeyMap.insert "log_width" 6 (KeyMap.singleton "value" x)))
-hvRotation rad = HVExtension ["tket.rotation"] hugrRotation
-                 (CC "ConstRotation" (KeyMap.singleton "half_turns" (rad / pi)))
+hvRotation rad = HVExtension
+                 ["tket.rotation"]
+                 hugrRotation
+                 (CC "ConstRotation" [("half_turns", HVFloat (rad / pi))])
 
 valFromSimple :: SimpleTerm -> HugrValue
-valFromSimple (Num x) = hvInt x
-valFromSimple (Float x) = hvFloat x
+valFromSimple (Num x) = HVISize x
+valFromSimple (Float x) = HVFloat x
 valFromSimple (Text t) = HVString t
 valFromSimple Unit = hvUnit
 
