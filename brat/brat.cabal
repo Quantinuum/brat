@@ -115,15 +115,11 @@ library
                        mtl,
                        HUnit,
                        containers,
-                       vector,
                        text,
-                       deepseq,
-                       array,
                        filepath,
                        directory,
                        utility-ht,
                        graphviz,
-                       bytestring,
                        transformers
 
 executable brat
@@ -133,17 +129,8 @@ executable brat
   hs-source-dirs:      app
   build-depends:       base < 5,
                        brat,
-                       megaparsec >= 9.0.0,
-                       filepath,
-                       mtl,
-                       containers,
                        text,
-                       optparse-applicative,
-                       bytestring,
-                       array,
-                       directory,
-                       utility-ht,
-                       graphviz
+                       optparse-applicative
 
 executable lsp-brat
   import:              ghc-perf, warning-flags
