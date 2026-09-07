@@ -8,21 +8,16 @@ module Data.HugrGraph(NodeId,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
                       splice, splice_new, splice_prepend, inlineDFG,
-                      serialize, to_json,
                       getChildren,
                       inEdges, outEdges
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
-import Bwd
 import Data.Hugr hiding (const)
-
-import qualified Data.ByteString.Lazy as BS
-import Data.Aeson (encode)
 
 import Control.Monad.State (State, execState, state, get, put, modify)
 import Data.Bifunctor (first)
-import Data.Foldable (foldl', for_)
+import Data.Foldable (for_)
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
@@ -245,66 +240,6 @@ takeOutEdges src = do
   removeFromInList (e:es) e' | e==e' = es
   removeFromInList ((_, inport):_) (_,inport') | inport == inport' = error "Wrong in-edge"
   removeFromInList (e:es) r = e:(removeFromInList es r)
-
-to_json :: HugrGraph NodeId -> BS.ByteString
-to_json = encode . serialize
-
-serialize :: forall n. (Ord n, Show n) => HugrGraph n -> Hugr Int
-serialize hugr = renameAndSort (execState (for_ orderEdges addOrderEdge) hugr)
- where
-  orderEdges :: [(n, n)]
-  orderEdges =
-    -- Nonlocal edges (from a node to another which is a *descendant* of a sibling of the source)
-    -- require an extra order edge from the source to the sibling that is ancestor of the target
-    let interEdges = [(n1, n2) | (Port n1 _, Port n2 _) <- edgeList hugr,
-            (parentOf n1 /= parentOf n2),
-            requiresOrderEdge n1,
-            requiresOrderEdge n2] in
-    track ("interEdges: " ++ show interEdges) (walkUp <$> interEdges)
-
-  requiresOrderEdge :: n -> Bool
-  requiresOrderEdge n = case getOp hugr n of
-    OpMod _ -> False
-    OpDefn _ -> False
-    OpConst _ -> False
-    _ -> True
-
-  parentOf = getParent hugr
-
-  -- Walk up the hierarchy from the tgt until we hit a node at the same level as src
-  walkUp :: (n, n) -> (n, n)
-  walkUp (src, tgt) | parentOf src == parentOf tgt = (src, tgt)
-  walkUp (_, tgt) | parentOf tgt == tgt = error "Tgt was not descendant of Src-parent"
-  walkUp (src, tgt) = walkUp (src, parentOf tgt)
-
--- this should be local to renameAndSort but local `type` is not allowed
-type StackAndIndices n = (Bwd (n, HugrOp) -- node is index, this is (parent, op)
-                         , M.Map n Int)
-
-renameAndSort :: forall n. Ord n => HugrGraph n -> Hugr Int
-renameAndSort hugr@(HugrGraph {root, first_children=fc, nodes, parents}) = Hugr (
-    (first transNode) <$> (fst nodeStackAndIndices) <>> [],
-    [(Port (transNode s) o, Port (transNode t) i) | (Port s o, Port t i) <- edgeList hugr]
-  ) where
-    first_children k = M.findWithDefault [] k fc
-    nodeStackAndIndices :: StackAndIndices n
-    nodeStackAndIndices = let just_root = (B0 :< (root, nodes M.! root), M.singleton root 0)
-                          in foldl' addNode just_root (first_children root ++ M.keys parents)
-
-    addNode :: StackAndIndices n -> n -> StackAndIndices n
-    addNode ins n = case M.lookup n (snd ins) of
-      (Just _) -> ins
-      Nothing -> let
-        parent = parents M.! n -- guaranteed as root is always in `ins`
-        with_parent@(stack, indices) = addNode ins parent -- add parent first, will recurse up
-       in case M.lookup n indices of
-            Just _ -> with_parent -- self added by recursive call; we must be in parent's first_children
-            Nothing -> let with_n = (stack :< (parent, nodes M.! n), M.insert n (M.size indices) indices)
-                       -- finally add first_children immediately after n
-                       in foldl addNode with_n (first_children n)
-
-    transNode :: n -> Int
-    transNode = ((snd nodeStackAndIndices) M.!)
 
 --------------------------------------------------------------------------------
 ------------------------------------ Querying ----------------------------------
