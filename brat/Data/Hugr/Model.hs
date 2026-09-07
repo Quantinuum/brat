@@ -208,7 +208,7 @@ instance Serialise Term where
    serialise (Apply sym []) = doc sym
    serialise (Apply sym tms) = parens (doc sym <+> (foldr1 (<+>) (serialise <$> tms)))
    serialise (List pts) = brackets (printListParts pts)
-   serialise (Literal lit) = serialise lit -- TODO: Make Literal type
+   serialise (Literal lit) = serialise lit
    serialise (Tuple pts) = parens (printTupleParts pts)
    serialise (Func region) = parens ("fn" <+> serialise region)
 
