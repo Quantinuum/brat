@@ -12,7 +12,7 @@ module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), a
 import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue, pattern CBit)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..))
 import Brat.Checker.Helpers (binderToValue)
-import Brat.Checker.Types (Store(..))
+import Brat.Checker.Types (EndType(..), Store(..))
 import Brat.Eval (eval, evalCTy, kindType)
 import Brat.Graph hiding (lookupNode)
 import Brat.Naming
@@ -29,15 +29,17 @@ import qualified Data.HugrGraph as H
 import Hasochism
 
 import Control.Monad (unless)
+import Control.Monad.Reader
+import Control.Monad.State
 import Data.Bifunctor (second)
 import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>))
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust)
 import Data.Traversable (for)
-import Control.Monad.State
-import Data.List.NonEmpty (NonEmpty, nonEmpty)
-import GHC.Base (NonEmpty(..))
+import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+
+import Debug.Trace
 
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
@@ -69,6 +71,9 @@ data Container = Ctr {
   input :: NodeId,
   output :: NodeId
 }
+
+runReaderCompile :: Reader r a -> (CompilationState -> r) -> Compile a
+runReaderCompile m f = gets f <&> \st -> (runReader m st)
 
 makeCS :: (Graph, Namespace, Store) -> HugrGraph NodeId -> CompilationState
 makeCS (g, ns, store) hugr =
@@ -132,46 +137,65 @@ runCheckingInCompile (Req _ _) = error "Compile monad found a command it can't h
 -- To be called on top-level signatures which are already Inx-closed, but not
 -- necessarily normalised.
 compileSig :: Modey m -> CTy m Z -> Compile ([HugrType], [HugrType])
-compileSig my cty = runCheckingInCompile (evalCTy S0 my cty) <&> (\(ss :->> ts) -> (compileRo ss, compileRo ts))
+compileSig my cty = do
+  (ss :->> ts) <- runCheckingInCompile (evalCTy S0 my cty)
+  (,) <$> runReaderCompile (compileRo ss) store <*> runReaderCompile (compileRo ts) store
 
-compileCTy (ss :->> ts) = PolyFuncType [] (FunctionType (compileRo ss) (compileRo ts) bratExts)
+compileCTy :: CTy m n -> Reader Store PolyFuncType
+compileCTy (ss :->> ts) = do
+  ss <- compileRo ss
+  ts <- compileRo ts
+  pure (PolyFuncType [] (FunctionType ss ts bratExts))
 
 compileRo :: Ro m i j -- The Ro that we're processing
-          -> [HugrType]       -- The hugr type of the row
-compileRo R0 = []
-compileRo (RPr (_, ty) ro) = compileType ty:compileRo ro
-compileRo (REx (_, k) ro) = compileType (kindType k):compileRo ro
+          -> Reader Store [HugrType] -- The hugr type of the row
+compileRo R0 = pure []
+compileRo (RPr (_, ty) ro) = (:) <$> (compileType ty) <*> compileRo ro
+compileRo (REx (_, k) ro) = (:) <$> compileType (kindType k) <*> compileRo ro
 
 -- Val Z should already be eval'd at this point
-compileType :: Val n -> HugrType
-compileType TQ = HTQubit
-compileType TMoney = HTQubit
-compileType TBit = HTSum (SU (UnitSum 2))
-compileType TBool = HTSum (SU (UnitSum 2))
-compileType TInt = hugrInt
-compileType TNat = hugrInt
-compileType TFloat = hugrFloat
-compileType ty@(TCons _ _) = htTuple (tuple ty)
+compileType :: Val n -> Reader Store HugrType
+compileType TQ = pure HTQubit
+compileType TMoney = pure HTQubit
+compileType TBit = pure (HTSum (SU (UnitSum 2)))
+compileType TBool = pure (HTSum (SU (UnitSum 2)))
+compileType TInt = pure hugrInt
+compileType TNat = pure HTUSize
+compileType TFloat = pure hugrFloat
+compileType ty@(TCons _ _) = htTuple <$> (tuple ty)
  where
-  tuple :: Val n -> [HugrType]
-  tuple (TCons hd rest) = compileType hd:tuple rest
-  tuple TNil = []
+  tuple :: Val n -> Reader Store [HugrType]
+  tuple (TCons hd rest) = (:) <$> compileType hd <*> tuple rest
+  tuple TNil = pure []
   tuple ty = error $ "Found " ++ show ty  ++ " in supposed tuple type"
-compileType TNil = htTuple []
-compileType (TVec el _) = hugrList (compileType el)
-compileType (TList el)  = hugrList (compileType el)
+compileType TNil = pure (htTuple [])
+compileType (TVec el _) = hugrList <$> compileType el
+compileType (TList el)  = hugrList <$> compileType el
 -- All variables are of kind `TypeFor m xs`, we already checked in `kindCheckRow`
-compileType (VApp _ _) = htTuple []
+-- But what do we do if we have a type arg?
+compileType (VApp (VPar e) B0) = do
+  Store tymap vmap <- ask
+  case M.lookup e vmap of
+    Nothing -> case M.lookup e tymap of
+      Nothing -> error "wobba wobba"
+      Just (EndType Kerny ty, _) -> compileType ty
+      Just (EndType Braty (Right ty), _) -> compileType ty
+      Just (EndType Braty (Left Nat), _) -> pure HTUSize
+      Just (EndType Braty (Left (TypeFor Kernel [])), _) -> pure HTAny
+    Just v -> compileType v
+    --Just (EndType Braty (Left _), _) -> pure (htTuple [])
 -- VFun is already evaluated here, so we don't need to call `compileSig`
-compileType (VFun _ cty) = HTFunc $ compileCTy cty
+compileType (VFun _ cty) = HTFunc <$> compileCTy cty
 compileType ty = error $ "todo: compile type " ++ show ty
 
 compileGraphTypes :: Traversable t => t (Val Z) -> Compile (t HugrType)
-compileGraphTypes = traverse ((<&> compileType) . runCheckingInCompile . eval S0)
+compileGraphTypes = traverse $ \v -> do
+  ty <- runCheckingInCompile (eval S0 v)
+  runReaderCompile (compileType ty) store
 
 -- Compile a list of types from the inputs or outputs of a node in the BRAT graph
 compilePorts :: [(a, Val Z)] -> Compile [HugrType]
-compilePorts = compileGraphTypes . map snd
+compilePorts = compileGraphTypes . fmap snd
 
 setOp :: NodeId -> HugrOp -> Compile ()
 setOp name op | track ("addOp " ++ show op ++ show name) False = undefined
@@ -241,25 +265,30 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
     BratNode (Box src tgt) _ _ -> do
       ctr@Ctr {parent=dfgId} <- freshNodeWithIO "DidMatch" parent
-      setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) []))
+      setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) [{-("args", show ins)-}]))
       compileBox ctr (src, tgt)
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
     _ -> error "RHS should be a box node"
 
-compileBox :: Container  -> (Name, Name) -> Compile ()
+data BoxInfo = BratBox () | KernBox
+
+compileBox :: Container  -> (Name, Name) -> Compile BoxInfo
 -- note: we used to compile only KernelNode's here, this may not be right
 compileBox (Ctr parent srcN tgtN) (src, tgt) = do
   -- Compile Source
   node <- gets ((M.! src) . fst . bratGraph)
   trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
-  let src_outs = case node of
-               (BratNode Source [] outs) -> outs
-               (KernelNode Source [] outs) -> outs
+  let (kind, src_outs) = case node of
+        (BratNode Source [] outs) -> (Brat, outs)
+        (KernelNode Source [] outs) -> (Kernel, outs)
   srcTys <- compilePorts src_outs
   setOp srcN (OpIn (InputNode srcTys [("source", "Source"), ("parent", show parent)]))
   registerCompiled src srcN
   compileTarget parent tgtN tgt
+  case kind of
+    Brat -> pure $ BratBox ()
+    Kernel -> pure KernBox
 
 compileTarget :: NodeId -> NodeId -> Name -> Compile ()
 compileTarget parent tgtN tgt = do
@@ -343,7 +372,8 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     Id | Nothing <- filePrefix ["decl"] name -> default_edges <$> do
       -- not a top-level decl, just compile it as an Id (TLDs handled in compileNode)
       let [(_,ty)] = ins -- fail if more than one input
-      addNode "Id" (parent, OpNoop (NoopOp (compileType ty)))
+      ty <- runReaderCompile (compileType ty) store
+      addNode "Id" (parent, OpNoop (NoopOp ty))
 
     Constructor c -> default_edges <$> do
       ins <- compilePorts ins
@@ -601,6 +631,7 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
            [sumOut]
 
 constructorOp :: QualName -> QualName -> FunctionType -> HugrOp
+--constructorOp CBit CTrue (FunctionType [] [HTSum (SU (UnitSum 2))] _) = makeRowTag "constructorOp"
 constructorOp tycon c sig = OpCustom (CustomOp "BRAT" ("Ctor::" ++ show tycon ++ "::" ++ show c) sig [])
 
 undoPrimTest :: NodeId
@@ -643,14 +674,22 @@ compileKernel (nsp, store, g@(ns, _)) desc name = (hgr, holelist) where
   (startHugr, nsp') = runState (H.new desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])) nsp
   (hgr, holelist) = flip evalState (makeCS (g, nsp', store) startHugr) $ do
     ctr <- makeIO desc (H.getRoot startHugr)
-    compileBox ctr src_tgt
-    hugr <- gets hugr
-    hs <- gets holes
-    pure (hugr, hs <>> [])
+    compileBox ctr src_tgt >>= \case
+      BratBox () -> error "Not a kernel box?"
+      KernBox -> do
+        hugr <- gets hugr
+        hs <- gets holes
+        trackM ("HOLES\n" ++ show hs)
+        pure (hugr, hs <>> [])
 
-  (hInTys, hOutTys) = runLocalChecking (evalCTy S0 Kerny cty <&> (\(ss :->> ts) -> (compileRo ss, compileRo ts)))
+  -- For some reason, we have [] -> [] coming back from here
+  (hInTys, hOutTys) = case runLocalChecking (evalCTy S0 Kerny cty) of
+    ss :->> ts -> (runReader (compileRo ss) store, runReader (compileRo ts) store)
 
   runLocalChecking :: Free CheckingSig t -> t
   runLocalChecking (Ret t) = t
   runLocalChecking (Req (ELup e) k) = runLocalChecking (k (M.lookup e (valueMap store)))
   runLocalChecking (Req _ _) = error "Compile monad found a command it can't handle"
+
+tracePrepend :: Show a => String -> a -> a
+tracePrepend msg a = trace (msg ++ show a) a

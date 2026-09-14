@@ -183,7 +183,7 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case mapLup "evalNode" nodes
   (BratNode (Eval func) _ _) -> evalPort gi (fz :< CallWith ins) func
   (BratNode (Box _ _) [] [(_, VFun Kerny _)]) ->
       let (sub, newRoot) = split "box" root
-          (hugr, splices) = compileKernel (sub, st, g) "box" n
+          (hugr, splices) = trace "evalSplices" $ compileKernel (sub, st, g) "box" n
       in evalSplices (g, st, newRoot, cs) fz hugr splices
   (BratNode (Box src tgt) _ _) ->
       let captureSet = fromMaybe M.empty (M.lookup n cs)

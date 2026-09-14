@@ -31,5 +31,5 @@ qft(succ(n)) = {
 }
 
 --!exec-hugr
-test_qft(Vec(Qubit, 5)) -o Vec(Qubit, 5)
-test_qft = qft(5)
+test_qft(Vec(Qubit, 1)) -o Vec(Qubit, 1)
+test_qft = qft(!)

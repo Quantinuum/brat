@@ -120,6 +120,7 @@ convertType (HTOpaque ext typ [] _bound) = M.Var (ext ++ "." ++ typ)
 convertType (HTOpaque ext typ args _bound)
  = M.Apply (ext ++ "." ++ typ) [(convertTypeArg arg) | arg <- args]
 --convertType (HTFunc polyFuncType) = _
+convertType HTAny = M.Var "?"
 convertType x = error $ "convertType " ++ show x
 
 convertTypeArg :: TypeArg -> M.Term

@@ -14,3 +14,6 @@ rus(succ(n)) = {
   | m, true, q => rus(n)(m, q)
   )
 }
+
+test_rus(Money, Qubit) -o Money, Qubit
+test_rus = rus(5)

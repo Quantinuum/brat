@@ -70,6 +70,7 @@ data HugrType
   | HTSum SumType
   | HTOpaque {-extension :: -}String {-type id :: -}String [TypeArg] TypeBound
   | HTFunc PolyFuncType
+  | HTAny
  deriving (Eq, Show)
 
 htTuple :: [HugrType] -> HugrType

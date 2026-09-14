@@ -19,8 +19,11 @@ import Control.Monad.State (State, execState, state, get, put, modify)
 import Data.Bifunctor (first)
 import Data.Foldable (for_)
 import Data.Functor ((<&>))
+import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
+
+import Debug.Trace
 
 track = const id
 
@@ -121,22 +124,70 @@ getOp HugrGraph {nodes} n = nodes M.! n
 -- being replaced, although this is not enforced.
 splice :: forall m n. (Ord n, Ord m) => n -> HugrGraph m -> (m -> n) -> State (HugrGraph n) ()
 splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) >>= isHole) of
-  Just (_, sig) -> case M.lookup (root add) (nodes add) of
+  Just (hostIdx, hostSig) -> case M.lookup (root add) (nodes add) of
     -- We could inline the DFG here, which could be done more efficiently (iterating through
     -- nodes of `add` but not the host), but for now we just splice in the DFG in place
     -- of the hole with its subtree beneath it.
-    Just (OpDFG (DFG sig' _)) | sig == sig' -> host {
-        parents = disj_union (parents host) (M.mapKeys k $ M.map k $ parents add),
-        -- union prefers left --> override host `nodes` for `hole` with new (DFG)
-        nodes = M.union (M.mapKeys k (nodes add)) (nodes host),
-        edges_in  = disj_union (edges_in host) new_edges_in,
-        edges_out = disj_union (edges_out host) new_edges_out,
-        first_children = disj_union (first_children host)
-                                    (M.mapKeys k $ M.map (k <$>) $ first_children add)
-      }
-    other -> error $ "Expected DFG with sig " ++ show sig ++ "\nBut found: " ++ show other
+    Just (OpDFG (DFG spliceSig spliceDFG)) ->
+      let parents' = disj_union (parents host) (M.mapKeys k $ M.map k $ parents add)
+          edges_in'  = disj_union (edges_in host) new_edges_in
+          edges_out' = disj_union (edges_out host) new_edges_out
+          first_children' = disj_union (first_children host)
+                                      (M.mapKeys k $ M.map (k <$>) $ first_children add)
+      in case unifySigs hostSig spliceSig of
+        NoProblems _ -> host
+          { parents = parents'
+            -- union prefers left --> override host `nodes` for `hole` with new (DFG)
+          , nodes = M.union (M.mapKeys k (nodes add)) (nodes host)
+          , edges_in  = edges_in'
+          , edges_out = edges_out'
+          , first_children = first_children'
+          }
+        SpliceTypeInferred sig -> host
+          { parents = parents'
+            -- union prefers left --> override host `nodes` for `hole` with new (DFG)
+          , nodes = M.union
+                    (M.mapKeys k
+                      (M.update (const (Just (OpDFG (DFG sig spliceDFG)))) (root add) (nodes add)))
+                    (nodes host)
+          , edges_in = edges_in'
+          , edges_out = edges_out'
+          , first_children = first_children'
+          }
+        HostTypeInferred sig -> host
+          { parents = parents'
+            -- union prefers left --> override host `nodes` for `hole` with new (DFG)
+          , nodes = M.union (M.mapKeys k (nodes add))
+                    (M.update (const (Just (OpCustom (holeOp hostIdx sig)))) hole (nodes host))
+          , edges_in  = edges_in'
+          , edges_out = edges_out'
+          , first_children = first_children'
+          }
+        _ -> let FunctionType ins outs _ = hostSig
+                 FunctionType otherIns otherOuts _ = spliceSig
+             in  error $ "Expected DFG with sig\n " ++ show ins ++ " -> " ++ show outs ++ "\nBut found:\n " ++ show otherIns ++ " -> " ++ show otherOuts
+    other -> let FunctionType ins outs _ = hostSig in
+                   error $ "Expected DFG with sig\n " ++ show ins ++ " -> " ++ show outs ++ "\nBut found: " ++ show other
   other -> error $ "Expected a hole, found " ++ show other
   where
+    unifySigs :: FunctionType -> FunctionType -> UnifySpliceTypeResult FunctionType
+    unifySigs (FunctionType ins outs exts) (FunctionType ins' outs' exts')
+      = glom (\i o -> FunctionType i o (nub (exts ++ exts')))
+             (unifyRo ins ins')
+             (unifyRo outs outs')
+
+    unifyRo :: [HugrType] -- host
+            -> [HugrType] -- thing to fill the hole
+            -> UnifySpliceTypeResult [HugrType]
+    unifyRo [] [] = NoProblems []
+    unifyRo (HTAny:_) (HTAny:_) = error "This shouldn't happen"
+    unifyRo (HTAny:ss) (t:ts) = glom (:) (HostTypeInferred t) (unifyRo ss ts)
+    unifyRo (s:ss) (HTAny:ts) = glom (:) (SpliceTypeInferred s) (unifyRo ss ts)
+    unifyRo (s:ss) (t:ts)
+     | s == t =  glom (:) (NoProblems s) (unifyRo ss ts)
+     | otherwise = NoGo
+    unifyRo _ _ = error "io lists diff lengths?"
+
     k :: m -> n
     k n = if n == root add then hole else non_root_k n
 
@@ -150,10 +201,29 @@ splice hole add non_root_k = modify $ \host -> case (M.lookup hole (nodes host) 
 
     disj_union = M.unionWith (\_ _ -> error "keys not disjoint")
 
+    glom :: (a -> b -> c)
+         -> UnifySpliceTypeResult a
+         -> UnifySpliceTypeResult b
+         -> UnifySpliceTypeResult c
+    glom f (NoProblems a) b = f a <$> b
+    glom f a (NoProblems b) = (\a -> f a b) <$> a
+    glom f (SpliceTypeInferred a)  (SpliceTypeInferred b) = SpliceTypeInferred (f a b)
+    glom f (HostTypeInferred a)  (HostTypeInferred b) = HostTypeInferred (f a b)
+    glom _ _ _ = NoGo
+
+data UnifySpliceTypeResult a
+ = NoGo
+ | SpliceTypeInferred a
+ | HostTypeInferred a
+ | NoProblems a
+ deriving Functor
+
+
 -- Replace the specified hole of the host Hugr (in the State monad), with a new Hugr,
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
 -- the hole
 splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
+splice_prepend hole add | trace (unwords["splice",show add,"into",show hole]) False = undefined
 splice_prepend hole add = splice hole add (keyMap M.!)
  where
   prefixRoot :: NodeId -> NodeId
