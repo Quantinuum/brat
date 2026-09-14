@@ -220,8 +220,35 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didntMatch outTys parent ins = case nonEmpty clauses of
     Just clauses -> compileClauses parent ins clauses
     -- If there are no more clauses left to test, then the Hugr panics
-    Nothing -> let sig = FunctionType (snd <$> ins) outTys ["BRAT"] in
-      addNodeWithInputs "Panic" (parent, OpCustom (CustomOp "BRAT" "panic" sig [])) ins outTys
+    Nothing -> let sig = FunctionType
+                         ((HTOpaque "prelude" "error" [] TBAny) : (snd <$> ins))
+                         outTys ["BRAT"]
+               in do
+      signalConst <- addNodeWithInputs "ErrorSigConst"
+                     (parent, OpConst (ConstOp (HVUSize 1))) [] [HTUSize]
+      errSignal <- addNodeWithInputs "ErrorSigLoad"
+                   (parent, OpLoadConstant (LoadConstantOp HTUSize))
+                   signalConst [HTUSize]
+
+
+      msgConst <- addNodeWithInputs "ErrorStringConst"
+                  (parent, OpConst (ConstOp (HVString "no match!")))
+                  [] [HTString]
+      errStr <- addNodeWithInputs "ErrorStringLoad"
+                (parent, OpLoadConstant (LoadConstantOp HTString)) msgConst [HTString]
+      errs <- addNodeWithInputs "MakeError"
+              (parent, OpCustom (CustomOp "prelude" "MakeError" (FunctionType
+                                                                [HTUSize, HTString]
+                                                                [HTOpaque "prelude" "error" [] TBAny]
+                                                                [])
+                                []))
+              (errSignal ++ errStr) [HTString]
+      case errs of
+        [err] -> let argRow = TASequence (TAType . snd <$> ins)
+                     op = (CustomOp "prelude" "panic" sig [argRow, argRow])
+                 in addNodeWithInputs "Panic" (parent, OpCustom op) (err:ins) outTys
+        _ -> error "Impossible - should be single error type"
+
 
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
@@ -323,7 +350,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
         Nothing -> addHole parent sig outPort
 
     Source -> error "Source found outside of compileBox"
-      
+
     Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- filePrefix ["decl"] name -> default_edges <$> do
