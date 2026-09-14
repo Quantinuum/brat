@@ -9,7 +9,7 @@
 
 module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), addEdge, addNode, Container(..), onHugr) where
 
-import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue)
+import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue, pattern CBit)
 import Brat.Checker.Monad (track, trackM, CheckingSig(..))
 import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (Store(..))
@@ -469,6 +469,13 @@ compileMatchSequence parent portTable (MatchSequence {..}) = do
     let ins = as ++ scrutinee:bs
     makeRowTag "DidNotMatch" parent 0 sumTy ins
 
+makeHugrBool :: String -> NodeId -> Bool -> Compile [TypedPort]
+makeHugrBool hint parent b =
+  let tag = if b then 1 else 0 in
+    addNodeWithInputs (hint ++ "_bool") (parent, OpTag (TagOp tag [[],[]] [])) [] [boolTy]
+ where
+  boolTy = HTSum (SU (UnitSum 2))
+
 makeRowTag :: String -> NodeId -> Int -> SumOfRows -> [TypedPort] -> Compile [TypedPort]
 makeRowTag hint parent tag sor@(SoR sumRows) ins =
   if sumRows !! tag == (snd <$> ins)
@@ -483,9 +490,10 @@ getSumVariants ty = error $ "Expected a sum type, got " ++ show ty
 
 -- This should only be called by the logic which creates conditionals, because
 -- wires that exist in the brat graph are already going to be added at the end.
-addNodeWithInputs :: String -> (NodeId, HugrOp) -> [TypedPort]
-                   -> [HugrType] -- The types of the outputs
-                   -> Compile [TypedPort] -- The output wires
+addNodeWithInputs :: String -> (NodeId, HugrOp)
+                  -> [TypedPort] -- Inputs
+                  -> [HugrType] -- The types of the outputs
+                  -> Compile [TypedPort] -- The output wires
 addNodeWithInputs name op inWires outTys = do
   nodeId <- addNode name op
   for_ (zip (fst <$> inWires) (Port nodeId <$> [0..])) addEdge
@@ -527,10 +535,31 @@ makeConditional lbl parent discrim otherInputs cases = do
   allRowsEqual [_] = True
   allRowsEqual (x:xs) = all (x==) xs
 
+-- For the sake of undoing tests, we have to return the original scrutinee if
+-- the test fails. So we return a sum type with the original type on the left
+-- and the refined values on the right.
 compilePrimTest :: NodeId
                 -> TypedPort -- The thing that we're testing
                 -> PrimTest HugrType -- The test to run
                 -> Compile TypedPort
+compilePrimTest parentId port@(_, ty@(HTSum (SU (UnitSum 2)))) (PrimCtorTest con CBit _ [])
+ | Just cases <- casesFor con = do
+  makeConditional "bool_discrim" parentId port [port] cases >>= \case
+    [condOut] -> pure condOut
+    _ -> error "Invalid"
+ where
+  casesFor CTrue = Just [("lift", left), ("success", constUnit)]
+  casesFor CFalse = Just [("success", constUnit), ("lift", left)]
+  casesFor _  = Nothing
+
+  left :: NodeId
+       -> [TypedPort]
+       -> Compile [TypedPort]
+  left parentId [inp] = makeRowTag "lift_bool" parentId 0 (SoR [[ty],[]]) [inp]
+
+  constUnit :: NodeId -> [TypedPort] -> Compile [TypedPort]
+  constUnit parentId [_] = makeRowTag "unit" parentId 1 (SoR [[ty], []]) []
+
 compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) = do
   let sumOut = HTSum (SG (GeneralSum [[ty], snd <$> outputs]))
   let sig = FunctionType [ty] [sumOut] ["BRAT"]
@@ -565,6 +594,15 @@ undoPrimTest :: NodeId
              -> HugrType -- The type of the thing we're making
              -> PrimTest HugrType -- The test to undo
              -> Compile TypedPort
+undoPrimTest parent [] (HTSum (SU (UnitSum 2))) (PrimCtorTest con CBit _ _)
+ | Just b <- isBool con
+ = makeHugrBool "undoPrimTest" parent b >>= \case
+     [bool] -> pure bool
+     _ -> error "invalid thing"
+ where
+  isBool CFalse = Just False
+  isBool CTrue = Just True
+  isBool _ = Nothing
 undoPrimTest parent inPorts outTy (PrimCtorTest c tycon _ _) = do
   let sig = FunctionType (snd <$> inPorts) [outTy] ["BRAT"]
   head <$> addNodeWithInputs
