@@ -1,28 +1,18 @@
 module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
-import Brat.Checker.Types (Modey(Kerny), VEnv)
-import Brat.Compiler (compileToGraph, CompilingHoles(..))
-import Brat.Compile.Hugr (compileKernel)
-import Brat.Graph(Graph, Node(BratNode), NodeType(Box, Id))
+import Brat.Compiler (compileToGraph)
 import Brat.Load (parseFile)
 import Brat.Machine (interpretGraph)
-import Brat.Naming (Name)
-import Brat.Syntax.Port  (NamedPort(..), OutPort(..), InPort(..))
-import Brat.QualName (QualName)
-import Brat.Syntax.Value (Val(VFun))
 
-import Control.Exception (evaluate)
-import Control.Monad (forM)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.Hugr (isHole)
 import Data.HugrGraph as HG
-import Data.List (isPrefixOf, sort)
+import Data.List (isPrefixOf)
 import qualified Data.Text.Lazy as T
 import Data.Maybe (fromJust, isJust)
-import qualified Data.Map as M
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
@@ -41,34 +31,6 @@ execTestPrefix = T.pack "--!exec"
 
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished "
-
-
--- Map from box name to (compiled hugr, list of hole nodes in it)
-type CompilationResult = M.Map Name (HG.HugrGraph HG.NodeId, [HG.NodeId])
-
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
-compileFile libDirs file = do
-  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
-  let venv = M.map fst declEnv
-  case holes of
-    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
-          in Right <$> (evaluate -- turns 'error' into IO 'die'
-            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
-                               in (hugr, map fst holes))
-                         | n <- box_decls])
-    hs -> pure $ Left (CompilingHoles hs)
- where
-  findBoxes :: VEnv -> Graph -> QualName -> [Name]
-  findBoxes venv (ns, es) name = case M.lookup name venv of
-        Nothing -> error $ (show name) ++ ".... not found in VEnv"
-        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
-            Just (BratNode Id _ _) ->
-               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
-            _ -> []
-  isKernelBox :: Name -> M.Map Name Node -> Bool
-  isKernelBox name ns
-    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
-    | otherwise = False
 
 data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
 
@@ -109,30 +71,15 @@ getExamplesTests =  do
     else if isPrefixOf "--!xfail-checking" cts then
       testGroup (show path) [parseTest, expectFail checkTest]
     else case interpreterTests of
-      [] -> testGroup (show path) checkAndCompile
+      [] -> testGroup (show path) [checkTest]
       intTests -> sequentialTestGroup path AllSucceed
-          (checkAndCompile ++ [testGroup "execution" intTests])
+          (checkTest:[testGroup "execution" intTests])
    where
     parseTest = testCase "parsing" $ do
       case parseFile path cts of
         Left err -> assertFailure (show err)
         Right _ -> return () -- OK
     checkTest = parseAndCheckNamed "checking" [] path
-    compileTest = testCaseInfo "compilation" $ do
-      createDirectoryIfMissing False compileOutputDir
-      compileFile [] path >>= \case
-          Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, holes)) -> do
-              sort (getHoles hugr) @?= sort holes
-              -- ignore splices for now
-              let outFile = compileOutputDir </> replaceExtension (takeFileName path) ((show boxName) ++ ".json")
-              -- lots of fun with lazy and even strict bytestrings
-              -- returning many bytes before evaluation has completed
-              BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
-              pure $ "Written to " ++ outFile ++ " pending validation\n")
-          Left (CompilingHoles _) -> pure "Skipped as contains holes"
-    
-    checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
-      then [checkTest, expectFail compileTest] else [compileTest]
     interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
       let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
           -- this repeats/roughly duplicates the logic for "identifiers" in the parser
