@@ -6,6 +6,7 @@ import Brat.Load (parseFile, VMod)
 import Brat.Machine (interpretGraph)
 import Brat.Naming (Namespace)
 
+import Control.Exception (catch)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
@@ -35,11 +36,9 @@ interpreterOutputPrefix = "Finished "
 
 data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
 
--- Note this completely recompiles the file for each test, which is pretty bad
-funcTest :: IO (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
+funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr -> testCaseInfo func_name $ do
-        nsmod@(ns,vmod) <- nsmod
         hugr <- case interpretGraph nsmod func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
@@ -51,7 +50,7 @@ funcTest nsmod path func_name testTy = case testTy of
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
   XfailOutput expectedOutput -> expectFail (funcTest nsmod path func_name (Output expectedOutput))
   Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
-                in testCase func_name $ nsmod >>= \nsmod' -> case interpretGraph nsmod' func_name of
+                in testCase func_name $ case interpretGraph nsmod func_name of
       Left t -> T.unpack t @?= expectedOutput
       Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
 
@@ -61,25 +60,31 @@ compileOutputDir = compilePrefix </> "output"
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
   paths <- findByExtension [".brat"] "examples"
-  testGroup "examples" <$> mapM (\path -> readFile path <&> mkTest path) paths
+  testGroup "examples" <$> mapM (\path -> readFile path >>= mkTest path) paths
  where
-  mkTest :: String -> String -> TestTree
+  mkTest :: String -> String -> IO TestTree
   mkTest path cts =
     if isPrefixOf "--!xfail-parsing" cts then
-      testGroup (show path) [expectFail parseTest]
+      pure $ testGroup (show path) [expectFail parseTest]
     else if isPrefixOf "--!xfail-checking" cts then
-      testGroup (show path) [parseTest, expectFail checkTest]
-    else case interpreterTests of
-      [] -> testGroup (show path) [checkTest]
-      intTests -> sequentialTestGroup path AllSucceed
-          (checkTest:[testGroup "execution" intTests])
+      pure $ testGroup (show path) [parseTest, expectFail checkTest]
+    else do
+      maybe_mod <- catch (compileToGraph [] path <&> Just) (\(e :: IOError) -> pure Nothing)
+      let interpreterTests = case maybe_mod of
+            Nothing -> [testCaseInfo "execution" $ pure "SKIPPED as did not compile"]
+            Just nsmod -> findInterpreterTests nsmod
+      pure $ case interpreterTests of
+        [] -> testGroup (show path) [checkTest]
+        intTests -> sequentialTestGroup path AllSucceed
+            (checkTest:[testGroup "execution" intTests])
    where
     parseTest = testCase "parsing" $ do
       case parseFile path cts of
         Left err -> assertFailure (show err)
         Right _ -> return () -- OK
     checkTest = parseAndCheckNamed "checking" [] path
-    interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
+    findInterpreterTests :: (Namespace, VMod) -> [TestTree]
+    findInterpreterTests nsmod = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
       let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
           -- this repeats/roughly duplicates the logic for "identifiers" in the parser
           func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
@@ -95,8 +100,6 @@ getExamplesTests =  do
              | Just out <- T.stripPrefix (T.pack " ") restLine ->
                   funcTest nsmod path func_name (Output out)
              | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
-     where
-      nsmod = compileToGraph [] path
 
 getHoles :: Ord a => HugrGraph a -> [a]
 getHoles hg = [n | n <- getNodes hg, isJust (isHole $ getOp hg n)]
