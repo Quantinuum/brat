@@ -1,5 +1,5 @@
 import Brat.Compiler
-import Brat.Machine (runInterpreter)
+import Brat.Machine (interpretGraph)
 
 import qualified Data.ByteString.Lazy as BS (putStr)
 import Data.HugrGraph (to_json)
@@ -52,7 +52,8 @@ main = do
   if compile then compileAndPrintFile libDirs file
   else if runFunc == "" then printDeclsHoles libDirs file
   else do
-    result <- runInterpreter libDirs file runFunc
+    nsmod <- compileToGraph libDirs file
+    let result = interpretGraph nsmod runFunc
     case result of
       Right hugr -> BS.putStr (to_json hugr)
       Left s -> putStr s

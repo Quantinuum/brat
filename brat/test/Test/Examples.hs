@@ -2,13 +2,14 @@ module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput, getHoles)
+import Brat.Compiler (compileToGraph)
 import Brat.Load (parseFile)
-import Brat.Machine (runInterpreter)
-import Data.HugrGraph (to_json)
+import Brat.Machine (interpretGraph)
 
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
+import Data.HugrGraph as HG
 import Data.List (isPrefixOf)
 import qualified Data.Text.Lazy as T
 import Data.Maybe (fromJust)
@@ -43,13 +44,17 @@ funcTest path func_name testTy = case testTy of
         getHoles hugr @?= []
         -- output the hugr for validation
         createDirectoryIfMissing False outputDir
-        BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+        BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
   XfailOutput expectedOutput -> expectFail (funcTest path func_name (Output expectedOutput))
   Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
                 in testCase func_name $ runInterpreter [] path func_name >>= \case
       Left t -> T.unpack t @?= expectedOutput
       Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
+ where
+  runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
+  runInterpreter libDirs file runFunc = compileToGraph libDirs file <&> \c -> interpretGraph c runFunc
+
 
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
