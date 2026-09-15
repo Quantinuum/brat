@@ -1,10 +1,18 @@
 module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
-import Brat.Compiler (compileFile, compileToGraph, CompilingHoles(..))
+import Brat.Checker.Types (Modey(Kerny), VEnv)
+import Brat.Compiler (compileToGraph, CompilingHoles(..))
+import Brat.Compile.Hugr (compileKernel)
+import Brat.Graph(Graph, Node(BratNode), NodeType(Box, Id))
 import Brat.Load (parseFile)
 import Brat.Machine (interpretGraph)
+import Brat.Naming (Name)
+import Brat.Syntax.Port  (NamedPort(..), OutPort(..), InPort(..))
+import Brat.QualName (QualName)
+import Brat.Syntax.Value (Val(VFun))
 
+import Control.Exception (evaluate)
 import Control.Monad (forM)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
@@ -22,6 +30,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Silver
 import Test.Tasty.ExpectedFailure
 
+
 --import Debug.Trace
 
 outputDir :: FilePath
@@ -32,6 +41,34 @@ execTestPrefix = T.pack "--!exec"
 
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished "
+
+
+-- Map from box name to (compiled hugr, list of hole nodes in it)
+type CompilationResult = M.Map Name (HG.HugrGraph HG.NodeId, [HG.NodeId])
+
+compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
+compileFile libDirs file = do
+  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
+  let venv = M.map fst declEnv
+  case holes of
+    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
+          in Right <$> (evaluate -- turns 'error' into IO 'die'
+            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
+                               in (hugr, map fst holes))
+                         | n <- box_decls])
+    hs -> pure $ Left (CompilingHoles hs)
+ where
+  findBoxes :: VEnv -> Graph -> QualName -> [Name]
+  findBoxes venv (ns, es) name = case M.lookup name venv of
+        Nothing -> error $ (show name) ++ ".... not found in VEnv"
+        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
+            Just (BratNode Id _ _) ->
+               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
+            _ -> []
+  isKernelBox :: Name -> M.Map Name Node -> Bool
+  isKernelBox name ns
+    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
+    | otherwise = False
 
 data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
 
@@ -90,7 +127,7 @@ getExamplesTests =  do
               let outFile = compileOutputDir </> replaceExtension (takeFileName path) ((show boxName) ++ ".json")
               -- lots of fun with lazy and even strict bytestrings
               -- returning many bytes before evaluation has completed
-              BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+              BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
               pure $ "Written to " ++ outFile ++ " pending validation\n")
           Left (CompilingHoles _) -> pure "Skipped as contains holes"
     

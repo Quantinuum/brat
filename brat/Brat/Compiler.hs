@@ -1,29 +1,21 @@
 module Brat.Compiler (printAST
                      ,printDeclsHoles
                      ,writeDot
-                     ,compileFile
                      ,compileToGraph
                      ,CompilingHoles(..)
                      ) where
 
-import Brat.Checker.Types (TypedHole, Modey(Kerny), VEnv)
-import Brat.Compile.Hugr
+import Brat.Checker.Types (TypedHole)
 import Brat.Dot (toDotString)
 import Brat.Elaborator
 import Brat.Error
-import Brat.Graph(Graph, Node(BratNode), NodeType(Box, Id))
 import Brat.Load
-import Brat.Naming (Namespace, root, split, Name)
-import Brat.QualName (QualName)
-import Brat.Syntax.Port (NamedPort(..), OutPort(..), InPort(..))
-import Brat.Syntax.Value (Val(VFun))
+import Brat.Naming (Namespace, root, split)
 
-import Control.Exception (evaluate)
 import Control.Monad (forM, when)
 import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
-import Data.HugrGraph (HugrGraph, NodeId)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
@@ -81,30 +73,3 @@ compileToGraph libDirs file = do
   let (checkRoot, newRoot) = split "checking" root
   env <- runExceptT $ loadFilename checkRoot libDirs file
   (newRoot,) <$> eitherIO env
-
--- Map from box name to (compiled hugr, list of hole nodes in it)
-type CompilationResult = M.Map Name (HugrGraph NodeId, [NodeId])
-
-compileFile :: [FilePath] -> String -> IO (Either CompilingHoles CompilationResult)
-compileFile libDirs file = do
-  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
-  let venv = M.map fst declEnv
-  case holes of
-    [] -> let box_decls = (M.keys declEnv) >>= (findBoxes venv outerGraph)
-          in Right <$> (evaluate -- turns 'error' into IO 'die'
-            $ M.fromList [(n, let (hugr, holes) = compileKernel (newRoot, st, outerGraph) "root" n
-                               in (hugr, map fst holes))
-                         | n <- box_decls])
-    hs -> pure $ Left (CompilingHoles hs)
- where
-  findBoxes :: VEnv -> Graph -> QualName -> [Name]
-  findBoxes venv (ns, es) name = case M.lookup name venv of
-        Nothing -> error $ (show name) ++ ".... not found in VEnv"
-        Just vals -> vals >>= \(NamedPort (Ex n _) _, _) -> case M.lookup n ns of
-            Just (BratNode Id _ _) ->
-               [src | (Ex src 0, _, In tgt _) <- es, tgt == n, isKernelBox src ns]
-            _ -> []
-  isKernelBox :: Name -> M.Map Name Node -> Bool
-  isKernelBox name ns
-    | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
-    | otherwise = False
