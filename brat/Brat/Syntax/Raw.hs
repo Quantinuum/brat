@@ -1,6 +1,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module Brat.Syntax.Raw where
+module Brat.Syntax.Raw (Dirable, Kindable,
+                        Raw(..), RawAlias, RawEnv, RawFuncDecl, TypeOf, TypeAlias,
+                        dir, desugarEnv, kind) where
 
 import Control.Monad (unless, when)
 import Control.Monad.Except
@@ -134,13 +136,6 @@ freshM str = do
   let (name, ns') = fresh str ns
   put ns'
   pure name
-
-splitM :: String -> Desugar Namespace
-splitM s = do
-  ns <- get
-  let (ns', newRoot) = split s ns
-  put newRoot
-  pure ns'
 
 isConstructor :: QualName -> Desugar Bool
 isConstructor c = pure (c `member` defaultConstructors
