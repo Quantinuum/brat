@@ -1,18 +1,20 @@
 module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
-import Test.Compile.Hugr (compileToOutput, getHoles)
-import Brat.Compiler (compileToGraph)
+import Brat.Compiler (compileFile, compileToGraph, CompilingHoles(..))
 import Brat.Load (parseFile)
 import Brat.Machine (interpretGraph)
 
+import Control.Monad (forM)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
+import Data.Hugr (isHole)
 import Data.HugrGraph as HG
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, sort)
 import qualified Data.Text.Lazy as T
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import qualified Data.Map as M
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
 import Test.Tasty
@@ -55,6 +57,8 @@ funcTest path func_name testTy = case testTy of
   runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
   runInterpreter libDirs file runFunc = compileToGraph libDirs file <&> \c -> interpretGraph c runFunc
 
+compilePrefix = "test/compilation"
+compileOutputDir = compilePrefix </> "output"
 
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
@@ -77,7 +81,19 @@ getExamplesTests =  do
         Left err -> assertFailure (show err)
         Right _ -> return () -- OK
     checkTest = parseAndCheckNamed "checking" [] path
-    compileTest = compileToOutput "compilation" path
+    compileTest = testCaseInfo "compilation" $ do
+      createDirectoryIfMissing False compileOutputDir
+      compileFile [] path >>= \case
+          Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, holes)) -> do
+              sort (getHoles hugr) @?= sort holes
+              -- ignore splices for now
+              let outFile = compileOutputDir </> replaceExtension (takeFileName path) ((show boxName) ++ ".json")
+              -- lots of fun with lazy and even strict bytestrings
+              -- returning many bytes before evaluation has completed
+              BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+              pure $ "Written to " ++ outFile ++ " pending validation\n")
+          Left (CompilingHoles _) -> pure "Skipped as contains holes"
+    
     checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
       then [checkTest, expectFail compileTest] else [compileTest]
     interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
@@ -96,3 +112,6 @@ getExamplesTests =  do
              | Just out <- T.stripPrefix (T.pack " ") restLine ->
                   funcTest path func_name (Output out)
              | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
+
+getHoles :: Ord a => HugrGraph a -> [a]
+getHoles hg = [n | n <- getNodes hg, isJust (isHole $ getOp hg n)]
