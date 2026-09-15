@@ -2,7 +2,6 @@ module Brat.Compiler (printAST
                      ,printDeclsHoles
                      ,writeDot
                      ,compileFile
-                     ,compileAndPrintFile
                      ,compileToGraph
                      ,CompilingHoles(..)
                      ) where
@@ -24,10 +23,7 @@ import Control.Monad (forM, when)
 import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
-import qualified Data.ByteString.Lazy as BS
-import Data.Foldable (for_)
-import Data.HugrGraph (HugrGraph, NodeId, to_json)
-import System.Exit (die)
+import Data.HugrGraph (HugrGraph, NodeId)
 
 printDeclsHoles :: [FilePath] -> String -> IO ()
 printDeclsHoles libDirs file = do
@@ -112,11 +108,3 @@ compileFile libDirs file = do
   isKernelBox name ns
     | Just (BratNode (Box _ _ ) [] [(_, VFun Kerny _cty)]) <- M.lookup name ns = True
     | otherwise = False
-
-compileAndPrintFile :: [FilePath] -> String -> IO ()
-compileAndPrintFile libDirs file = compileFile libDirs file >>= \case
-  Right hs -> for_ (M.toList hs) $ \(n, (hugr, splices)) -> do
-    putStrLn $ "Compiled box: " ++ show n
-    BS.putStr (to_json hugr)
-    putStrLn $ "With splices: " ++ show splices
-  Left err -> die (show err)
