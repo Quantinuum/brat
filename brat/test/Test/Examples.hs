@@ -30,6 +30,27 @@ execTestPrefix = T.pack "--!exec"
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished "
 
+data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
+
+-- Note this completely recompiles the file for each test, which is pretty bad
+funcTest :: String -> String -> FunctionTestType -> TestTree
+funcTest path func_name testTy = case testTy of
+  SaveHugr -> testCaseInfo func_name $ do
+        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
+        hugr <- runInterpreter [] path func_name >>= \case
+          Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
+          Right hugr -> pure hugr
+        getHoles hugr @?= []
+        -- output the hugr for validation
+        createDirectoryIfMissing False outputDir
+        BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+        pure $ "Written hugr to " ++ outFile ++ " pending validation"
+  XfailOutput expectedOutput -> expectFail (funcTest path func_name (Output expectedOutput))
+  Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
+                in testCase func_name $ runInterpreter [] path func_name >>= \case
+      Left t -> T.unpack t @?= expectedOutput
+      Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
+
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
   paths <- findByExtension [".brat"] "examples"
@@ -63,25 +84,10 @@ getExamplesTests =  do
           -- "-xfail " and the (un-)expected result
           -- "-hugr\n" (checks no splices, outputs hugr for validation)
           restLine = fromJust $ T.stripPrefix execTestPrefix testLine
-      in if (T.pack "-hugr") == restLine then testCaseInfo func_name $ do
-        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
-        -- this completely recompiles the file for each test, which is pretty bad
-        hugr <- runInterpreter [] path func_name >>= \case
-          Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
-          Right hugr -> pure hugr
-        getHoles hugr @?= []
-        -- output the hugr for validation
-        createDirectoryIfMissing False outputDir
-        BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
-        pure $ "Written hugr to " ++ outFile ++ " pending validation"
-      else
-        let (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of
-              Just out -> (True, out)
-              Nothing | Just out <- T.stripPrefix (T.pack " ") restLine -> (False, out)
-                      | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
-            expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip eOut)
-        in (if is_xfail then expectFail else id) $ testCase func_name $ do
-          -- this completely recompiles the file for each test, which is pretty bad
-          runInterpreter [] path func_name >>= \case
-            Left t -> T.unpack t @?= expectedOutput
-            Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
+      in case restLine of
+           _ | (T.pack "-hugr") == restLine -> funcTest path func_name SaveHugr
+           _ | Just out <- T.stripPrefix (T.pack "-xfail ") restLine ->
+                  funcTest path func_name (XfailOutput out)
+             | Just out <- T.stripPrefix (T.pack " ") restLine ->
+                  funcTest path func_name (Output out)
+             | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
