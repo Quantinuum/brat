@@ -3,6 +3,7 @@
 module Brat.Checker (checkBody
                     ,check
                     ,runChecking
+                    ,checkWithGraph
                     ,kindCheck
                     ,kindCheckAnnotation
                     ,kindCheckRow
@@ -1261,7 +1262,15 @@ runChecking :: VEnv
     -> Namespace
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-runChecking ve initStore ns m = do
+runChecking ve initStore ns m = checkWithGraph ve initStore ns mempty m
+
+checkWithGraph :: VEnv
+               -> Store
+               -> Namespace
+               -> Graph
+               -> Checking a
+               -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
+checkWithGraph ve initStore ns g m = do
   let ctx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors
@@ -1272,7 +1281,7 @@ runChecking ve initStore ns m = do
                 , hopes = M.empty
                 , dynamicSet = M.empty
                 , captureSets = M.empty
-                , graph = mempty
+                , graph = g
                 }
   (a, ctx, holes) <- handler (localNS ns m) ctx
   let tyMap = typeMap $ store ctx
@@ -1288,3 +1297,4 @@ runChecking ve initStore ns m = do
   isNatKinded tyMap e = case tyMap M.! (InEnd e) of
     (EndType Braty (Left Nat), _) -> True
     _ -> False
+

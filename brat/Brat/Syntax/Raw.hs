@@ -1,8 +1,8 @@
 {-# LANGUAGE UndecidableInstances #-}
 
-module Brat.Syntax.Raw (Dirable, Kindable,
+module Brat.Syntax.Raw (Dirable, Kindable, Desugarable(..),
                         Raw(..), RawAlias, RawEnv, RawFuncDecl, TypeOf, TypeAlias,
-                        dir, desugarEnv, kind) where
+                        dir, desugarEnv, kind, runDesugar) where
 
 import Control.Monad (unless, when)
 import Control.Monad.Except
@@ -295,13 +295,12 @@ desugarAliases (a@(TypeAlias fc name _ _):as) = do
   local (\((decls, aliases, aliasTbl), uz) -> ((decls, aliases, M.insert name a aliasTbl), uz)) $
     (a :) <$> desugarAliases as
 
+runDesugar :: RawEnv -> Desugar a -> Either Error a
+runDesugar env m = fmap fst . runExcept $ flip runReaderT (env, B0) $ flip runStateT root m
+
 desugarEnv :: RawEnv -> Either Error ([CoreFuncDecl], [TypeAlias])
 desugarEnv env@(decls, aliases, aliasTbl)
-  = fmap fst
-    . runExcept
-    . flip runReaderT (env, B0)
-    . flip runStateT root
-    $ do
+  = runDesugar env $ do
   -- Desugar aliases
   aliases <- desugarAliases aliases
   let newAliasTbl = mkAliasTbl aliases

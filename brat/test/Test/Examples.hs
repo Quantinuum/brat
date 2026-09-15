@@ -1,10 +1,17 @@
 module Test.Examples (getExamplesTests) where
 
-import Test.Checking (parseAndCheckNamed)
+import Brat.Parser (parseExpr)
+import Brat.Checker (check, checkWithGraph)
+import Brat.Checker.Types (ChkConnectors)
 import Brat.Compiler (compileToGraph)
+import Brat.Elaborator (elaborateChkNoun)
+import Brat.FC (WC(..))
 import Brat.Load (parseFile, VMod)
 import Brat.Machine (interpretGraph)
 import Brat.Naming (Namespace)
+import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..))
+import Brat.Syntax.Raw (runDesugar, Desugarable(..), Raw, RawEnv)
+import Test.Checking (parseAndCheckNamed)
 
 import Control.Exception (catch)
 import qualified Data.ByteString as BS
@@ -14,6 +21,7 @@ import Data.Hugr (isHole)
 import Data.HugrGraph as HG
 import Data.List (isPrefixOf)
 import qualified Data.Text.Lazy as T
+import qualified Data.Map as M
 import Data.Maybe (fromJust, isJust)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
@@ -34,11 +42,34 @@ execTestPrefix = T.pack "--!exec"
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished "
 
-data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
+data FunctionTestType = SaveHugr T.Text -- arguments
+                      | Output T.Text -- output (TODO add arguments)
+                      | XfailOutput T.Text -- output
 
 funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
-  SaveHugr -> testCaseInfo func_name $ do
+  SaveHugr arg_expr -> testCaseInfo func_name $ do
+        arg <- case parseExpr (T.unpack $ T.strip arg_expr) of
+          Left err -> assertFailure ("Could not parse arguments: " ++ show err)
+          Right val -> pure val
+        (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- case elaborateChkNoun arg of
+          Left err -> assertFailure ("Could not elaborate arguments: " ++ show err)
+          Right val -> pure val
+        let env :: RawEnv = undefined -- ALAN ??
+        arg_noun <- case runDesugar env (desugar' raw_arg_noun) of
+          Left err -> assertFailure ("Could not desugar arguments: " ++ show err)
+          Right val -> pure (WC fc val)
+        let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
+        oldHoles @?= [] -- do we need to skip interpreting if there are holes?
+        -- Should we split the namespace here?
+        let conns :: ChkConnectors Brat Chk Noun = ((), undefined) -- need [Tgt, BinderTypeBrat] i.e. inports of call to func_name
+        ((((), ()), ((), chk_unders)), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph (check arg_noun conns) of
+          Left err -> assertFailure ("Could not check arguments: " ++ show err)
+          Right val -> pure val
+        chk_unders @?= []
+        (noCaps, noHoles) @?= (M.empty, []) -- i.e. in arguments
+        let nsmod = (ns, (oldDeclEnv, oldHoles, newStore, newGraph, oldCaps))
+        
         hugr <- case interpretGraph nsmod func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
@@ -48,7 +79,7 @@ funcTest nsmod path func_name testTy = case testTy of
         createDirectoryIfMissing False outputDir
         BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
-  XfailOutput expectedOutput -> expectFail (funcTest nsmod path func_name (Output expectedOutput))
+  XfailOutput out -> expectFail (funcTest nsmod path func_name (Output out))
   Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
                 in testCase func_name $ case interpretGraph nsmod func_name of
       Left t -> T.unpack t @?= expectedOutput
@@ -94,7 +125,8 @@ getExamplesTests =  do
           -- "-hugr\n" (checks no splices, outputs hugr for validation)
           restLine = fromJust $ T.stripPrefix execTestPrefix testLine
       in case restLine of
-           _ | (T.pack "-hugr") == restLine -> funcTest nsmod path func_name SaveHugr
+           _ | Just args <- T.stripPrefix (T.pack "-hugr") restLine ->
+                  funcTest nsmod path func_name (SaveHugr args)
            _ | Just out <- T.stripPrefix (T.pack "-xfail ") restLine ->
                   funcTest nsmod path func_name (XfailOutput out)
              | Just out <- T.stripPrefix (T.pack " ") restLine ->
