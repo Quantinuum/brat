@@ -2,8 +2,9 @@ module Test.Examples (getExamplesTests) where
 
 import Test.Checking (parseAndCheckNamed)
 import Brat.Compiler (compileToGraph)
-import Brat.Load (parseFile)
+import Brat.Load (parseFile, VMod)
 import Brat.Machine (interpretGraph)
+import Brat.Naming (Namespace)
 
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
@@ -35,26 +36,24 @@ interpreterOutputPrefix = "Finished "
 data FunctionTestType = SaveHugr | XfailOutput T.Text | Output T.Text
 
 -- Note this completely recompiles the file for each test, which is pretty bad
-funcTest :: String -> String -> FunctionTestType -> TestTree
-funcTest path func_name testTy = case testTy of
+funcTest :: IO (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
+funcTest nsmod path func_name testTy = case testTy of
   SaveHugr -> testCaseInfo func_name $ do
-        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
-        hugr <- runInterpreter [] path func_name >>= \case
-          Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
-          Right hugr -> pure hugr
+        nsmod@(ns,vmod) <- nsmod
+        hugr <- case interpretGraph nsmod func_name of
+              Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
+              Right hugr -> pure hugr
         getHoles hugr @?= []
         -- output the hugr for validation
+        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
         createDirectoryIfMissing False outputDir
         BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
-  XfailOutput expectedOutput -> expectFail (funcTest path func_name (Output expectedOutput))
+  XfailOutput expectedOutput -> expectFail (funcTest nsmod path func_name (Output expectedOutput))
   Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
-                in testCase func_name $ runInterpreter [] path func_name >>= \case
+                in testCase func_name $ nsmod >>= \nsmod' -> case interpretGraph nsmod' func_name of
       Left t -> T.unpack t @?= expectedOutput
       Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
- where
-  runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
-  runInterpreter libDirs file runFunc = compileToGraph libDirs file <&> \c -> interpretGraph c runFunc
 
 compilePrefix = "test/compilation"
 compileOutputDir = compilePrefix </> "output"
@@ -90,12 +89,14 @@ getExamplesTests =  do
           -- "-hugr\n" (checks no splices, outputs hugr for validation)
           restLine = fromJust $ T.stripPrefix execTestPrefix testLine
       in case restLine of
-           _ | (T.pack "-hugr") == restLine -> funcTest path func_name SaveHugr
+           _ | (T.pack "-hugr") == restLine -> funcTest nsmod path func_name SaveHugr
            _ | Just out <- T.stripPrefix (T.pack "-xfail ") restLine ->
-                  funcTest path func_name (XfailOutput out)
+                  funcTest nsmod path func_name (XfailOutput out)
              | Just out <- T.stripPrefix (T.pack " ") restLine ->
-                  funcTest path func_name (Output out)
+                  funcTest nsmod path func_name (Output out)
              | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
+     where
+      nsmod = compileToGraph [] path
 
 getHoles :: Ord a => HugrGraph a -> [a]
 getHoles hg = [n | n <- getNodes hg, isJust (isHole $ getOp hg n)]
