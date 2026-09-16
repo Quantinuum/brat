@@ -13,7 +13,7 @@ import Brat.Graph (NodeType(..))
 import Brat.Load (VMod, checkDecl, parseFile)
 import Brat.Machine (interpretGraph)
 import Brat.Naming (Namespace)
-import Brat.QualName (plain)
+import Brat.QualName (QualName, plain)
 import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..), Modey(..))
 import Brat.Syntax.FuncDecl (FuncDecl(..), FunBody(..), Locality(..))
 import Brat.Syntax.Port (End, Src)
@@ -30,9 +30,10 @@ import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.Hugr (isHole)
 import Data.HugrGraph as HG
-import Data.List (isPrefixOf)
 import qualified Data.Text.Lazy as T
 import qualified Data.Map as M
+import qualified Data.Set as S
+import qualified Data.List as L
 import Data.Maybe (fromJust, isJust)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath
@@ -72,9 +73,9 @@ funcTest nsmod path func_name testTy = case testTy of
           Left err -> assertFailure ("Could not desugar arguments: " ++ showError err)
           Right val -> pure val
         let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
-        let test_func_name = "test_" ++ func_name -- NO need to make unique
-        
-        let doCheck :: Checking (VDecl, Overs Brat UVerb) = do
+            (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
+            test_func_name = findNameNotIn (M.keysSet oldDeclEnv) ("test_" ++ func_name)
+            doCheck :: Checking (VDecl, Overs Brat UVerb) = do
               -- Should we split the namespace here?
 
               -- We're gonna check a function application, i.e. `app` above, but we want
@@ -100,7 +101,6 @@ funcTest nsmod path func_name testTy = case testTy of
               checkDecl [test_func_name] decl unders
               pure (decl, overs)
 
-        let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
         ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
           Left err -> assertFailure ("Could not check arguments: " ++ showError err)
           Right val -> pure val
@@ -125,6 +125,12 @@ funcTest nsmod path func_name testTy = case testTy of
       Left t -> T.unpack t @?= expectedOutput
       Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
 
+findNameNotIn :: S.Set QualName -> String -> String
+findNameNotIn ss cand | notMem cand = cand
+                      | otherwise = fromJust $ L.find notMem (map (\n -> cand ++ "_" ++ show n) [0..])
+  where
+    notMem x = plain x `S.notMember` ss
+
 compilePrefix = "test/compilation"
 compileOutputDir = compilePrefix </> "output"
 
@@ -135,9 +141,9 @@ getExamplesTests =  do
  where
   mkTest :: String -> String -> IO TestTree
   mkTest path cts =
-    if isPrefixOf "--!xfail-parsing" cts then
+    if L.isPrefixOf "--!xfail-parsing" cts then
       pure $ testGroup (show path) [expectFail parseTest]
-    else if isPrefixOf "--!xfail-checking" cts then
+    else if L.isPrefixOf "--!xfail-checking" cts then
       pure $ testGroup (show path) [parseTest, expectFail checkTest]
     else do
       maybe_mod <- catch (compileToGraph [] path <&> Just) (\(e :: IOError) -> pure Nothing)
