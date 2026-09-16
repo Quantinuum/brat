@@ -25,6 +25,8 @@ import Test.Checking (parseAndCheckNamed)
 import Hasochism (N(..), Ny(..), Some(..), (:*)(..))
 
 import Control.Exception (catch)
+import Control.Monad (when)
+import Data.Bifunctor (first)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
@@ -58,58 +60,57 @@ data FunctionTestType = SaveHugr T.Text -- arguments
                       | Output T.Text -- output (TODO add arguments)
                       | XfailOutput T.Text -- output
 
+make_test_func :: (Namespace, VMod) -> String -> T.Text -> Either String ((Namespace, VMod), String)
+make_test_func nsmod func_name arg_expr = do
+  arg <- first (\err -> "Could not parse arguments: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
+  (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
+
+  let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
+  arg_noun <- first (("Could not desugar arguments: " ++) . showError) (runDesugar env (desugar' raw_arg_noun))
+  let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
+      (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
+      test_func_name = findNameNotIn (M.keysSet oldDeclEnv) ("test_" ++ func_name)
+      doCheck :: Checking (VDecl, Overs Brat UVerb) = do
+        -- Should we split the namespace here?
+
+        -- We're gonna check a function application, i.e. `app` above, but we want
+        -- to put that inside a VDecl, which requires declaring its types :(.
+        (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in check app ((), ())
+        
+        -- TODO do we need a non-empty stack here?
+        outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty outs S0
+
+        let decl = case outs of
+              Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) (NoLhs $ WC fc (Emb app)) fc Local)
+
+        -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
+        -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
+        (unders, overs) <- case outs of
+              Some (id_ins :* ends) -> case varChangerThroughRo (ParToInx (AddZ $ stkLen ends) ends) id_ins of
+                Some (_ :* id_outs) -> do
+                  (_, unders, overs, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
+                  pure (unders, overs)
+
+        -- Finally check the decl onto that Id node.
+        -- Of course this checks the application again!
+        checkDecl [test_func_name] decl unders
+        pure (decl, overs)
+
+  ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first (("Could not check arguments: " ++) . showError) (checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck)
+  -- sanity check the arguments
+  when (noCaps /= M.empty) $ Left "arguments capture"
+  when (length noHoles /= 0) $ Left "holes in arguments"
+
+  let newDeclEnv = M.insert (plain test_func_name) (overs, decl) oldDeclEnv
+      newNsmod = (ns, (newDeclEnv, oldHoles, newStore, newGraph, oldCaps))
+  pure (newNsmod, test_func_name)
+
 funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr arg_expr -> testCaseInfo func_name $ do
-        arg <- case parseExpr (T.unpack $ T.strip arg_expr) of
-          Left err -> assertFailure ("Could not parse arguments: " ++ show err)
+        (nsmod, test_func_name) <- case make_test_func nsmod func_name arg_expr of
+          Left err -> assertFailure err
           Right val -> pure val
-        (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- case elaborateChkNoun arg of
-          Left err -> assertFailure ("Could not elaborate arguments: " ++ showError err)
-          Right val -> pure val
-
-        let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
-        arg_noun <- case runDesugar env (desugar' raw_arg_noun) of
-          Left err -> assertFailure ("Could not desugar arguments: " ++ showError err)
-          Right val -> pure val
-        let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
-            (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
-            test_func_name = findNameNotIn (M.keysSet oldDeclEnv) ("test_" ++ func_name)
-            doCheck :: Checking (VDecl, Overs Brat UVerb) = do
-              -- Should we split the namespace here?
-
-              -- We're gonna check a function application, i.e. `app` above, but we want
-              -- to put that inside a VDecl, which requires declaring its types :(.
-              (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in check app ((), ())
-              
-              -- TODO do we need a non-empty stack here?
-              outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty outs S0
-
-              let decl = case outs of
-                    Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) (NoLhs $ WC fc (Emb app)) fc Local)
-
-              -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
-              -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
-              (unders, overs) <- case outs of
-                    Some (id_ins :* ends) -> case varChangerThroughRo (ParToInx (AddZ $ stkLen ends) ends) id_ins of
-                      Some (_ :* id_outs) -> do
-                        (_, unders, overs, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
-                        pure (unders, overs)
-
-              -- Finally check the decl onto that Id node.
-              -- Of course this checks the application again!
-              checkDecl [test_func_name] decl unders
-              pure (decl, overs)
-
-        ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
-          Left err -> assertFailure ("Could not check arguments: " ++ showError err)
-          Right val -> pure val
-        -- sanity check the arguments
-        (noCaps == M.empty) @? "arguments capture"
-        (length noHoles == 0) @? "holes in arguments"
-
-        let newDeclEnv = M.insert (plain test_func_name) (overs, decl) oldDeclEnv
-            nsmod = (ns, (newDeclEnv, oldHoles, newStore, newGraph, oldCaps))
         hugr <- case interpretGraph nsmod test_func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
