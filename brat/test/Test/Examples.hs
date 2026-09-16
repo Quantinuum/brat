@@ -1,8 +1,8 @@
 module Test.Examples (getExamplesTests) where
 
 import Brat.Parser (parseExpr)
-import Brat.Checker (checkWithGraph)
-import Brat.Checker.Helpers (anext, next, rowToRo)
+import Brat.Checker (checkWithGraph, check)
+import Brat.Checker.Helpers (next, rowToRo)
 import Brat.Checker.Monad (Checking)
 import Brat.Checker.Types (Overs)
 import Brat.Compiler (compileToGraph)
@@ -16,9 +16,9 @@ import Brat.Naming (Namespace)
 import Brat.QualName (plain)
 import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..), Modey(..))
 import Brat.Syntax.FuncDecl (FuncDecl(..), FunBody(..), Locality(..))
-import Brat.Syntax.Port (End)
+import Brat.Syntax.Port (End, Src)
 import Brat.Syntax.Raw (runDesugar, Desugarable(..), Raw, RawEnv)
-import Brat.Syntax.Value (AddR(..), CTy(..), Ro(..), Stack(..), Val(..), VarChanger(..), VDecl(..), stkLen, varChangerThroughRo)
+import Brat.Syntax.Value (AddR(..), BinderType, Ro(..), Stack(..), VarChanger(..), VDecl(..), stkLen, varChangerThroughRo)
 import Brat.Syntax.Core (Term(..))
 import Test.Checking (parseAndCheckNamed)
 
@@ -71,39 +71,36 @@ funcTest nsmod path func_name testTy = case testTy of
         arg_noun <- case runDesugar env (desugar' raw_arg_noun) of
           Left err -> assertFailure ("Could not desugar arguments: " ++ showError err)
           Right val -> pure val
-        let body :: FunBody Term Noun = NoLhs $ WC fc $ (WC fc $ Emb $ WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
+        let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
         let test_func_name = "test_" ++ func_name -- NO need to make unique
         
-        let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
-        let (_, VDecl fd) = oldDeclEnv M.! (plain func_name)
-        functy :: CTy Brat Z <- case (fnSig fd) of
-            Some (RPr (_, VFun Braty cty) R0) -> pure cty
-            io -> assertFailure ("Can only test single functions, not: " ++ show io)
-        let doCheck :: Checking (VDecl, Overs Brat UVerb) = case functy of
+        let doCheck :: Checking (VDecl, Overs Brat UVerb) = do
               -- Should we split the namespace here?
-              (ins :->> outs) -> do
-                -- We're gonna check a function application, i.e. `body` above, but we must
-                -- put that inside a VDecl, which requires declaring its types :(.
-                (_, _, overs :: Overs Brat UVerb, _) <- anext "kindchecktest" Hypo (S0, Some (Zy :* S0)) ins outs
 
-                -- the args will be plugged into overs, but the application checks that
-                -- TODO do we need a non-empty stack here?
-                outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty overs S0
+              -- We're gonna check a function application, i.e. `app` above, but we want
+              -- to put that inside a VDecl, which requires declaring its types :(.
+              (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in check app ((), ())
+              
+              -- TODO do we need a non-empty stack here?
+              outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty outs S0
 
-                let decl = case outs of
-                      Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) body fc Local)
+              let decl = case outs of
+                    Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) (NoLhs $ WC fc (Emb app)) fc Local)
 
-                -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
-                -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
-                (unders, overs) <- case outs of
-                      Some (id_ins :* ends) -> case varChangerThroughRo (ParToInx (AddZ $ stkLen ends) ends) id_ins of
-                        Some (_ :* id_outs) -> do
-                          (_, unders, overs, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
-                          pure (unders, overs)
+              -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
+              -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
+              (unders, overs) <- case outs of
+                    Some (id_ins :* ends) -> case varChangerThroughRo (ParToInx (AddZ $ stkLen ends) ends) id_ins of
+                      Some (_ :* id_outs) -> do
+                        (_, unders, overs, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
+                        pure (unders, overs)
 
-                -- Finally check the decl onto that Id node
-                checkDecl [test_func_name] decl unders
-                pure (decl, overs)
+              -- Finally check the decl onto that Id node.
+              -- Of course this checks the application again!
+              checkDecl [test_func_name] decl unders
+              pure (decl, overs)
+
+        let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
         ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
           Left err -> assertFailure ("Could not check arguments: " ++ showError err)
           Right val -> pure val
