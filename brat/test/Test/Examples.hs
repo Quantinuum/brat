@@ -4,7 +4,7 @@ import Brat.Parser (parseExpr)
 import Brat.Checker (checkWithGraph)
 import Brat.Checker.Helpers (anext, next, rowToRo)
 import Brat.Checker.Monad (Checking)
-import Brat.Checker.Types (Unders)
+import Brat.Checker.Types (Overs)
 import Brat.Compiler (compileToGraph)
 import Brat.Elaborator (elaborateChkNoun)
 import Brat.Error (showError)
@@ -66,7 +66,7 @@ funcTest nsmod path func_name testTy = case testTy of
         (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- case elaborateChkNoun arg of
           Left err -> assertFailure ("Could not elaborate arguments: " ++ showError err)
           Right val -> pure val
-        
+
         let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
         arg_noun <- case runDesugar env (desugar' raw_arg_noun) of
           Left err -> assertFailure ("Could not desugar arguments: " ++ showError err)
@@ -75,47 +75,48 @@ funcTest nsmod path func_name testTy = case testTy of
         let test_func_name = "test_" ++ func_name -- NO need to make unique
         
         let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
-        length oldHoles @?= 0 -- do we need to skip interpreting if there are holes?
         let (_, VDecl fd) = oldDeclEnv M.! (plain func_name)
         functy :: CTy Brat Z <- case (fnSig fd) of
             Some (RPr (_, VFun Braty cty) R0) -> pure cty
             io -> assertFailure ("Can only test single functions, not: " ++ show io)
-        let doCheck :: Checking () = case functy of
+        let doCheck :: Checking (VDecl, Overs Brat UVerb) = case functy of
               -- Should we split the namespace here?
               (ins :->> outs) -> do
                 -- We're gonna check a function application, i.e. `body` above, but we must
                 -- put that inside a VDecl, which requires declaring its types :(.
-                (_, unders :: Unders Brat Chk, _overs, _) <- anext "kindchecktest" Hypo (S0, Some (Zy :* S0)) ins outs
+                (_, _, overs :: Overs Brat UVerb, _) <- anext "kindchecktest" Hypo (S0, Some (Zy :* S0)) ins outs
+
                 -- the args will be plugged into overs, but the application checks that
                 -- TODO do we need a non-empty stack here?
-                outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty unders S0
+                outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty overs S0
 
-                let decl_outs = case outs of
-                      Some (ro :* _) -> Some ro
-                    decl = VDecl (FuncDecl test_func_name decl_outs body fc Local)
+                let decl = case outs of
+                      Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) body fc Local)
 
                 -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
                 -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
-                unders <- case outs of
+                (unders, overs) <- case outs of
                       Some (id_ins :* ends) -> case varChangerThroughRo (ParToInx (AddZ $ stkLen ends) ends) id_ins of
                         Some (_ :* id_outs) -> do
-                          (_, unders, _, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
-                          pure unders
+                          (_, unders, overs, _) <- next test_func_name Id (S0, Some (Zy :* S0)) id_ins id_outs
+                          pure (unders, overs)
 
                 -- Finally check the decl onto that Id node
                 checkDecl [test_func_name] decl unders
-        ((), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
+                pure (decl, overs)
+        ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
           Left err -> assertFailure ("Could not check arguments: " ++ showError err)
           Right val -> pure val
         -- sanity check the arguments
-        noCaps @?= M.empty
-        length noHoles @?= 0
-        
-        let nsmod = (ns, (oldDeclEnv, oldHoles, newStore, newGraph, oldCaps))
+        (noCaps == M.empty) @? "arguments capture"
+        (length noHoles == 0) @? "holes in arguments"
+
+        let newDeclEnv = M.insert (plain test_func_name) (overs, decl) oldDeclEnv
+            nsmod = (ns, (newDeclEnv, oldHoles, newStore, newGraph, oldCaps))
         hugr <- case interpretGraph nsmod test_func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
-        getHoles hugr @?= []
+        (getHoles hugr == []) @? "holes in hugr"
         -- output the hugr for validation
         let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ test_func_name <.> "json"
         createDirectoryIfMissing False outputDir
