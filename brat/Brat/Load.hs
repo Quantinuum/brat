@@ -108,11 +108,8 @@ checkDecl pre (VDecl FuncDecl{..}) to_define = (fnName -!) $ localFC fnLoc $ do
 
   getFunTy :: Some (Ro m Z) -> Checking (Maybe (Some (Modey :* Flip CTy Z)))
   getFunTy (Some (RPr (_, VFun my cty) R0)) = pure $ Just (Some (my :* Flip cty))
-  getFunTy (Some R0) = err $ EmptyRow name
+  getFunTy (Some R0) = err $ EmptyRow (show $ PrefixName pre fnName)
   getFunTy _ = pure Nothing
-
-  uname = PrefixName pre fnName
-  name = show uname
 
 loadAlias :: TypeAlias -> Checking (QualName, Alias)
 loadAlias (TypeAlias fc name args body) = localFC fc $ do
