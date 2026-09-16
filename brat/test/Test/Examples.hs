@@ -2,19 +2,30 @@ module Test.Examples (getExamplesTests) where
 
 import Brat.Parser (parseExpr)
 import Brat.Checker (check, checkWithGraph)
-import Brat.Checker.Types (ChkConnectors)
+import Brat.Checker.Helpers (anext, rowToRo)
+import Brat.Checker.Monad (Checking)
+import Brat.Checker.Types (Unders, Overs)
 import Brat.Compiler (compileToGraph)
 import Brat.Elaborator (elaborateChkNoun)
 import Brat.FC (WC(..))
-import Brat.Load (parseFile, VMod)
+import Brat.Graph (NodeType(..))
+import Brat.Load (VMod, checkDecl, parseFile)
 import Brat.Machine (interpretGraph)
 import Brat.Naming (Namespace)
-import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..))
+import Brat.QualName (plain)
+import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..), Modey(..), Tgt)
+import Brat.Syntax.FuncDecl (FuncDecl(..), FunBody(..), Locality(..))
+import Brat.Syntax.Port (NamedPort(..))
 import Brat.Syntax.Raw (runDesugar, Desugarable(..), Raw, RawEnv)
+import Brat.Syntax.Value (BinderType, CTy(..), Ro(..), Stack(..), Val(..), VDecl(..))
+import Brat.Syntax.Core (Term(..))
 import Test.Checking (parseAndCheckNamed)
+
+import Hasochism (N(..), Ny(..), Some(..), (:*)(..))
 
 import Control.Exception (catch)
 import qualified Data.ByteString as BS
+import Data.Bifunctor (first)
 import Data.Char (isAlphaNum)
 import Data.Functor ((<&>))
 import Data.Hugr (isHole)
@@ -55,27 +66,52 @@ funcTest nsmod path func_name testTy = case testTy of
         (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- case elaborateChkNoun arg of
           Left err -> assertFailure ("Could not elaborate arguments: " ++ show err)
           Right val -> pure val
-        let env :: RawEnv = undefined -- ALAN ??
+        
+        --let io :: TypeRowElem (WC (KindOr RawVType)) = -- VType -> RawVType = RawChkNoun, no thanks
+
+        --let decl :: FuncDecl [RawIO] (FunBody Raw Noun) = (FuncDecl
+        --  io
+        --  NoLhs (WC fc (RForce (WC fc (RVar (plain func_name)))) ::$:: (WC fc raw_arg_noun)))
+        -- let env :: RawEnv = ([decl], [], M.empty)
+        -- ([decl], []) <- case desugarEnv env of ...
+        let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
         arg_noun <- case runDesugar env (desugar' raw_arg_noun) of
           Left err -> assertFailure ("Could not desugar arguments: " ++ show err)
-          Right val -> pure (WC fc val)
+          Right val -> pure val
+        let body :: FunBody Term Noun = NoLhs $ WC fc $ (WC fc $ Emb $ WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
+        let test_func_name = "test_" ++ func_name -- NO need to make unique
+        
         let (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
         oldHoles @?= [] -- do we need to skip interpreting if there are holes?
-        -- Should we split the namespace here?
-        let conns :: ChkConnectors Brat Chk Noun = ((), undefined) -- need [Tgt, BinderTypeBrat] i.e. inports of call to func_name
-        ((((), ()), ((), chk_unders)), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph (check arg_noun conns) of
+        let (_, VDecl fd) = oldDeclEnv M.! (plain func_name)
+        functy :: CTy Brat Z <- case (fnSig fd) of
+            Some (RPr (_, VFun Braty cty) R0) -> pure cty
+            io -> assertFailure ("Can only test single functions, not: " ++ show io)
+        let doCheck :: Checking () = case functy of
+              (ins :->> outs) -> do
+                -- We're gonna check a function application, i.e. `body` above, but we must
+                -- put that inside a VDecl, which requires declaring its types :(.
+                (_, unders :: Unders Brat Chk, overs :: Overs Brat UVerb, _) <- anext "kindchecktest" Hypo (S0, Some (Zy :* S0)) ins outs
+                -- the args will be plugged into overs, but the application checks that
+                let underPorts :: [(String, BinderType Brat)] = map (first portName) unders
+                -- TODO do we need a non-empty stack here?
+                outs :: Some (Ro Brat Z) <- rowToRo Braty underPorts S0 <&> \case
+                  Some (ro :* _) -> Some ro
+                let decl = VDecl (FuncDecl test_func_name outs body fc Local)
+                -- Should we split the namespace here?
+                checkDecl [test_func_name] decl outs
+        ((), (noHoles, newStore, newGraph, noCaps)) <- case checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck of
           Left err -> assertFailure ("Could not check arguments: " ++ show err)
           Right val -> pure val
-        chk_unders @?= []
         (noCaps, noHoles) @?= (M.empty, []) -- i.e. in arguments
         let nsmod = (ns, (oldDeclEnv, oldHoles, newStore, newGraph, oldCaps))
         
-        hugr <- case interpretGraph nsmod func_name of
+        hugr <- case interpretGraph nsmod test_func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
         getHoles hugr @?= []
         -- output the hugr for validation
-        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
+        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ test_func_name <.> "json"
         createDirectoryIfMissing False outputDir
         BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"

@@ -1,4 +1,5 @@
-module Brat.Load (loadFilename
+module Brat.Load (checkDecl
+                 ,loadFilename
                  ,loadFiles
                  ,parseFile
                  ,desugarEnv
