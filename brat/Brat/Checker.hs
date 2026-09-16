@@ -273,11 +273,9 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
   portNamesToBoundNames = fmap (\(n, (src, ty)) -> (n, (NamedPort (end src) n, ty)))
 
   mkSig :: ToEnd t => [(Src, BinderType m)] -> [(NamedPort t, BinderType m)] -> Checking (CTy m Z)
-  mkSig overs unders = rowToRo ?my (retuple <$> overs) S0 >>=
-    \(Some (inRo :* endz)) -> rowToRo ?my (retuple <$> unders) endz >>=
+  mkSig overs unders = rowToRo ?my overs S0 >>=
+    \(Some (inRo :* endz)) -> rowToRo ?my unders endz >>=
       \(Some (outRo :* _)) -> pure (inRo :->> outRo)
-
-  retuple (NamedPort e p, ty) = (p, e, ty)
 
   mkWires overs unders = case zipSameLength overs unders of
     Nothing -> err $ InternalError "Trying to wire up different sized lists of wires"
@@ -618,7 +616,7 @@ check' (Of n e) ((), unders) = case ?my of
                         typeErr $ unlines ["Got: Vector of length " ++ show n
                                           ,"Expected: " ++ expected]
         (elemUnders, vecUnders, rightUnders) -> do
-          (Some (_ :* stk)) <- rowToRo ?my [ (portName tgt, tgt, Right ty) | (tgt, ty) <- elemUnders ] S0
+          (Some (_ :* stk)) <- rowToRo ?my (map (second Right) elemUnders) S0
           case stk of
             S0 -> do
               (repConns, tgtMap) <- mkReplicateNodes n elemUnders
@@ -646,7 +644,7 @@ check' (Of n e) ((), unders) = case ?my of
             _ -> localFC (fcOf e) $ typeErr "No type dependency allowed when using `of`"
       Syny -> do
         (((), outputs), ((), ())) <- check e ((), ())
-        Some (_ :* stk) <- rowToRo ?my [(portName src, src, ty) | (src, ty) <- outputs] S0
+        Some (_ :* stk) <- rowToRo ?my outputs S0
         case stk of
           S0 -> do
             -- Use of `outputs` and the map returned here are nonsensical, but we're
