@@ -11,6 +11,7 @@ import Brat.Elaborator
 import Brat.Error
 import Brat.Load
 import Brat.Naming (Namespace, root, split)
+import Brat.Syntax.Raw (desugarEnv)
 
 import Control.Monad (forM, when)
 import Control.Monad.Except

@@ -2,7 +2,6 @@ module Brat.Load (checkDecl
                  ,loadFilename
                  ,loadFiles
                  ,parseFile
-                 ,desugarEnv
                  ,VMod
                  ) where
 
