@@ -96,7 +96,8 @@ make_test_func nsmod func_name arg_expr = do
         checkDecl [test_func_name] decl unders
         pure (decl, overs)
 
-  ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first (("Could not check arguments: " ++) . showError) (checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck)
+  ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first (("Could not check arguments: " ++) . showError) $
+       checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck
   -- sanity check the arguments
   when (noCaps /= M.empty) $ Left "arguments capture"
   when (length noHoles /= 0) $ Left "holes in arguments"
