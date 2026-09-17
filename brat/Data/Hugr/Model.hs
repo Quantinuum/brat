@@ -236,7 +236,7 @@ data Literal
  = LitStr String
  | LitNat Int
  | LitBytes [Word8]
- | LitFloat Float
+ | LitFloat Double
  deriving Show
 
 instance Serialise Literal where

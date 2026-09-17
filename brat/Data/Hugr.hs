@@ -58,9 +58,6 @@ sumOfRows ty = error $ show ty ++ " isn't a sum of row tuples"
 compileSumOfRows :: SumOfRows -> HugrType
 compileSumOfRows (SoR rows) = HTSum (SG (GeneralSum rows))
 
-hugrRotation :: HugrType
-hugrRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
-
 -- Depends on HugrValue (via TypeArg in HTOpaque)
 data HugrType
   = HTQubit
@@ -75,6 +72,9 @@ data HugrType
 
 htTuple :: [HugrType] -> HugrType
 htTuple row = HTSum (SG (GeneralSum [row]))
+
+htRotation :: HugrType
+htRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
 
 data PolyFuncType = PolyFuncType
  { params :: [TypeParam]
@@ -160,7 +160,7 @@ data HugrValue
 hvUnit = HVTuple []
 hvRotation rad = HVExtension
                  ["tket.rotation"]
-                 hugrRotation
+                 htRotation
                  (CC "ConstRotation" [("half_turns", HVFloat (rad / pi))])
 
 valFromSimple :: SimpleTerm -> HugrValue
