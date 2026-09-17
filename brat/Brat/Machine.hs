@@ -31,8 +31,6 @@ import qualified Data.Set as S
 import Bwd
 import Util (zipSameLength)
 
-import Debug.Trace
-
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
 runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
@@ -175,7 +173,6 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   isEmptyVecV :: Value -> Bool
   isEmptyVecV (VecV []) = True
   isEmptyVecV _ = False
-runThunk _ _ th vs | trace (unwords ["runThunk",show th, show vs]) False = undefined
 
 -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
 evalNode :: GraphInfo -> Bwd Frame -> Name -> [Value] -> Task
