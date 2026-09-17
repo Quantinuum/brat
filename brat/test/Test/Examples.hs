@@ -57,8 +57,8 @@ interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished "
 
 data FunctionTestType = SaveHugr T.Text -- arguments
-                      | Output T.Text -- output (TODO add arguments)
-                      | XfailOutput T.Text -- output
+                      | Output T.Text T.Text -- arguments, output
+                      | XfailOutput T.Text T.Text -- arguments, output
 
 make_test_func :: (Namespace, VMod) -> String -> T.Text -> Either String ((Namespace, VMod), String)
 make_test_func nsmod func_name arg_expr = do
@@ -109,25 +109,33 @@ make_test_func nsmod func_name arg_expr = do
 funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr arg_expr -> testCaseInfo func_name $ do
-        (nsmod, test_func_name) <- if T.null arg_expr
+        (nsmod, func_to_call) <- if T.null arg_expr
             then pure (nsmod, func_name)
             else case make_test_func nsmod func_name arg_expr of
                   Left err -> assertFailure err
                   Right val -> pure val
-        hugr <- case interpretGraph nsmod test_func_name of
+        hugr <- case interpretGraph nsmod func_to_call of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
         (getHoles hugr == []) @? "holes in hugr"
         -- output the hugr for validation
-        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ test_func_name <.> "json"
+        -- TODO multiple tests of the same function will overwrite each other here,
+        -- we need to pass in an ordinal, line number, or something.
+        let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_to_call <.> "json"
         createDirectoryIfMissing False outputDir
         BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
-  XfailOutput out -> expectFail (funcTest nsmod path func_name (Output out))
-  Output out -> let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
-                in testCase func_name $ case interpretGraph nsmod func_name of
-      Left t -> T.unpack t @?= expectedOutput
-      Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
+  XfailOutput args out -> expectFail (funcTest nsmod path func_name (Output args out))
+  Output args out -> testCase func_name $ do
+        let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
+        (nsmod, func_to_call) <- if T.null args
+              then pure (nsmod, func_name)
+              else case make_test_func nsmod func_name args of
+                  Left err -> assertFailure $ "Could not check args against " ++ func_name ++ ": " ++ err
+                  Right val -> pure val
+        case interpretGraph nsmod func_to_call of
+              Left t -> T.unpack t @?= expectedOutput
+              Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
 
 findNameNotIn :: S.Set QualName -> String -> String
 findNameNotIn ss cand | notMem cand = cand
@@ -177,11 +185,16 @@ getExamplesTests =  do
       in case restLine of
            _ | Just args <- T.stripPrefix (T.pack "-hugr") restLine ->
                   funcTest nsmod path func_name (SaveHugr args)
-           _ | Just out <- T.stripPrefix (T.pack "-xfail ") restLine ->
-                  funcTest nsmod path func_name (XfailOutput out)
-             | Just out <- T.stripPrefix (T.pack " ") restLine ->
-                  funcTest nsmod path func_name (Output out)
+           _ | Just args_out <- T.stripPrefix (T.pack "-xfail ") restLine ->
+                  funcTest nsmod path func_name (uncurry XfailOutput $ split_args args_out)
+             | Just args_out <- T.stripPrefix (T.pack " ") restLine ->
+                  funcTest nsmod path func_name (uncurry Output $ split_args args_out)
              | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
+    split_args :: T.Text -> (T.Text, T.Text)
+    split_args txt = case T.splitOn (T.pack "-->") txt of
+      [output] -> (T.empty, output)
+      [args, out] -> (args, out)
+      _ -> error $ "Test line contained more than one -->"
 
 getHoles :: Ord a => HugrGraph a -> [a]
 getHoles hg = [n | n <- getNodes hg, isJust (isHole $ getOp hg n)]
