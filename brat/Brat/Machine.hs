@@ -3,7 +3,11 @@ module Brat.Machine (runInterpreter) where
 import Brat.Checker.Monad (CaptureSets)
 import Brat.Checker.Types (Store, initStore)
 import Brat.Compiler (compileToGraph)
-import Brat.Compile.Hugr
+import Brat.Compile.Hugr (Container(..)
+                         ,addEdge, addNode
+                         ,compileKernel, hugr
+                         ,makeCS, makeIO, onHugr
+                         )
 import Brat.Constructors.Patterns
 import Brat.Naming (Name, Namespace, split)
 import Brat.Graph (Graph, NodeType (..), Node (BratNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
@@ -18,6 +22,7 @@ import Hasochism
 
 import Control.Monad.State (execState, gets, evalState)
 import qualified Data.Text.Lazy as T
+import Data.Foldable (for_)
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.List (uncons)
 import Data.List.NonEmpty (NonEmpty(..))
@@ -25,6 +30,8 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Bwd
 import Util (zipSameLength)
+
+import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
@@ -168,6 +175,7 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   isEmptyVecV :: Value -> Bool
   isEmptyVecV (VecV []) = True
   isEmptyVecV _ = False
+runThunk _ _ th vs | trace (unwords ["runThunk",show th, show vs]) False = undefined
 
 -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
 evalNode :: GraphInfo -> Bwd Frame -> Name -> [Value] -> Task
@@ -259,7 +267,8 @@ run gi fz t = run gi fz (Suspend [] t)
 
 runPrim :: Namespace -> (String, String) -> [Value] -> Maybe [Value]
 runPrim _ ("arith","i2f") [IntV v] = Just [FloatV (fromIntegral v)]
-runPrim ns ("tket", op) [FloatV th] | op `elem` ["CRx", "CRy", "CRz"] = Just [KernelV (makeParametrisedGateHugr ns op th 2)]
+runPrim ns ("builtin", op) [FloatV th] | op `elem` ["Rx", "Ry", "Rz"] = Just [KernelV (makeParametrisedGateHugr ns op th 1)]
+runPrim ns ("builtin", op) [FloatV th] | op `elem` ["CRx", "CRy", "CRz"] = Just [KernelV (makeParametrisedGateHugr ns op th 2)]
 runPrim _ _ _ = Nothing
 
 makeParametrisedGateHugr :: Namespace -> {- Op name: -} String -> {- angle arg: -} Double -> Int -> HG.HugrGraph HG.NodeId
@@ -268,20 +277,22 @@ makeParametrisedGateHugr ns op th nqubits =
    hugr $ flip execState (makeCS (emptyGraph, newRoot, initStore) (dfgHugr ns')) $ do
      parent <- gets (HG.getRoot . hugr)
      Ctr {parent,input,output} <- makeIO "" parent
-     onHugr $ HG.setOp input (OpIn (InputNode [HTQubit, HTQubit] []))
-     onHugr $ HG.setOp output (OpOut (OutputNode [HTQubit, HTQubit] []))
+     onHugr $ HG.setOp input (OpIn (InputNode (replicate nqubits HTQubit) []))
+     onHugr $ HG.setOp output (OpOut (OutputNode (replicate nqubits HTQubit) []))
      -- TODO: Make this a rotation (using hvRotation) when we use the actual TKET
      -- ops, we're just targeting dummy ops in the BRAT extension for the sake of
      -- getting things going until hugr is updated.
      constTh <- addNode "k_th" (parent, OpConst (ConstOp (hvFloat th)))
-     th <- addNode "th" (parent, OpLoadConstant (LoadConstantOp hugrFloat))
+     thFloat <- addNode "th" (parent, OpLoadConstant (LoadConstantOp hugrFloat))
+     thRot <- addNode "thRot" (parent, OpCustom float2RotOp)
      gate <- addNode "gate" (parent, addMetadata [("Our","Gate")] $ OpCustom gateOp)
-     addEdge (Port input 0, Port gate 0)
-     addEdge (Port input 1, Port gate 1)
-     addEdge (Port constTh 0, Port th 0)
-     addEdge (Port th 0, Port gate 2)
-     addEdge (Port gate 0, Port output 0)
-     addEdge (Port gate 1, Port output 1)
+     -- Might be 1 or 2 inputs to the gate
+     for_ [0..nqubits-1] (\offset -> addEdge (Port input offset, Port gate offset))
+     addEdge (Port constTh 0, Port thFloat 0)
+     addEdge (Port thFloat 0, Port thRot 0)
+     addEdge (Port thRot 0, Port gate nqubits)
+     -- Might be 1 or 2 wires to the output
+     for_ [0..nqubits-1] (\offset -> addEdge (Port gate offset, Port output offset))
  where
   dfgHugr :: Namespace -> HG.HugrGraph HG.NodeId
   dfgHugr = evalState (HG.new "" (OpDFG (DFG signature [])))
@@ -292,14 +303,21 @@ makeParametrisedGateHugr ns op th nqubits =
    , extensions = bratExts
    }
 
+  float2RotOp = CustomOp
+   { extension = "tket.rotation"
+   , op_name = "from_halfturns_unchecked"
+   , signature_ = FunctionType [hugrFloat] [htRotation] ["tket.rotation"]
+   , args = []
+   }
+
   gateOp = CustomOp
-   { extension = "BRAT" -- TODO: Make this "tket.quantum"
+   { extension = "tket.quantum"
    , op_name = op
    , signature_ = FunctionType
-                  { input = [HTQubit | _ <- [1..nqubits]]
-                             ++ [hugrFloat] -- TODO: Make this hugrRotation
-                  , output = [HTQubit | _ <- [1..nqubits]]
-                  , extensions = bratExts
+                  { input = (replicate nqubits HTQubit)
+                             ++ [htRotation]
+                  , output = replicate nqubits HTQubit
+                  , extensions = ["tket.quantum"]
                   }
    , args = []
    }
@@ -429,6 +447,7 @@ data BratThunk =
     BratClosure EvalEnv Name Name  -- Captured environment, src node, tgt node
   | BratPrim String String (CTy Brat Z)
   | VectorisedThunks [BratThunk] -- result of MapFun
+ deriving Show
 
 instance Show Value where
   show (IntV x) = show x
