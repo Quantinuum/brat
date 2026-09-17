@@ -108,9 +108,11 @@ make_test_func nsmod func_name arg_expr = do
 funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr arg_expr -> testCaseInfo func_name $ do
-        (nsmod, test_func_name) <- case make_test_func nsmod func_name arg_expr of
-          Left err -> assertFailure err
-          Right val -> pure val
+        (nsmod, test_func_name) <- if T.null arg_expr
+            then pure (nsmod, func_name)
+            else case make_test_func nsmod func_name arg_expr of
+                  Left err -> assertFailure err
+                  Right val -> pure val
         hugr <- case interpretGraph nsmod test_func_name of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
