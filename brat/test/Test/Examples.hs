@@ -62,11 +62,11 @@ data FunctionTestType = SaveHugr T.Text -- arguments
 
 make_test_func :: (Namespace, VMod) -> String -> T.Text -> Either String ((Namespace, VMod), String)
 make_test_func nsmod func_name arg_expr = do
-  arg <- first (\err -> "Could not parse arguments: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
+  arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
   (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
 
   let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
-  arg_noun <- first (("Could not desugar arguments: " ++) . showError) (runDesugar env (desugar' raw_arg_noun))
+  arg_noun <- first (("In desugaring: " ++) . showError) (runDesugar env (desugar' raw_arg_noun))
   let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
       (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
       test_func_name = findNameNotIn (M.keysSet oldDeclEnv) ("test_" ++ func_name)
@@ -96,7 +96,7 @@ make_test_func nsmod func_name arg_expr = do
         checkDecl [test_func_name] decl unders
         pure (decl, overs)
 
-  ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first (("Could not check arguments: " ++) . showError) $
+  ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first showError $
        checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck
   -- sanity check the arguments
   when (noCaps /= M.empty) $ Left "arguments capture"
@@ -131,7 +131,7 @@ funcTest nsmod path func_name testTy = case testTy of
         (nsmod, func_to_call) <- if T.null args
               then pure (nsmod, func_name)
               else case make_test_func nsmod func_name args of
-                  Left err -> assertFailure $ "Could not check args against " ++ func_name ++ ": " ++ err
+                  Left err -> assertFailure $ "Could not check args for " ++ func_name ++ ": " ++ err
                   Right val -> pure val
         case interpretGraph nsmod func_to_call of
               Left t -> T.unpack t @?= expectedOutput
