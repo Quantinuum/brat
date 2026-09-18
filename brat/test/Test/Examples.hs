@@ -12,7 +12,7 @@ import Brat.FC (WC(..))
 import Brat.Graph (NodeType(..))
 import Brat.Load (VMod, checkDecl, parseFile)
 import Brat.Machine (interpretGraph)
-import Brat.Naming (Namespace)
+import Brat.Naming (Namespace, (-!))
 import Brat.QualName (QualName, plain)
 import Brat.Syntax.Common (Mode(..), Dir(..), Kind(..), Modey(..))
 import Brat.Syntax.FuncDecl (FuncDecl(..), FunBody(..), Locality(..))
@@ -65,7 +65,7 @@ make_test_func nsmod func_name arg_expr = do
   arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
   (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
 
-  let env :: RawEnv = ([], [], M.empty) -- ALAN will this work? E.g. args referring to other funcs (higher-order)?
+  let env :: RawEnv = ([], [], M.empty) -- Will mean test args cannot use aliases etc.
   arg_noun <- first (("In desugaring: " ++) . showError) (runDesugar env (desugar' raw_arg_noun))
   let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
       (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
@@ -75,13 +75,13 @@ make_test_func nsmod func_name arg_expr = do
 
         -- We're gonna check a function application, i.e. `app` above, but we want
         -- to put that inside a VDecl, which requires declaring its types :(.
-        (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in check app ((), ())
+        (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in "$rhs" -! check app ((), ())
         
-        -- TODO do we need a non-empty stack here?
+        -- Do we need a non-empty stack here? Not sure for what
         outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty outs S0
 
         let decl = case outs of
-              Some (ro :* _) ->  VDecl (FuncDecl test_func_name (Some ro) (NoLhs $ WC fc (Emb app)) fc Local)
+              Some (ro :* _) -> VDecl (FuncDecl test_func_name (Some ro) (NoLhs $ WC fc (Emb app)) fc Local)
 
         -- The decl needs wiring into an Id node whose *inputs* are the outs we just obtained,
         -- and whose *outputs* are another copy of that, hasochistically renumbered to come after.
