@@ -56,6 +56,7 @@ goo = dec(foo)
 length(X :: *, n :: #, Vec(X, n)) -> Nat
 length(_, n, _) = n
 
+--!exec 2, [1,2,3] --> [1]
 hoo(n :: #, Vec(Nat, n + 1)) -> Nat
 hoo(succ(l), ls =, m ,= rs) = length(!, !, ls)
 hoo(n, _) = n

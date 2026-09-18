@@ -1,5 +1,6 @@
 I :: { Qubit -o Qubit }
 I = { q => q }
 
+--!exec-hugr
 I2 :: { Qubit, Qubit -o Qubit, Qubit }
 I2 = { q0, q1 => (I,I)(q0,q1) }

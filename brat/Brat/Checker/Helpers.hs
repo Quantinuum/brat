@@ -405,20 +405,20 @@ natEqOrBust :: Ny i -> Ny j -> Either ErrorMsg (i :~: j)
 natEqOrBust n m | Just q <- testEquality n m = pure q
 natEqOrBust _ _ = Left $ InternalError "We can't count"
 
-rowToRo :: ToEnd t => Modey m -> [(String, t, BinderType m)] -> Stack Z End i -> Checking (Some (Ro m i :* Stack Z End))
+rowToRo :: ToEnd t => Modey m -> [(NamedPort t, BinderType m)] -> Stack Z End i -> Checking (Some (Ro m i :* Stack Z End))
 rowToRo _ [] stk = pure $ Some (R0 :* stk)
-rowToRo Kerny ((p, _, ty):row) S0 = do
+rowToRo Kerny ((p, ty):row) S0 = do
   ty <- eval S0 ty
   rowToRo Kerny row S0 >>= \case
-    Some (ro :* stk) -> pure . Some $ RPr (p, changeVar (ParToInx (AddZ Zy) S0) ty) ro :* stk
+    Some (ro :* stk) -> pure . Some $ RPr (portName p, changeVar (ParToInx (AddZ Zy) S0) ty) ro :* stk
 rowToRo Kerny _ (_ :<< _) = err $ InternalError "rowToRo - no binding allowed in kernels"
 
-rowToRo Braty ((p, _, Right ty):row) endz = do
+rowToRo Braty ((p, Right ty):row) endz = do
   ty <- eval S0 ty
   rowToRo Braty row endz >>= \case
-    Some (ro :* stk) -> pure . Some $ RPr (p, changeVar (ParToInx (AddZ (stackLen endz)) endz) ty) ro :* stk
-rowToRo Braty ((p, tgt, Left k):row) endz = rowToRo Braty row (endz :<< toEnd tgt) >>= \case
-  Some (ro :* stk) -> pure . Some $ REx (p, k) ro :* stk
+    Some (ro :* stk) -> pure . Some $ RPr (portName p, changeVar (ParToInx (AddZ (stackLen endz)) endz) ty) ro :* stk
+rowToRo Braty ((NamedPort end portName, Left k):row) endz = rowToRo Braty row (endz :<< toEnd end) >>= \case
+  Some (ro :* stk) -> pure . Some $ REx (portName, k) ro :* stk
 
 roToTuple :: Ro m Z Z -> Val Z
 roToTuple R0 = TNil
