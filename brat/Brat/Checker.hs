@@ -3,7 +3,7 @@
 module Brat.Checker (checkBody
                     ,check
                     ,runChecking
-                    ,checkWithGraph
+                    ,runWithGraph
                     ,kindCheck
                     ,kindCheckAnnotation
                     ,kindCheckRow
@@ -1262,15 +1262,15 @@ runChecking :: VEnv
     -> Namespace
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-runChecking ve initStore ns m = checkWithGraph ve initStore ns mempty m
+runChecking ve initStore ns m = runWithGraph ve initStore ns mempty m
 
-checkWithGraph :: VEnv
+runWithGraph :: VEnv
                -> Store
                -> Namespace
                -> Graph
                -> Checking a
                -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-checkWithGraph ve initStore ns g m = do
+runWithGraph ve initStore ns g m = do
   let ctx = Ctx { globalVEnv = ve
                 , store = initStore
                 -- TODO: fill with default constructors

@@ -1,7 +1,7 @@
 module Test.Examples (getExamplesTests) where
 
 import Brat.Parser (parseExpr)
-import Brat.Checker (checkWithGraph, check)
+import Brat.Checker (runWithGraph, check)
 import Brat.Checker.Helpers (next, rowToRo)
 import Brat.Checker.Monad (Checking)
 import Brat.Checker.Types (Overs)
@@ -97,7 +97,7 @@ make_test_func nsmod func_name arg_expr = do
         pure (decl, overs)
 
   ((decl, overs), (noHoles, newStore, newGraph, noCaps)) <- first showError $
-       checkWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck
+       runWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck
   -- sanity check the arguments
   when (noCaps /= M.empty) $ Left "arguments capture"
   when (length noHoles /= 0) $ Left "holes in arguments"
