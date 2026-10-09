@@ -7,23 +7,23 @@ module Data.HugrGraph(NodeId,
                       setFirstChildren,
                       setOp, getParent, getOp,
                       addEdge, addOrderEdge,
+                      addNode, addEdge',
                       splice, splice_new, splice_prepend, inlineDFG,
                       getChildren,
-                      inEdges, outEdges
+                      inEdges, outEdges,
+                      liftNS
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
 import Data.Hugr hiding (const)
 
-import Control.Monad.State (State, execState, state, get, put, modify)
+import Control.Monad.State (State, execState, state, get, put, modify, runState)
 import Data.Bifunctor (first)
 import Data.Foldable (for_)
 import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
-
-import Debug.Trace
 
 track = const id
 
@@ -84,6 +84,20 @@ new nam op = state $ \ns ->
         edges_out = M.empty}
       ,ns'
       )
+
+liftNS :: State (HugrGraph NodeId) a -> State (HugrGraph NodeId, Namespace) a
+liftNS st = do
+  (hg, ns) <- get
+  case runState st hg of
+    (a, hg) -> a <$ put (hg, ns)
+
+addNode :: NodeId -> String -> HugrOp -> State (HugrGraph NodeId, Namespace) NodeId
+addNode parent lbl op = do
+  nid <- freshNode parent lbl
+  liftNS (setOp nid op)
+  pure nid
+
+addEdge' e = liftNS (addEdge e)
 
 addEdge :: Ord n =>(PortId n, PortId n) -> State (HugrGraph n) ()
 addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
@@ -223,7 +237,6 @@ data UnifySpliceTypeResult a
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
 -- the hole
 splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
-splice_prepend hole add | trace (unwords["splice",show add,"into",show hole]) False = undefined
 splice_prepend hole add = splice hole add (keyMap M.!)
  where
   prefixRoot :: NodeId -> NodeId

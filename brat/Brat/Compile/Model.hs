@@ -193,7 +193,6 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
         let mInputLinks = fmap (>>= (\(Port _ outIx, _) -> lookup outIx danglingLinks)) ps
         freshInputLinks out mInputLinks
 
-  let regionMetas = convertMeta meta
   let regionSignature = Just (convertSig sig)
   children <- traverse (convertNode hg)
               (delete inp $ delete out (getChildren hg nodeId))
@@ -202,7 +201,7 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
        , sources = sourceVars
        , targets = targetVars
        , children = catMaybes children
-       , regionMetas = regionMetas
+       , regionMetas = convertMeta meta
        , regionSignature = regionSignature
        })
 
@@ -216,7 +215,7 @@ nodeInputs hg nodeId =
 
 nodeOutputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName]
 nodeOutputs hg nodeId =
-  for (outEdges hg nodeId) $ \(srcIx, Port tgtNode tgtIx) -> do
+  for (sortBy (comparing fst) (outEdges hg nodeId)) $ \(srcIx, Port tgtNode tgtIx) -> do
     getHungry tgtNode tgtIx >>= \case
       Just link -> pure link
       Nothing -> makeOutputLink nodeId srcIx
@@ -255,7 +254,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , inputs = inWires
          , outputs = outWires
          , regions = [region]
-         , nodeMetas = []
+         , nodeMetas = convertMeta meta
          , nodeSignature = M.regionSignature region
          }))
   (OpConditional (Conditional { .. })) -> do
@@ -265,7 +264,7 @@ convertNode hg nodeId = case getOp hg nodeId of
     let discrim = M.Apply "core.adt" [M.List [M.Item (M.List (M.Item . convertType <$> row)) | row <- sum_rows ]]
     let signature = M.Apply "core.fn"
                     [M.List (M.Item discrim : [M.Item (convertType ty) | ty <- other_inputs])
-                    ,M.List [M.Item (convertType ty) | ty <- outputs ++ other_inputs]
+                    ,M.List [M.Item (convertType ty) | ty <- outputs]
                     ]
 
     -- All of the children should be case nodes
@@ -278,11 +277,11 @@ convertNode hg nodeId = case getOp hg nodeId of
          , inputs = inWires
          , outputs = outWires
          , regions = regions
-         , nodeMetas = []
+         , nodeMetas = convertMeta metadata
          , nodeSignature = Just signature
          }))
 
-  (OpTag (TagOp tag sumTy _meta)) -> do
+  (OpTag (TagOp tag sumTy meta)) -> do
     inWires <- if null (sumTy !! tag) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
     let op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat tag)])
