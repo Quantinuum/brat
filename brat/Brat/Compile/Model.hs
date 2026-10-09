@@ -297,8 +297,83 @@ convertNode hg nodeId = case getOp hg nodeId of
          , inputs = inWires
          , outputs = outWires
          , regions = []
-         , nodeMetas = []
+         , nodeMetas = convertMeta meta
          , nodeSignature = Just signature
+         }))
+  (OpCustom (CustomOp "builtin" "fresh" _ _)) -> do
+    let sig = FunctionType [] [HTQubit] ["tket.quantum"]
+    outWires <- nodeOutputs hg nodeId
+    pure (Just (M.Node
+         { op = M.Custom (M.Apply "tket.quantum.QAlloc" [])
+         , inputs = []
+         , outputs = outWires
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just (convertSig sig)
+         }))
+  (OpCustom (CustomOp "builtin" "measure" _ _)) -> do
+    let sig = convertSig (FunctionType [HTQubit] [htUnit, htBool] ["tket.quantum"])
+    inWires <- nodeInputs hg nodeId
+    outWires <- nodeOutputs hg nodeId
+    -- Create a DFG region that runs the MeasureFree op, and makes a unit
+    -- then emit them both
+    dfgIns <- freshInputLinks nodeId [Nothing]
+    dfgOuts <- freshOutputLinks nodeId [Nothing, Nothing]
+    let [moneyOut, bitOut] = case dfgOuts of
+          [m, b] -> [m, b]
+          _ -> error "impossible"
+    tketBoolOut <- (('%':).show) <$> freshName
+
+    let measureFreeOp = (M.Node
+         { op = M.Custom (M.Apply "tket.quantum.MeasureFree" [])
+         , inputs = dfgIns
+         , outputs = [tketBoolOut]
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just (M.Apply "core.fn"
+                                 [M.List [M.Item (M.Var "prelude.qubit")]
+                                 ,M.List [M.Item (M.Var "tket.bool.bool")]
+                                 ])
+         })
+
+        readOp = (M.Node
+         { op = M.Custom (M.Apply "tket.bool.read" [])
+         , inputs = [tketBoolOut]
+         , outputs = [bitOut]
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just (M.Apply "core.fn"
+                                 [M.List [M.Item (M.Var "tket.bool.bool")]
+                                 ,M.List [M.Item (convertType htBool)]
+                                 ])
+         })
+
+
+        unitOp = (M.Node
+         { op = M.Custom (M.Apply "core.make_adt" [M.Literal (M.LitNat 0)])
+         , inputs = []
+         , outputs = [moneyOut]
+         , regions = []
+         , nodeMetas = []
+         , nodeSignature = Just (convertSig (FunctionType [] [htUnit] []))
+         })
+
+        dfgRegion = M.Region
+         { kind = M.DFG
+         , sources = dfgIns
+         , targets = dfgOuts
+         , children = [measureFreeOp, readOp, unitOp]
+         , regionMetas = []
+         , regionSignature = Just sig
+         }
+
+    pure (Just (M.Node
+         { op = M.Dfg
+         , inputs = inWires
+         , outputs = outWires
+         , regions = [dfgRegion]
+         , nodeMetas = []
+         , nodeSignature = Just sig
          }))
   (OpCustom (CustomOp ext op sig args)) -> do
     inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
