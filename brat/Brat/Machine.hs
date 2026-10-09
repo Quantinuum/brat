@@ -20,18 +20,16 @@ import Data.Hugr
 import qualified Data.HugrGraph as HG
 import Hasochism
 
-import Control.Monad.State (execState, gets, evalState)
-import qualified Data.Text.Lazy as T
+import Control.Monad.State (execState, gets, evalState, runState)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.List (uncons)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.Text.Lazy as T
 import Bwd
 import Util (mapLup, zipSameLength)
-
-import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
@@ -41,7 +39,7 @@ runInterpreter ns libDirs file runFunc = do
     (ns, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph ns libDirs file
     let venv = M.map fst declEnv
     --print (show outerGraph)
-    let outPorts = [op | (NamedPort op _, _ty) <- trace (unlines["VEnv",show venv,show (plain runFunc)]) mapLup "interp" venv (plain runFunc)]
+    let outPorts = [op | (NamedPort op _, _ty) <- mapLup "interp" venv (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, ns, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
     pure $ case outTask of
@@ -177,6 +175,7 @@ runThunk gi fz (VectorisedThunks ths) inputs =
   isEmptyVecV :: Value -> Bool
   isEmptyVecV (VecV []) = True
   isEmptyVecV _ = False
+runThunk _ _ bth vs = error (unwords ["runThunkE",show bth,show vs])
 
 -- Evaluate a node given its inputs (graph edges, excluding e.g. func to Eval)
 evalNode :: GraphInfo -> Bwd Frame -> Name -> [Value] -> Task

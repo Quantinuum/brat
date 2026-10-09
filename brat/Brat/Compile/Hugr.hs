@@ -9,7 +9,11 @@
 
 module Brat.Compile.Hugr (compileKernel, makeIO, makeCS, CompilationState(..), addEdge, addNode, Container(..), onHugr) where
 
-import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue, pattern CBit)
+import Brat.Constructors.Patterns (pattern CFalse, pattern CTrue, pattern CBit,
+                                   pattern CNil, pattern CCons, pattern CSnoc,
+                                   pattern CConcatEqEven, pattern CConcatEqOdd,
+                                   pattern CRiffle, pattern CVec)
+
 import Brat.Checker.Monad (track, trackM, CheckingSig(..))
 import Brat.Checker.Helpers (binderToValue)
 import Brat.Checker.Types (EndType(..), Store(..))
@@ -156,7 +160,7 @@ compileRo (REx (_, k) ro) = (:) <$> compileType (kindType k) <*> compileRo ro
 -- Val Z should already be eval'd at this point
 compileType :: Val n -> Reader Store HugrType
 compileType TQ = pure HTQubit
-compileType TMoney = pure HTQubit
+compileType TMoney = pure htUnit
 compileType TBit = pure (HTSum (SU (UnitSum 2)))
 compileType TBool = pure (HTSum (SU (UnitSum 2)))
 compileType TInt = pure hugrInt
@@ -169,8 +173,8 @@ compileType ty@(TCons _ _) = htTuple <$> (tuple ty)
   tuple TNil = pure []
   tuple ty = error $ "Found " ++ show ty  ++ " in supposed tuple type"
 compileType TNil = pure (htTuple [])
-compileType (TVec el _) = hugrList <$> compileType el
-compileType (TList el)  = hugrList <$> compileType el
+compileType ty@(TVec el n) = htList <$> compileType el
+compileType (TList el)  = htList <$> compileType el
 -- All variables are of kind `TypeFor m xs`, we already checked in `kindCheckRow`
 -- But what do we do if we have a type arg?
 compileType (VApp (VPar e) B0) = do
@@ -223,9 +227,10 @@ compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> C
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
   (ns, _) <- gets bratGraph
   -- RHS has to be a box, so it must have a function type
-  outTys <- case nodeOuts (ns M.! rhs) of
-    [(_, VFun my cty)] -> compileSig my cty >>= (\(_, outs) -> pure outs)
-    _ -> error "Expected 1 kernel function type from rhs"
+  outTys <- case nodeOuts <$> (M.lookup rhs ns) of
+    Just [(_, VFun my cty)] -> compileSig my cty >>= (\(_, outs) -> pure outs)
+    Just _ -> error "Expected 1 kernel function type from rhs"
+    Nothing -> error "clause not found"
 
   -- Compile the match: testResult is the port holding the dynamic match result
   -- with the type `sumTy`
@@ -244,32 +249,45 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didntMatch outTys parent ins = case nonEmpty clauses of
     Just clauses -> compileClauses parent ins clauses
     -- If there are no more clauses left to test, then the Hugr panics
-    Nothing -> let sig = FunctionType ((HTOpaque "prelude" "error" [] TBAny) : (snd <$> ins)) outTys ["BRAT"] in do
-      --addNodeWithInputs "Panic" (parent, OpCustom (CustomOp "BRAT" "panic" sig [])) ins outTys
-      -- TODO: Add a const error and wire it in as the first argument
-      signalConst <- addNodeWithInputs "ErrorSigConst" (parent, OpConst (ConstOp (HVUSize 1))) [] [HTUSize]
-      errSignal <- addNodeWithInputs "ErrorSigLoad" (parent, OpLoadConstant (LoadConstantOp HTUSize)) signalConst [HTUSize]
-
-
-      msgConst <- addNodeWithInputs "ErrorStringConst" (parent, OpConst (ConstOp (HVString "no match!"))) [] [HTString]
-      errStr <- addNodeWithInputs "ErrorStringLoad" (parent, OpLoadConstant (LoadConstantOp HTString)) msgConst [HTString]
-      errs <- addNodeWithInputs "MakeError" (parent, OpCustom (CustomOp "prelude" "MakeError" (FunctionType [HTUSize, HTString] [HTOpaque "prelude" "error" [] TBAny] []) [])) (errSignal ++ errStr) [HTString]
-      case errs of
-        [err] -> let argRow = TASequence (TAType . snd <$> ins)
-                     op = (CustomOp "prelude" "panic" sig [argRow, argRow])
-                 in addNodeWithInputs "Panic" (parent, OpCustom op) (err:ins) outTys
-        _ -> error "wtf?"
-
+    Nothing -> panic parent "no match!" ins outTys
 
   didMatch :: [HugrType] -> NodeId -> [TypedPort] -> Compile [TypedPort]
-  didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case ns M.! rhs of
-    BratNode (Box src tgt) _ _ -> do
+  didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case M.lookup rhs ns of
+    Just (BratNode (Box src tgt) _ _) -> do
       ctr@Ctr {parent=dfgId} <- freshNodeWithIO "DidMatch" parent
       setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) [{-("args", show ins)-}]))
       compileBox ctr (src, tgt)
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
-    _ -> error "RHS should be a box node"
+    Just _ -> error "RHS should be a box node"
+    Nothing -> error " hingmy not found"
+
+panic :: NodeId -> String -> [TypedPort] -> [HugrType] -> Compile [TypedPort]
+panic parent msg ins outTys = do
+  let sig = FunctionType (htError : (snd <$> ins)) outTys ["BRAT"]
+  signalConst <- addNodeWithInputs "ErrorSigConst"
+                 (parent, OpConst (ConstOp (HVUSize 1))) [] [HTUSize]
+  errSignal <- addNodeWithInputs "ErrorSigLoad"
+               (parent, OpLoadConstant (LoadConstantOp HTUSize)) signalConst [HTUSize]
+
+  msgConst <- addNodeWithInputs "ErrorStringConst"
+              (parent, OpConst (ConstOp (HVString msg))) [] [HTString]
+  errStr <- addNodeWithInputs "ErrorStringLoad"
+            (parent, OpLoadConstant (LoadConstantOp HTString)) msgConst [HTString]
+  errs <- addNodeWithInputs "MakeError"
+          (parent, OpCustom (CustomOp "prelude" "MakeError"
+                             (FunctionType
+                              [HTUSize, HTString]
+                              [HTOpaque "prelude" "error" [] TBAny]
+                              []) []))
+          (errSignal ++ errStr)
+          [HTString]
+  case errs of
+    [err] -> let inRow = TASequence (TAType . snd <$> ins)
+                 outRow = TASequence (TAType <$> outTys)
+                 op = (CustomOp "prelude" "panic" sig [inRow, outRow])
+             in addNodeWithInputs "Panic" (parent, OpCustom op) (err:ins) outTys
+    _ -> error "wtf?"
 
 data BoxInfo = BratBox () | KernBox
 
@@ -292,7 +310,9 @@ compileBox (Ctr parent srcN tgtN) (src, tgt) = do
 
 compileTarget :: NodeId -> NodeId -> Name -> Compile ()
 compileTarget parent tgtN tgt = do
-  node <- gets ((M.! tgt) . fst . bratGraph)
+  node <- gets (fst . bratGraph) >>= \ns -> case M.lookup tgt ns of
+    Just node -> pure node
+    Nothing -> error "sad but true :("
   trackM ("compileTarget (" ++ show parent ++ ") " ++ show tgt ++ " " ++ show node)
   let tgt_ins = case node of
                (BratNode Target ins []) -> ins
@@ -318,38 +338,42 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   Nothing -> do
     compileNode >>= \case
       Nothing -> pure Nothing
-      Just (tgtNodeId, edges) -> do
+      Just (tgtNodeId, edges, _sauce) -> do
         registerCompiled name tgtNodeId
-        for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtNodeId tgtPort))
+        () <- {-case sauce of
+          Just DeleteInputs -> pure ()
+          Nothing -> -}for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtNodeId tgtPort))
         pure $ Just tgtNodeId
  where
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
-  compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
+  compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)], Maybe SecretSauce))
   compileNode = case (filePrefix ["decl"] name) of
     Just _ -> error "Kernel contained call to global; should have been a splice"
     _ -> do
       (ns, _) <- gets bratGraph
-      let node = ns M.! name
+      let node = case M.lookup name ns of
+            Just node -> node
+            Nothing -> error "AEewafoihwefh;"
       trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
       nod_edge_info <- case node of
         (BratNode _ _ _) -> error "Can't compile classical Brat"
         (KernelNode thing ins outs) -> compileNode' thing ins outs
       case nod_edge_info of
         Nothing -> pure Nothing
-        Just (node, tgtOffset, extra_edges) -> do
+        Just (node, tgtOffset, extra_edges, sauce) -> do
           trans_edges <- compileInEdges parent name <&> map (second (+tgtOffset))
-          pure $ Just (node, extra_edges ++ trans_edges)
+          pure $ Just (node, extra_edges ++ trans_edges, sauce)
 
-  default_edges :: NodeId -> Maybe (NodeId, Int, [(PortId NodeId, Int)])
-  default_edges nid = Just (nid, 0, [])
+  default_edges :: NodeId -> Maybe (NodeId, Int, [(PortId NodeId, Int)], Maybe SecretSauce)
+  default_edges nid = Just (nid, 0, [], Nothing)
 
   compileNode' :: NodeType Kernel -> [(PortName, Val Z)] -> [(PortName, Val Z)]
                   -- Result is nodeid, port offset, *extra* edges
-               -> Compile (Maybe (NodeId, Int, [(PortId NodeId, Int)]))
+               -> Compile (Maybe (NodeId, Int, [(PortId NodeId, Int)], Maybe SecretSauce))
   compileNode' thing ins outs = case thing of
     Const tm -> default_edges <$> (compilePorts outs >>= (compileConst parent tm . head))
-    Splice outPort@(Ex outNode _) -> default_edges <$> do
+    Splice outPort@(Ex outNode _) -> do
       ins <- compilePorts ins
       outs <- compilePorts outs
       let sig = FunctionType ins outs bratExts
@@ -358,12 +382,25 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
         Just suffix -> do
           (ns, _) <- gets bratGraph
           case M.lookup outNode ns of
+{-
+            Just (BratNode (Prim ("builtin","fresh")) _ [(_, VFun Kerny _)]) -> do
+              -- What to do about the in edges
+              let qallocSig = FunctionType [] [HTQubit] ["tket.quantum"]
+              nid <- addNode (show suffix) (parent, OpCustom (CustomOp "tket.quantum" "QAlloc" qallocSig []))
+              pure (Just (nid, 0, [], Just DeleteInputs))
+            Just (BratNode (Prim ("builtin","measure")) _ [(_, VFun Kerny _)]) -> do
+              let measureFreeSig = FunctionType [HTQubit] [htBool] ["tket.quantum"]
+              mf <- addNode (show suffix)
+                    (parent, OpCustom (CustomOp "tket.quantum" "QAlloc" qallocSig []))
+-}
             Just (BratNode (Prim (ext,op)) _ [(_, VFun Kerny _)]) -> do
+              default_edges
+              <$>
               addNode (show suffix) (parent, OpCustom (CustomOp ext op sig []))
             x -> error $ "Expected a Prim kernel node but got " ++ show x
         -- All other evaled things are turned into holes to be substituted later
 
-        Nothing -> addHole parent sig outPort
+        Nothing -> default_edges <$> addHole parent sig outPort
 
     Source -> error "Source found outside of compileBox"
 
@@ -394,7 +431,10 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     Selector _c -> error "Todo: selector"
     x -> error $ show x ++ " should have been compiled outside of compileNode"
 
+data SecretSauce = DeleteInputs
+
 compileConstructor :: NodeId -> QualName -> QualName -> FunctionType -> Compile NodeId
+-- compileConstructor parent CVec CNil _ = addNodeWithInputs (OpCustom (CustomOp "collections::list"
 compileConstructor parent tycon con sig
   | Just b <- isBool con = do
       -- A boolean value is a tag which takes no inputs and produces an empty tuple
@@ -555,7 +595,7 @@ makeConditional lbl parent discrim otherInputs cases = do
   (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   let outTys = if allRowsEqual (fst <$> outTyss_cases)
                then fst (head outTyss_cases)
-               else (error "Conditional output types didn't match")
+               else (error $ "Conditional output types didn't match: " ++ show (fst <$> outTyss_cases))
   let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
   onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)
@@ -571,13 +611,17 @@ makeConditional lbl parent discrim otherInputs cases = do
     let outTys = snd <$> outs
     setOp outId (OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) [{-("name",lbl ++ "/" ++ name)-}]))
+    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
     pure (outTys, caseId)
 
   allRowsEqual :: [[HugrType]] -> Bool
   allRowsEqual [] = True
   allRowsEqual [_] = True
   allRowsEqual (x:xs) = all (x==) xs
+
+assertOne :: Show a => [a] -> Compile a
+assertOne [a] = pure a
+assertOne xs = error $ "assertOne failed: got " ++ show xs
 
 -- For the sake of undoing tests, we have to return the original scrutinee if
 -- the test fails. So we return a sum type with the original type on the left
@@ -603,6 +647,29 @@ compilePrimTest parentId port@(_, ty@(HTSum (SU (UnitSum 2)))) (PrimCtorTest con
 
   constUnit :: NodeId -> [TypedPort] -> Compile [TypedPort]
   constUnit parentId [_] = makeRowTag "unit" parentId 1 (SoR [[ty], []]) []
+
+compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest con CVec _ outs)
+ | CNil <- con = case (con,outs) of
+     (CNil, []) -> makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
+     (CCons, [hd,tl]) ->
+       addNodeWithInputs "uncons" (parentId, OpCustom (CustomOp "collections::list" "pop" popSig [TAType elemTy])) [port] [listTy, htOption [elemTy]] >>= \case
+         [tl, hd_option] -> do
+           let sumTy = SoR [[listTy], [elemTy,listTy]]
+           outs <- makeConditional "option_unwrap" parentId hd_option [tl]
+             [("panic_if_none", \cond [tl] -> do
+                 outs <- panic cond "unwrapped none" [tl] [snd tl]
+                 makeRowTag "panic" cond 0 sumTy [tl])
+             ,("unpack", \cond [hd,tl] -> makeRowTag "pure" cond 1 sumTy [hd,tl])
+             ]
+           assertOne outs
+         _ -> error "impossible"
+     (CSnoc, [tl,hd]) -> error "todo"
+     (CConcatEqEven, [l,r]) -> error "todo"
+     (CConcatEqOdd, [l,m,r]) -> error "todo"
+     (CRiffle, [odds,evens]) -> error "todo"
+     _ -> error "Bad constructor for vec"
+ where
+  popSig = FunctionType [listTy] [listTy, htOption [elemTy]] ["collections::list"]
 
 compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) = do
   let sumOut = HTSum (SG (GeneralSum [[ty], snd <$> outputs]))
@@ -665,10 +732,11 @@ compileKernel :: (Namespace, Store, Graph)
               -> String -> Name
               -> (HugrGraph NodeId, [(NodeId, OutPort)])
 compileKernel (nsp, store, g@(ns, _)) desc name = (hgr, holelist) where
-  (src_tgt, outs) = case ns M.! name of
+  (src_tgt, outs) = case M.lookup name ns of
       -- All top-level functions are compiled into Box-es, which should look like this:
-    (BratNode (Box src tgt) [] outs) -> ((src, tgt), outs)
-    nt -> error $ "Can only compile Box nodes, not " ++ show nt ++ " (for " ++ show name ++ ")"
+    Just (BratNode (Box src tgt) [] outs) -> ((src, tgt), outs)
+    Just nt -> error $ "Can only compile Box nodes, not " ++ show nt ++ " (for " ++ show name ++ ")"
+    Nothing -> error "Kernel not found"
   cty = case outs of
     [(_, VFun Kerny cty)] -> cty
   (startHugr, nsp') = runState (H.new desc (OpDFG $ DFG (FunctionType hInTys hOutTys bratExts) [])) nsp
@@ -690,6 +758,3 @@ compileKernel (nsp, store, g@(ns, _)) desc name = (hgr, holelist) where
   runLocalChecking (Ret t) = t
   runLocalChecking (Req (ELup e) k) = runLocalChecking (k (M.lookup e (valueMap store)))
   runLocalChecking (Req _ _) = error "Compile monad found a command it can't handle"
-
-tracePrepend :: Show a => String -> a -> a
-tracePrepend msg a = trace (msg ++ show a) a

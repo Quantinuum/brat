@@ -70,11 +70,32 @@ data HugrType
   | HTAny
  deriving (Eq, Show)
 
+htUnit :: HugrType
+htUnit = HTSum (SG (GeneralSum [[]]))
+
+htBool :: HugrType
+htBool = HTSum (SU (UnitSum 2))
+
 htTuple :: [HugrType] -> HugrType
 htTuple row = HTSum (SG (GeneralSum [row]))
 
 htRotation :: HugrType
 htRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
+
+htOption :: [HugrType] -> HugrType
+htOption tys = HTSum (SG (GeneralSum [[], tys]))
+
+htList :: HugrType -> HugrType
+htList ty = HTList ty (boundOf ty)
+
+htError :: HugrType
+htError = (HTOpaque "prelude" "error" [] TBAny)
+
+pattern HTList :: HugrType -> TypeBound -> HugrType
+pattern HTList ty bound = HTOpaque "collections" "list" [TAType ty] bound
+
+--htArray :: HugrType -> HTValue -> HugrType
+--htArray elemTy size = HTOpaque "collections::array" "array" [size, elemTy] TBAny
 
 data PolyFuncType = PolyFuncType
  { params :: [TypeParam]
@@ -130,9 +151,6 @@ boundOf (HTSum (SG (GeneralSum rows))) = maximum (TBEq:(boundOfList <$> rows))
 boundOf (HTFunc _) = TBCopy
 boundOf _ = error "unimplemented bound"
 
-hugrList :: HugrType -> HugrType
-hugrList ty = HTOpaque "Collections" "List" [TAType ty] (boundOf ty)
-
 intWidth :: Int
 intWidth = 6  -- 2^6 = 64 bits
 
@@ -141,6 +159,9 @@ hugrInt = HTOpaque "arithmetic.int.types" "int" [TANat intWidth] TBEq
 
 hugrFloat :: HugrType
 hugrFloat = HTOpaque "arithmetic.float.types" "float64" [] TBCopy
+
+builtinFloat :: HugrType
+builtinFloat = HTOpaque "core" "float" [] TBCopy
 
 
 ------------------------------------ VALUES ------------------------------------
