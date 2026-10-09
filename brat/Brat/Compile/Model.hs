@@ -102,9 +102,17 @@ freshOutputLinks nodeId xs = do
 
 convertMeta :: [(String, String)] -> [M.Term]
 convertMeta [] = []
-convertMeta ((key,val):xs) = M.Tuple [M.Item (M.Literal (M.LitStr key))
-                                     ,M.Item (M.Literal (M.LitStr val))]
+convertMeta ((key,val):xs) = (M.Apply "compat.meta_json"
+                              [M.Literal (M.LitStr (escape key))
+                              ,M.Literal (M.LitStr ('"':(escape val) ++ "\""))
+                              ]
+                             )
                              : convertMeta xs
+ where
+  escape :: String -> String
+  escape ('"' : cs) = '\\':'\"':escape cs
+  escape (c:cs) = c : escape cs
+  escape [] = []
 
 -- TODO: Work out how qubit should be represented and do that
 convertType :: HugrType -> M.Term
@@ -162,9 +170,10 @@ dfgToFunc fnName hg (nodeId, sig, meta) = do
        , inputs = []
        , outputs = []
        , regions = [dfgRegion]
-       , nodeMetas = []
+       , nodeMetas = convertMeta meta
        , nodeSignature = Nothing
        })
+
 
 -- Invariant: NodeId points to a DFG
 dfgToRegion :: HugrGraph NodeId -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
