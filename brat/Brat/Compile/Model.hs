@@ -145,7 +145,7 @@ convertValue :: HugrValue -> M.Term
 convertValue (HVUSize n) = M.Literal (M.LitNat n)
 convertValue (HVString str) = M.Literal (M.LitStr str)
 convertValue (HVTuple vs) = M.Tuple (M.Item . convertValue <$> vs)
-convertValue (HVFloat f) = M.Literal (M.LitFloat f)
+convertValue (HVFloat f) = M.Apply "arithmetic.float.const_f64" [M.Literal (M.LitFloat f)]
 convertValue hv@(HVExtension _ _ (CC _ _)) = error $ show hv
 
 convertSig :: FunctionType -> M.Term
