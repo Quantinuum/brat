@@ -32,7 +32,6 @@ import Brat.Syntax.Value
 import Control.Monad.Freer (req)
 import Bwd
 import Hasochism
-import Util (zipSameLength)
 
 import Data.Bifunctor (second)
 import Data.Functor
@@ -91,6 +90,7 @@ sem ga (VApp f vz) = do
     f <- semVar ga f
     vz <- traverse (sem ga) vz
     applySem f vz
+sem ga (VTup ro) = pure $ STup ga ro
 
 semVar :: Stack Z Sem n -> VVar n -> Checking Sem
 semVar vz (VInx inx) = pure $ proj vz inx
@@ -127,6 +127,8 @@ quote lvy (SLam stk body) = do
   VLam <$> quote (Sy lvy) body
 quote lvy (SFun my ga cty) = VFun my <$> quoteCTy lvy my ga cty
 quote lvy (SApp f vz) = VApp (quoteVar lvy f) <$> traverse (quote lvy) vz
+quote lvy (STup ga ro) = quoteRo Braty ga ro lvy <&> \case
+  (_, Some (ro :* _)) -> VTup ro
 
 quoteCTy :: Ny lv -> Modey m -> Stack Z Sem n -> CTy m n -> Checking (CTy m lv)
 quoteCTy lvy my ga (ins :->> outs) = quoteRo my ga ins lvy >>= \case
@@ -252,12 +254,14 @@ eqWorker tm lvkz (Star []) (SFun m0 stk0 (ins0 :->> outs0)) (SFun m1 stk1 (ins1 
   eqRowTest m0 tm lvkz (stk0,ins0) (stk1,ins1) >>= \case
     Left msg -> pure (Left msg)
     Right (Some lvkz, stk0, stk1) -> eqRowTest m0 tm lvkz (stk0, outs0) (stk1, outs1) <&> dropRight
-eqWorker tm lvkz (TypeFor _ []) (SSum m0 stk0 rs0) (SSum m1 stk1 rs1)
-  | Just Refl <- testEquality m0 m1 = case zipSameLength rs0 rs1 of
-      Nothing -> pure (Left (TypeErr "Mismatched sum lengths"))
-      Just rs -> traverse eqVariant rs <&> sequence_
- where
-  eqVariant (Some r0, Some r1) = eqRowTest m0 tm lvkz (stk0,r0) (stk1,r1) <&> dropRight
+eqWorker tm lvkz (Star []) (STup stk0 ro0) (STup stk1 ro1) =
+  dropRight <$> eqRowTest Braty tm lvkz (stk0,ro0) (stk1,ro1)
+--eqWorker tm lvkz (TypeFor _ []) (SSum m0 stk0 rs0) (SSum m1 stk1 rs1)
+--  | Just Refl <- testEquality m0 m1 = case zipSameLength rs0 rs1 of
+--      Nothing -> pure (Left (TypeErr "Mismatched sum lengths"))
+--      Just rs -> traverse eqVariant rs <&> sequence_
+-- where
+--  eqVariant (Some r0, Some r1) = eqRowTest m0 tm lvkz (stk0,r0) (stk1,r1) <&> dropRight
 eqWorker tm _ _ v0 v1 = pure . Left $ TypeMismatch tm (show v0) (show v1)
 
 -- Type rows have bot0,bot1 dangling de Bruijn indices, which we instantiate with

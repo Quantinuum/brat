@@ -70,12 +70,14 @@ data Raw :: Dir -> Kind -> Type where
   (::$::)   :: WC (Raw d KVerb) -> WC (Raw Chk k) -> Raw d k -- Eval with ChkRaw n argument
   RLambda   :: (WC Abstractor, WC (Raw d Noun)) -> [(WC Abstractor, WC (Raw Chk Noun))] -> Raw d UVerb
   RCon      :: QualName -> WC (Raw Chk Noun) -> Raw Chk Noun
+  RFanOut   :: Raw Syn UVerb
+  RFanIn    :: Raw Chk UVerb
   -- Function types
   RFn       :: RawCType -> Raw Chk Noun
   -- Kernel types
   RKernel   :: RawKType -> Raw Chk Noun
-  RFanOut   :: Raw Syn UVerb
-  RFanIn    :: Raw Chk UVerb
+  -- A dependent tuple type
+  RTuple    :: TypeRow (WC (KindOr (Raw Chk Noun))) -> Raw Chk Noun
 
 class Dirable d where
   dir :: Raw d k -> Diry d
@@ -122,6 +124,7 @@ instance Show (Raw d k) where
   show RFanOut = "[/\\]"
   show RFanIn = "[\\/]"
   show (ROf n e) = "(" ++ show n ++ " of " ++ show e ++ ")"
+  show (RTuple xs) = "[" ++ show xs ++ "]"
 
 type Desugar = StateT Namespace (ReaderT (RawEnv, Bwd QualName) (Except Error))
 
@@ -229,6 +232,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
   desugar' RFanOut = pure FanOut
   desugar' RFanIn = pure FanIn
   desugar' (ROf n e) = Of <$> desugar n <*> desugar e
+  desugar' (RTuple ro) = Tuple <$> (traverse (traverse desugar) ro)
 
 instance Desugarable (CType' (TypeRowElem RawVType)) where
   type Desugared (CType' (TypeRowElem RawVType)) = CType' (TypeRowElem (Term Chk Noun))

@@ -310,8 +310,10 @@ flatIOWithSpanFC :: Parser (WC [FlatIO])
 flatIOWithSpanFC = spanningFC =<< flatIO
 
 vec :: Parser (WC Flat)
-vec = (\(WC fc x) -> WC fc (unWC (vec2Cons fc x))) <$> inBracketsFC Square elems
+vec = (fmap FSeq) <$> inBracketsFC Square flatIO
+{-
   where
+    elems :: Parser [WC Flat]
     elems = (element `chainl1` try vecComma) <|> pure []
     vecComma = match Comma $> (++)
 
@@ -332,7 +334,7 @@ vec = (\(WC fc x) -> WC fc (unWC (vec2Cons fc x))) <$> inBracketsFC Square elems
                                   fc = spanFC (fcOf x) endFC
                               in WC fc $
                                  FCon (plain "cons") (WC fc (FJuxt x (vec2Cons outerFC xs)))
-
+-}
 
 cthunk :: Parser (WC Flat)
 cthunk = try bratFn <|> try kernel <|> thunk
