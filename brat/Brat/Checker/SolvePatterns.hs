@@ -165,7 +165,7 @@ solveConstructor my src (c, abs) ty p = do
       -- produce the terms that we're interested in
       let (lhss, leftovers) = patVals pats (stkList patEnds)
       unless (null leftovers) $ error "There's a bug in the constructor table"
-      tyArgKinds <- tlup (Brat, tycon)
+      tyArgKinds <- tlup (deModey my, tycon)
       -- Constrain tyargs to match pats
       trackM $ unlines ["unifys",show lhss,show tyArgKinds, show tyargs]
       typesEq "pretending to be unifys" (snd <$> tyArgKinds) lhss tyargs
