@@ -537,7 +537,7 @@ makeConditional lbl parent discrim otherInputs cases = do
 
 -- For the sake of undoing tests, we have to return the original scrutinee if
 -- the test fails. So we return a sum type with the original type on the left
--- and the refined values on the right.
+-- and constUnit on the right.
 compilePrimTest :: NodeId
                 -> TypedPort -- The thing that we're testing
                 -> PrimTest HugrType -- The test to run
