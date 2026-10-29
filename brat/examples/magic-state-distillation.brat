@@ -40,7 +40,7 @@ measure_all(n :: #) -> { Vec(Qubit, n) -o Vec(Bit, n), Vec(Money, n) }
 measure_all(0) = { [] => [], [] }
 measure_all(succ(n)) = { q ,- qs =>
   let m, b = measure(q) in
-    let bs, ms = measure_all(n)(qs) in
+    let bs, ms = measure_all(qs) in
       b ,- bs, m ,- ms
 }
 
@@ -64,9 +64,9 @@ redistill_if_bad(q, true, ms) = let m, _ = measure(q) in
 
 distill(Vec(Money, 5)) -o Qubit, Vec(Money, 4)
 distill = {
-  prepare_noisy(5);
+  prepare_noisy;
   decoder;
-  uncons(4);
-  |, measure_syndrome(4);
+  uncons;
+  |, measure_syndrome;
   redistill_if_bad
 }
