@@ -24,6 +24,7 @@ import Test.Checking (parseAndCheckNamed)
 
 import Hasochism (N(..), Ny(..), Some(..), (:*)(..))
 
+import Bwd
 import Control.Exception (catch)
 import Control.Monad (when)
 import Data.Bifunctor (first)
@@ -161,35 +162,44 @@ getExamplesTests =  do
       maybe_mod <- catch (compileToGraph [] path <&> Just) (\(e :: IOError) -> pure Nothing)
       let interpreterTests = case maybe_mod of
             Nothing -> [testCaseInfo "execution" $ pure "SKIPPED as did not compile"]
-            Just nsmod -> findInterpreterTests nsmod
-      pure $ case interpreterTests of
-        [] -> testGroup (show path) [checkTest]
-        intTests -> sequentialTestGroup path AllSucceed
-            (checkTest:[testGroup "execution" intTests])
+            Just nsmod -> testLinesWithFunc <&> makeTest nsmod
+      pure $ if null trailingTestLines then
+        case interpreterTests of
+          [] -> testGroup (show path) [checkTest]
+          intTests -> sequentialTestGroup path AllSucceed
+              (checkTest:[testGroup "execution" intTests])
+      else
+        testGroup (show path) [testCase "trailing test lines" $ assertFailure $ "Trailing test lines: " ++ show trailingTestLines]
    where
     parseTest = testCase "parsing" $ do
       case parseFile path cts of
         Left err -> assertFailure (show err)
         Right _ -> return () -- OK
     checkTest = parseAndCheckNamed "checking" [] path
-    findInterpreterTests :: (Namespace, VMod) -> [TestTree]
-    findInterpreterTests nsmod = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
-      let (testLine, newlineDefn) = T.breakOn (T.pack "\n") start
-          -- this repeats/roughly duplicates the logic for "identifiers" in the parser
-          func_name = T.unpack $ T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
-          -- testLine begins with execTestPrefix, then either
-          -- " " and the expected result
-          -- "-xfail " and the (un-)expected result
-          -- "-hugr\n" (checks no splices, outputs hugr for validation)
-          restLine = fromJust $ T.stripPrefix execTestPrefix testLine
-      in case restLine of
-           _ | Just args <- T.stripPrefix (T.pack "-hugr") restLine ->
-                  funcTest nsmod path func_name (SaveHugr args)
-           _ | Just args_out <- T.stripPrefix (T.pack "-xfail ") restLine ->
-                  funcTest nsmod path func_name (uncurry XfailOutput $ split_args args_out)
-             | Just args_out <- T.stripPrefix (T.pack " ") restLine ->
-                  funcTest nsmod path func_name (uncurry Output $ split_args args_out)
-             | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
+    (trailingTestLines, testLinesWithFunc) = foldl (
+        \(testsSinceLastFunc, testsWithFuncName) (_, test) ->
+          let (testLine, newlineDefn) = T.breakOn (T.pack "\n") test
+              -- this repeats/roughly duplicates the logic for "identifiers" in the parser
+              func_name = T.unpack $
+                T.takeWhile (\c -> isAlphaNum c || c == '_' || c == '\'') (T.drop 1 newlineDefn)
+              testsSinceLastFunc' = testsSinceLastFunc :< testLine
+          in case func_name of
+            "" -> (testsSinceLastFunc', testsWithFuncName)
+            func_name -> (B0, (testsSinceLastFunc' <&> (,func_name)) <>> testsWithFuncName)
+      ) (B0, []) (T.breakOnAll execTestPrefix (T.pack cts))
+    makeTest :: (Namespace, VMod) -> (T.Text, String) -> TestTree
+    makeTest nsmod (testLine, func_name) = case fromJust $ T.stripPrefix execTestPrefix testLine of
+        -- testLine is execTestPrefix followed by either
+        -- " " and the expected result
+        -- "-xfail " and the (un-)expected result
+        -- "-hugr\n" (checks no splices, outputs hugr for validation)
+          r | Just args <- T.stripPrefix (T.pack "-hugr") r ->
+                funcTest nsmod path func_name (SaveHugr args)
+          r | Just args_out <- T.stripPrefix (T.pack "-xfail ") r ->
+                funcTest nsmod path func_name (uncurry XfailOutput $ split_args args_out)
+            | Just args_out <- T.stripPrefix (T.pack " ") r ->
+                funcTest nsmod path func_name (uncurry Output $ split_args args_out)
+            | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
     split_args :: T.Text -> (T.Text, T.Text)
     split_args txt = case T.splitOn (T.pack "-->") txt of
       [output] -> (T.empty, output)
