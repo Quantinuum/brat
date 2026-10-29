@@ -46,3 +46,6 @@ pair(a, b) = [a, b]
 
 test :: [Int, Int]
 test = pair(twoThings)
+
+quantum([Qubit, Bit]) -o [Bit, Qubit]
+quantum([q, b]) = [b, q]
