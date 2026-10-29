@@ -4,7 +4,9 @@ import Control.Monad ((>=>))
 import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (empty)
+import Data.Traversable (for)
 
+import Brat.Constructors.Patterns (pattern CNil, pattern CCons)
 import Brat.FC
 import Brat.Syntax.Common
 import Brat.Syntax.Concrete
@@ -196,6 +198,24 @@ elaborate' FIdentity = pure $ SomeRaw' RIdentity
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
+elaborate' (FSeq row) = do
+  stuff <- elabIO row
+  case noKinds stuff of
+    Just tys -> pure $ SomeRaw' $ listify tys
+    Nothing -> pure $ SomeRaw' (RTuple stuff)
+ where
+  listify :: [TypeRowElem (WC (Raw Chk Noun))] -> Raw Chk Noun
+  listify [] = RCon CNil (dummyFC REmpty)
+  listify (Named _x (WC _fc _ty):_xs) = error "ambiguous"
+  --listify (Named x (WC fc ty):xs) = RCon CCons (dummyFC ((WC fc (RVar x ::::: [Right ty])) ::|:: (dummyFC (listify xs))))
+  listify (Anon ty:xs) = RCon CCons (dummyFC $ ty ::|:: dummyFC (listify xs))
+
+  noKinds :: [TypeRowElem (WC (KindOr (Raw Chk Noun)))] -> Maybe [TypeRowElem (WC (Raw Chk Noun))]
+  noKinds [] = Just []
+  noKinds (elem:rest) = (:) <$> this <*> noKinds rest
+   where this = for elem $ traverse $ \kty -> case kty of
+          Left _ -> Nothing
+          Right ty -> Just ty
 
 elaborateBratType :: WC (KindOr Flat) -> Either Error (WC (KindOr (Raw Chk Noun)))
 elaborateBratType (WC fc (Left k)) = pure (WC fc (Left k))

@@ -1,0 +1,34 @@
+id(X :: *, x :: X) -> X
+id(_, x) = x
+
+test :: Bool
+test = id(Bool, true)
+
+pure(X :: *, x :: X, n :: #) -> Vec(X, n)
+pure(X, x, n) = ?awef
+
+call :: Vec(Bool, 1)
+call = pure(Bool, true, 1)
+
+-- This "[...]" should be `Con "Tuple" ...`
+-- which means kindCheck that `...` is a Row
+tuple :: [X :: *, n :: #, Vec(X, n)]
+tuple = [Nat, 0, []]
+
+elput(tup :: [X :: *, n :: #, Vec(X, n)]) -> []
+elput(_) = []
+--
+useId :: [n :: #, Vec(Bool, n)]
+useId = id([n :: #, Vec(Bool, n)], [2, [true, false]])
+
+tupleTuple :: []
+tupleTuple = elput([Bool, 1, [true]])
+
+again :: []
+again = elput(tuple)
+
+xs :: List(Nat)
+xs = [0,2,3]
+
+nested :: [X :: *, [X, Y :: *, Y]]
+nested = [Bool, [true, Nat, 0]]

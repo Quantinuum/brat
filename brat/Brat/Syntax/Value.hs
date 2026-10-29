@@ -161,6 +161,7 @@ data Val :: N -> Type where
   VLam :: Val (S n) -> Val n -- Just body (binds DeBruijn index n)
   VFun :: MODEY m => Modey m -> CTy m n -> Val n
   VApp :: VVar n -> Bwd (Val n) -> Val n
+  VTup :: Ro Brat n m -> Val n
 
 -- Define a naive version of equality, which only says whether the data
 -- structures are on-the-nose equal
@@ -172,20 +173,21 @@ instance Eq (Val n) where
     Just Refl -> cty == cty'
     Nothing -> False
   (VApp v zx) == (VApp w zy) = v == w && zx == zy
+  (VTup ro1) == (VTup ro2) = isJust (roEq Braty ro1 ro2)
   _ == _ =  False
 
 instance MODEY m => Eq (CTy m i) where
   (ss :->> ts) == (us :->> vs) = case roEq (modey @m) ss us of
                                    Just Refl -> isJust (roEq (modey @m) ts vs)
                                    Nothing -> False
-   where
-    roEq :: forall m i j k. Modey m -> Ro m i j -> Ro m i k -> Maybe (j :~: k)
-    roEq _ R0 R0 = Just Refl
-    roEq my (RPr x ro) (RPr y rp) | x == y = roEq my ro rp
-    roEq Braty (REx x ro) (REx y rp) | x == y = case roEq Braty ro rp of
-      Just Refl -> Just Refl
-      Nothing -> Nothing
-    roEq _ _ _ = Nothing
+
+roEq :: forall m i j k. Modey m -> Ro m i j -> Ro m i k -> Maybe (j :~: k)
+roEq _ R0 R0 = Just Refl
+roEq my (RPr x ro) (RPr y rp) | x == y = roEq my ro rp
+roEq Braty (REx x ro) (REx y rp) | x == y = case roEq Braty ro rp of
+  Just Refl -> Just Refl
+  Nothing -> Nothing
+roEq _ _ _ = Nothing
 
 data SVar = SPar End | SLvl Int
  deriving (Show, Eq)
@@ -199,8 +201,9 @@ data Sem where
   SLam :: Stack Z Sem n -> Val (S n) -> Sem
   SFun :: MODEY m => Modey m -> Stack Z Sem n -> CTy m n -> Sem
   SApp :: SVar -> Bwd Sem -> Sem
-  -- Sum types, stash like SLam (shared between all variants)
-  SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
+  STup :: Stack Z Sem n -> Ro Brat n m -> Sem
+--  -- Sum types, stash like SLam (shared between all variants)
+--  SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
@@ -251,6 +254,7 @@ instance Show (Val n) where
   show (VFun m cty) = "{ " ++ modily m (show cty) ++ " }"
   show (VApp v ctx) = "VApp " ++ show v ++ " " ++ show ctx
   show (VLam body) = "VLam " ++ show body
+  show (VTup ro) = "VTup " ++ show ro
 
 ---------------------------------- Patterns -----------------------------------
 pattern TNat, TInt, TFloat, TBool, TText, TUnit, TNil :: Val n
@@ -547,6 +551,8 @@ instance DeBruijn Val where
     = VFun Braty $ changeVar vc cty
   changeVar vc (VFun Kerny cty)
     = VFun Kerny $ changeVar vc cty
+  changeVar vc (VTup ro) = case varChangerThroughRo vc ro of
+    Some (_ :* ro') -> VTup ro'
 
 varChangerThroughRo :: VarChanger src tgt
                     -> Ro m src src'
@@ -650,6 +656,7 @@ instance DepEnds (Val n) where
   depEnds (VFun _ cty) = depEnds cty
   depEnds (VApp (VPar e) args) = e : depEnds args
   depEnds (VApp _ args) = depEnds args
+  depEnds (VTup ro) = depEnds ro
 
 instance DepEnds t => DepEnds [t] where
   depEnds = concatMap depEnds
