@@ -1,10 +1,10 @@
-module Brat.Machine (runInterpreter) where
+module Brat.Machine (interpretGraph) where
 
 import Brat.Checker.Monad (CaptureSets)
 import Brat.Checker.Types (Store, initStore)
-import Brat.Compiler (compileToGraph)
 import Brat.Compile.Hugr
 import Brat.Constructors.Patterns
+import Brat.Load (VMod)
 import Brat.Naming (Name, Namespace, split)
 import Brat.Graph (Graph, NodeType (..), Node (BratNode), wiresTo, MatchSequence (..), PrimTest (..), TestMatchData (..), emptyGraph)
 import Brat.QualName (QualName(..), plain)
@@ -28,15 +28,14 @@ import Util (zipSameLength)
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
-runInterpreter :: [FilePath] -> String -> String -> IO (Either T.Text (HG.HugrGraph HG.NodeId))
-runInterpreter libDirs file runFunc = do
-    (root, (declEnv, _, st, outerGraph, capSets)) <- compileToGraph libDirs file
+interpretGraph :: (Namespace, VMod) -> String -> Either T.Text (HG.HugrGraph HG.NodeId)
+interpretGraph (root, (declEnv, _, st, outerGraph, capSets)) runFunc = do
     let venv = M.map fst declEnv
     --print (show outerGraph)
     let outPorts = [op | (NamedPort op _, _ty) <- venv M.! (plain runFunc)]
     let outTask = evalPorts (outerGraph, st, root, capSets) (B0 :< BratValues M.empty) B0 outPorts
     -- we hope outTask is a Finished. Or a Suspend.
-    pure $ case outTask of
+    case outTask of
       Finished [(KernelV hugr)] -> Right hugr
       _ -> Left $ T.pack $ show outTask
 
@@ -87,7 +86,7 @@ data Task where
     -- A single Outport value is ready; searches for EvalPorts or DoSplices to use it.
     Use :: Value -> Task
     -- Finished computing a list of values (all outputs of one node);
-    -- searches for SelectFromNodeOutputs to use one, or is final result (of runInterpreter or ReturnTo).
+    -- searches for SelectFromNodeOutputs to use one, or is final result (of interpretGraph or ReturnTo).
     Finished :: [Value] -> Task
     -- Try the next clause in an Alternatives
     TryNextMatch :: Task

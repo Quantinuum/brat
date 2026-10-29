@@ -7,6 +7,8 @@ and(Bool, Bool) -> Bool
 and(true, b) = b
 and(false, b) = false
 
+--!exec true, false --> [False,True]
+--!exec true, true --> [True,False]
 halfAdder(Bool, Bool) -> twos :: Bool, ones :: Bool
 halfAdder(a, b) = and(a,b), xor(a,b)
 

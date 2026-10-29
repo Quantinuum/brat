@@ -1,4 +1,4 @@
-module Brat.Parser (parseFile) where
+module Brat.Parser (parseFile, parseExpr) where
 
 import Brat.Constructors.Patterns
 import Brat.Error
@@ -654,23 +654,28 @@ instance FCStream [BToken] where
     (Bracketed fc _ _):_ -> fc
     (FlatTok (Token fc _)):_ -> fc
 
+parseExpr :: String -> Either SrcErr (WC Flat)
+parseExpr s = addSrcContext "<expr>" s $ do
+  toks <- first (wrapParseErr LexErr) (M.parse lex "<expr>" s)
+  btoks <- brackets toks
+  first (wrapParseErr ParseErr) (parse expr "<expr>" btoks)
 
 parseFile :: String -> String -> Either SrcErr ([Import], FEnv)
 parseFile fname contents = addSrcContext fname contents $ do
   toks <- first (wrapParseErr LexErr) (M.parse lex fname contents)
   btoks <- brackets toks
   first (wrapParseErr ParseErr) (parse pfile fname btoks)
- where
-  wrapParseErr :: (VisualStream t, FCStream t, ShowErrorComponent e)
-               => (ParseError -> ErrorMsg) -> ParseErrorBundle t e -> Error
-  wrapParseErr wrapper er = let
-      -- TODO: return all of the errors? There is generally only one.
-      e :| errs = bundleErrors er
-      prettyErr = parseErrorTextPretty e ++ case errs of
-        [] -> ""
-        xs -> " and " ++ show (length xs) ++ " other errors"
-      fc = getFC (errorOffset e) (bundlePosState er)
-    in  Err (Just fc) $ wrapper (PE prettyErr)
+
+wrapParseErr :: (VisualStream t, FCStream t, ShowErrorComponent e)
+              => (ParseError -> ErrorMsg) -> ParseErrorBundle t e -> Error
+wrapParseErr wrapper er = let
+    -- TODO: return all of the errors? There is generally only one.
+    e :| errs = bundleErrors er
+    prettyErr = parseErrorTextPretty e ++ case errs of
+      [] -> ""
+      xs -> " and " ++ show (length xs) ++ " other errors"
+    fc = getFC (errorOffset e) (bundlePosState er)
+  in  Err (Just fc) $ wrapper (PE prettyErr)
 
 clauses :: String -> Parser (NonEmpty (WC Abstractor, WC Flat))
 clauses declName = label "clauses" (fromJust . nonEmpty <$> some (try branch))
