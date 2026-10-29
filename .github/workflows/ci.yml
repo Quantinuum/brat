@@ -9,6 +9,7 @@ on:
     branches: [ main ]
     paths:
       - "**.hs"
+  workflow_dispatch: {}
 
 env:
   GHC_VERSION: 9.6.4
@@ -54,6 +55,8 @@ jobs:
         cabal-version: ${{ env.CABAL_VERSION }}
         enable-stack: true
 
+    - name: Install system dependencies
+      run: sudo apt install binutils
     - name: Install dependencies
       run: stack build --only-dependencies
     - name: Build
