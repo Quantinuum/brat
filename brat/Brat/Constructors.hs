@@ -102,12 +102,8 @@ defaultConstructors = M.fromList
      [(COption, CArgs [VPVar] (Sy Zy)
         (REx ("ty", Star []) R0)
         (RPr ("value", VApp (VInx VZ) B0) R0))])
-  ,(CTrue, M.fromList
-      [(CBool, CArgs [] Zy R0 R0)
-      ,(CBit, CArgs [] Zy R0 R0)])
-  ,(CFalse, M.fromList
-      [(CBool, CArgs [] Zy R0 R0)
-      ,(CBit, CArgs [] Zy R0 R0)])
+  ,(CTrue, M.fromList [(CBool, CArgs [] Zy R0 R0)])
+  ,(CFalse, M.fromList [(CBool, CArgs [] Zy R0 R0)])
   ,(COmit, M.fromList
     [(CThin, CArgs [VPNum NPVar, VPNum (NP1Plus NPVar)] (Sy (Sy Zy))
       -- args to type constructor
