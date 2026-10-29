@@ -1,6 +1,3 @@
-swap(Nat, Nat) -> Nat, Nat
-swap = a, b => b, a
-
 type A = Nat
 
 isNil :: { Vec(A, 0) -> Bool }
