@@ -48,7 +48,7 @@ jobs:
                                                   )}}-GHC-${{ env.GHC_VERSION }}
         save-always: true
 
-    - uses: haskell-actions/setup@v2
+    - uses: haskell-actions/setup@v2.12.1
       if: steps.cache.outputs.cache-hit != 'true'
       with:
         ghc-version: ${{ env.GHC_VERSION }}
