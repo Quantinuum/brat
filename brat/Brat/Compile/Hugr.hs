@@ -548,7 +548,7 @@ compilePrimTest parentId port@(_, ty@(HTSum (SU (UnitSum 2)))) (PrimCtorTest con
     [condOut] -> pure condOut
     _ -> error "Invalid"
  where
-  casesFor CTrue = Just [("lift", left), ("success", constUnit)]
+  casesFor CTrue = Just [("failure", left), ("success", constUnit)]
   casesFor CFalse = Just [("success", constUnit), ("lift", left)]
   casesFor _  = Nothing
 
