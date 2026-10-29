@@ -9,9 +9,10 @@ on:
     branches: [ main ]
     paths:
       - "**.hs"
+  workflow_dispatch: {}
 
 env:
-  GHC_VERSION: 9.6.4
+  GHC_VERSION: 9.10.3
   CABAL_VERSION: 3.4
 
 jobs:
@@ -47,13 +48,16 @@ jobs:
                                                   )}}-GHC-${{ env.GHC_VERSION }}
         save-always: true
 
-    - uses: haskell-actions/setup@v2
+    - uses: haskell-actions/setup@v2.12.1
       if: steps.cache.outputs.cache-hit != 'true'
       with:
         ghc-version: ${{ env.GHC_VERSION }}
         cabal-version: ${{ env.CABAL_VERSION }}
         enable-stack: true
+        cabal-update: false
 
+    - name: Install system dependencies
+      run: sudo apt install binutils
     - name: Install dependencies
       run: stack build --only-dependencies
     - name: Build
