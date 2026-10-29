@@ -310,28 +310,35 @@ flatIOWithSpanFC :: Parser (WC [FlatIO])
 flatIOWithSpanFC = spanningFC =<< flatIO
 
 vec :: Parser (WC Flat)
-vec = (\(WC fc x) -> WC fc (unWC (vec2Cons fc x))) <$> inBracketsFC Square elems
-  where
-    elems = (element `chainl1` try vecComma) <|> pure []
-    vecComma = match Comma $> (++)
+vec = (fmap FSeq) <$> inBracketsFC Square elements
+ where
+  -- This is something very similar to FlatIO, but it allows more expressions
+  -- by letting the "type" be `expr' (succ PJuxtPull)` instead of `expr' PApp`.
+  -- And it doesn't check for a bracketed rowElem first, which is necessary for
+  -- returned existential types like `... -> (X :: *), List(X)` but creates
+  -- problems for expressions because we have existing atomExpr logic for
+  -- handling brackets. This extra check makes `(f)(x)` fail, for example.
+  elements :: Parser [FlatIO]
+  elements = rowElem `sepBy` void (try comma)
+   where
+    rowElem :: Parser FlatIO
+    rowElem = try namedKind
+           <|> try namedType
+           <|> ((\(WC tyFC ty) -> Anon (WC tyFC (Right ty))) <$> expr' (succ PJuxtPull))
 
-    element :: Parser [WC Flat]
-    element = (:[]) <$> expr' (succ PJuxtPull)
+    namedType :: Parser FlatIO
+    namedType = do
+      WC pFC p <- port
+      match TypeColon
+      WC tyFC ty <- expr' (succ PJuxtPull)
+      pure (Named p (WC (spanFC pFC tyFC) (Right ty)))
 
-    mkNil fc = FCon (plain "nil") (WC fc FEmpty)
-
-    vec2Cons :: FC -> [WC Flat] -> WC Flat
-    -- The nil element gets the FC of the `[]` expression.
-    -- N.B. this is also true in non-nil lists: the `nil` terminator of the list
-    -- `[1,2,3]` gets the file context of `[1,2,3]`
-    vec2Cons outerFC [] = WC outerFC (mkNil outerFC)
-    vec2Cons outerFC [x] = WC (fcOf x) $ FCon (plain "cons") (WC (fcOf x) (FJuxt x (WC outerFC (mkNil outerFC))))
-    -- We give each cell of the list an FC which starts with the FC
-    -- of its head element and ends at the end of the list (the closing ']')
-    vec2Cons outerFC (x:xs) = let endFC = fcOf (last xs)
-                                  fc = spanFC (fcOf x) endFC
-                              in WC fc $
-                                 FCon (plain "cons") (WC fc (FJuxt x (vec2Cons outerFC xs)))
+    namedKind :: Parser FlatIO
+    namedKind = do
+      WC pFC p <- port
+      match TypeColon
+      WC kFC k <- typekind
+      pure (Named p (WC (spanFC pFC kFC) (Left k)))
 
 
 cthunk :: Parser (WC Flat)

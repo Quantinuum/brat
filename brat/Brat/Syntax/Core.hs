@@ -44,6 +44,8 @@ data Term :: Dir -> Kind -> Type where
   Hope     :: String -> Term Chk Noun
   Arith    :: ArithOp -> WC (Term Chk Noun) -> WC (Term Chk Noun) -> Term Chk Noun
   Of       :: WC (Term Chk Noun) -> WC (Term d Noun) -> Term d Noun
+  -- A tuple type that expects a row of arguments
+  Tuple    :: TypeRow (WC (KindOr (Term Chk Noun))) -> Term Chk Noun
 
   -- Type annotations (annotating a term with its outputs)
   (:::)    :: WC (Term Chk Noun) -> [TypeRowElem (KindOr (Term Chk Noun))] -> Term Syn Noun
@@ -132,6 +134,7 @@ instance Show (Term d k) where
   show (K (ss :-> ts)) = "{" ++ showSig ss ++ " -o " ++ showSig ts ++ "}"
   show FanOut = "[/\\]"
   show FanIn = "[\\/]"
+  show (Tuple ro) = "Tuple[" ++ show ro ++ "]"
 
 
 -- Wrap a term in brackets if its `precedence` is looser than `n`

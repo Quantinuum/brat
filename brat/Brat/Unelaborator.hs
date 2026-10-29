@@ -43,6 +43,7 @@ unelab _ _ Identity = FIdentity
 unelab _ _ (Hope ident) = FHope ident
 unelab _ _ FanIn = FFanIn
 unelab _ _ FanOut = FFanOut
+unelab dy ky (Tuple stuff) = FSeq (fmap (fmap (fmap (fmap (unelab dy ky)))) stuff)
 
 unelabKernRo :: [TypeRowElem (Term Chk Noun)] -> [TypeRowElem (WC Flat)]
 unelabKernRo = fmap (fmap (dummyFC . unelab Chky Nouny))
