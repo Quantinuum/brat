@@ -46,3 +46,27 @@ pair(a, b) = [a, b]
 
 test :: [Int, Int]
 test = pair(twoThings)
+
+unpair([Int, Int]) -> Int, Int
+unpair([i,j]) = i, j
+
+unary_tuple(Int) -> [Int]
+unary_tuple(i) = [i]
+
+unary_untuple([Int]) -> Int
+unary_untuple([i]) = i
+
+qpair(Qubit, Bit) -o [Bit, Qubit]
+qpair(q,b) = [b, q]
+
+qswap_pair([Qubit, Bit]) -o [Bit, Qubit]
+qswap_pair([q, b]) = [b, q]
+
+qunpair([Qubit, Bit]) -o Qubit, Bit
+qunpair([q,b]) = q, b
+
+q1ary_tuple(Qubit) -o [Qubit]
+q1ary_tuple(q) = [q]
+
+q1ary_detuple([Bit]) -> Bit
+q1ary_detuple([b]) = b

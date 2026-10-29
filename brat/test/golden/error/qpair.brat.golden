@@ -1,0 +1,9 @@
+Error in test/golden/error/qpair.brat on line 2:
+qswap_bad(q, b) = [q, b]
+                      ^
+
+  Type mismatch when checking b
+Expected: (head :: Qubit, tail :: [])
+But got:  (b :: Bit)
+
+
