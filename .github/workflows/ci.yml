@@ -54,6 +54,7 @@ jobs:
         ghc-version: ${{ env.GHC_VERSION }}
         cabal-version: ${{ env.CABAL_VERSION }}
         enable-stack: true
+        cabal-update: false
 
     - name: Install system dependencies
       run: sudo apt install binutils
