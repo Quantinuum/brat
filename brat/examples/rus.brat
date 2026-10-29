@@ -2,7 +2,7 @@ open import lib.kernel
 
 rus(timeout :: Nat) -> { Money, Qubit -o Money, Qubit }
 rus(0) = { .. }
-rus(succ(n)) = {
+rus(succ(_)) = {
   fresh, ..;
   (H;T), ..;
       CX;
@@ -11,6 +11,6 @@ rus(succ(n)) = {
   (T;H), ..;
   measure, ..;
   ( m, false, q => m, q
-  | m, true, q => rus(n)(m, q)
+  | m, true, q => rus(m, q)
   )
 }
