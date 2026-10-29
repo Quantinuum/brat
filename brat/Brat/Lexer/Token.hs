@@ -50,6 +50,7 @@ data Tok
  | ConcatEqOddL
  | ConcatEqOddR
  | Riffle
+ | Percent
  deriving Eq
 
 instance Show Tok where
@@ -96,6 +97,7 @@ instance Show Tok where
   show ConcatEqOddL = "=,"
   show ConcatEqOddR = ",="
   show Riffle = "=%="
+  show Percent = "%"
 
 data Token = Token { fc :: FC
                    , _tok :: Tok

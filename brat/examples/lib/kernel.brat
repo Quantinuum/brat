@@ -26,6 +26,3 @@ uncons(_) = { cons(q, qs) => q, qs }
 
 recons(n :: #) -> { Qubit, Vec(Qubit, n) -o Vec(Qubit, succ(n)) }
 recons(_) = { q, qs => cons(q, qs) }
-
-swap(Qubit, Qubit) -o Qubit, Qubit
-swap(a, b) = b, a

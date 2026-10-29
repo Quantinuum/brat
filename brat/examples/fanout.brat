@@ -9,9 +9,6 @@ fanout = { [/\] }
 test_fanout :: Nat, Nat, Nat
 test_fanout = fanout([3,5,7])
 
-swap(X :: $, Y :: $) -> { X, Y -o Y, X }
-swap(_, _) = { x, y => y, x }
-
 test(Vec(Qubit, 2)) -o Vec(Qubit, 2)
 test = { [/\]; CX; [\/] }
 
@@ -19,7 +16,7 @@ as_fn :: Vec(Nat, 3)
 as_fn = [\/](fanout([1,2,3]))
 
 swap_vec(Vec(Qubit, 2)) -o Vec(Qubit, 2)
-swap_vec(qs) = [\/](swap(Qubit, Qubit)([/\](qs)))
+swap_vec(qs) = [\/](%([/\](qs)))
 
 pack_mid(Nat, Nat, Nat, Nat) -> Nat, Vec(Nat, 2), Nat
 pack_mid = { (x=>x), [\/], .. }

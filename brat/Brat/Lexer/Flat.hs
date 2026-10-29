@@ -88,6 +88,7 @@ tok = try (char '(' $> LParen)
       <|> try (string "$" $> Dollar)
       <|> try (string "|" $> Pipe)
       <|> try (string "!" $> Bang)
+      <|> try (string "%" $> Percent)
       <|> try (K <$> try keyword)
       <|> try qualified
       <|> Ident <$> ident
