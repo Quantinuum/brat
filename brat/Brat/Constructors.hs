@@ -140,7 +140,6 @@ defaultTypeConstructors = M.fromList
   ,((Brat, CList),   [("listValue", Star [])])
   ,((Brat, CVec),    [("X", Star []), ("n", Nat)])
   ,((Brat, CBool),   [])
-  ,((Brat, CBit),    [])
   ,((Brat, CInt),    [])
   ,((Brat, CFloat),  [])
   ,((Brat, CString), [])
@@ -152,7 +151,6 @@ defaultTypeConstructors = M.fromList
   ,((Kernel, CMoney), [])
   ,((Kernel, CVec), [("X", Dollar []), ("n", Nat)])
   ,((Kernel, CBit), [])
-  ,((Kernel, CBool), [])
   ]
 
 {-
