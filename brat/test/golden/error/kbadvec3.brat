@@ -1,2 +1,2 @@
-constNil :: { Bit -> Vec(Bit, 0) }
+constNil :: { Bit -o Vec(Bit, 0) }
 constNil = { b => cons(1, nil) }
