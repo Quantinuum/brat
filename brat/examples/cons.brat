@@ -68,5 +68,5 @@ qunpair([q,b]) = q, b
 q1ary_tuple(Qubit) -o [Qubit]
 q1ary_tuple(q) = [q]
 
-q1ary_detuple([Bit]) -> Bit
+q1ary_detuple([Bit]) -o Bit
 q1ary_detuple([b]) = b
