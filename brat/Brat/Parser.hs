@@ -404,6 +404,7 @@ atomExpr = simpleExpr <|> inBracketsFC Paren (unWC <$> expr)
             <|> try (fmap FSimple <$> simpleTerm)
             <|> try fanin
             <|> try fanout
+            <|> try percentSwap
             <|> vec
             <|> cthunk
             <|> fmap (const FPass) <$> matchFC DotDot
@@ -412,6 +413,12 @@ atomExpr = simpleExpr <|> inBracketsFC Paren (unWC <$> expr)
             <|> fmap (const FIdentity) <$> matchFC Pipe
             <|> pHope
 
+percentSwap :: Parser (WC Flat)
+percentSwap = do
+  WC fc () <- matchFC Percent
+  let lhs = APat (Bind "_x") :||: APat (Bind "_y")
+  let rhs = FJuxt (WC fc (FVar (plain "_y"))) (WC fc (FVar (plain "_x")))
+  pure (WC fc (FLambda ((WC fc lhs, WC fc rhs) :| [])))
 
 pHope :: Parser (WC Flat)
 pHope = do

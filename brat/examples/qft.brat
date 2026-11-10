@@ -12,9 +12,9 @@ entangle(zero, _) = { q, qs => q, qs }
 entangle(succ(n), x) = {
     |, uncons(n);
     CRx(2.0 * pi / 2.0 ^ to_float(x)), |;
-    swap, |;
+    %, |;
     |, entangle(n, x + 1);
-    swap, |;
+    %, |;
     |, recons(n)
 }
 

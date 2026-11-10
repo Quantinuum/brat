@@ -17,11 +17,11 @@ decoder = {
   [/\];
   CZ, CZ, |;
   |, CZ, CZ;
-  swap, |, swap;
-  |, swap, ..;
+  %, |,  %;
+  |, %, ..;
   |, |, CZ, |;
-  |, swap, ..;
-  swap, |, swap;
+  |, %, ..;
+  %, |, %;
   H, H, H, H, H;
   [\/]
 }
