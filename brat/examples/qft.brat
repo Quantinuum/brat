@@ -10,12 +10,12 @@ entangle(n :: #, Nat)
            Qubit, Vec(Qubit, n) }
 entangle(zero, _) = { q, qs => q, qs }
 entangle(succ(n), x) = {
-    |, uncons(n);
+    |, uncons;
     CRx(2.0 * pi / 2.0 ^ to_float(x)), |;
     swap, |;
     |, entangle(n, x + 1);
     swap, |;
-    |, recons(n)
+    |, recons
 }
 
 qft(n :: #) ->
@@ -23,11 +23,11 @@ qft(n :: #) ->
      Vec(Qubit, n) }
 qft(zero) = { [] => [] }
 qft(succ(n)) = {
-    uncons(n);
+    uncons;
     H, |;
     entangle(n, 2);
-    |, qft(n);
-    recons(n)
+    |, qft;
+    recons
 }
 
 --!exec-hugr
