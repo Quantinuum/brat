@@ -16,3 +16,10 @@ isNil2(_, cons(x, xs)) = false
 head(List(A)) -> A
 -- head(nil) = ?head
 head(cons(x, xs)) = ?cnos
+
+qmap(n :: #, { Qubit -o Qubit }) -> { Vec(Qubit, n) -o Vec(Qubit, n) }
+qmap(doub(_), g) = { ls =,= rs => qmap(!, g)(ls) =,= qmap(!, g)(rs) }
+qmap(succ(doub(_)), g) = { ls =, q ,= rs => qmap(!, g)(ls) =, g(q) ,= qmap(!, g)(rs) }
+
+riffle_shuffle(n :: #) -> { Vec(Qubit, 2*n) -o Vec(Qubit, 2*n) }
+riffle_shuffle(_) = { xs =,= ys => xs =%= ys }
