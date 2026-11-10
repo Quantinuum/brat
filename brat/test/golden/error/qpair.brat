@@ -1,0 +1,2 @@
+qswap_bad(Qubit, Bit) -o [Bit, Qubit]
+qswap_bad(q, b) = [q, b]
