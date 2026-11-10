@@ -7,3 +7,8 @@ packages:
 
 extra-deps:
 - partial-order-0.2.0.0@sha256:a0d6ddc9ebcfa965a5cbcff1d06d46a79d44ea5a0335c583c2a51bcb41334487
+
+allow-newer: true
+
+allow-newer-deps:
+- partial-order
