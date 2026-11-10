@@ -6,7 +6,7 @@ import Control.Monad.Except
 import Control.Monad.IO.Class
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Maybe (fromMaybe)
-import Data.Text.Utf16.Rope (toText)
+import Data.Text.Mixed.Rope (toText)
 import Data.Text (pack, unpack)
 import Language.LSP.Server
 import Language.LSP.Diagnostics
