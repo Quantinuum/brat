@@ -20,6 +20,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 import Data.Traversable (for)
 import Data.Type.Equality ((:~:)(..), testEquality)
 import Prelude hiding (filter)
@@ -387,16 +388,19 @@ check' (Var x) ((), ()) = (, ((), ())) . ((),) <$> case ?my of
   Kerny -> req (KLup x) >>= \case
     Just (p, ty) -> pure [(p, ty)]
     Nothing -> err $ KVarNotFound (show x)
-check' (Arith op l r) ((), u@(hungry, ty):unders) = case (?my, ty) of
-  (Braty, ty) -> do
-    ty <- evalBinder Braty ty
-    case ty of
-      Right TNat -> check_arith TNat
-      Right TInt -> check_arith TInt
-      Right TFloat -> check_arith TFloat
-      _ -> err . ArithNotExpected $ show u
+check' (Arith op l r) ((), (hungry, ty):unders) = case (?my, ty) of
+  (Braty, ty) -> checkNumTy ty
   (Kerny, _) -> err ArithInKernel
  where
+  checkNumTy :: BinderType Brat -> Checking (SynConnectors m d k, ChkConnectors m d k)
+  checkNumTy (Right ty) | ty `elem` [TNat, TInt, TFloat] = check_arith ty
+  -- TODO: Allow Arith expressions typed against Left Nat
+  checkNumTy (Right ty@(VApp (VPar e) B0)) = do
+    mkYield ("WaitingForHope(" ++ show e ++ ")") (S.singleton e)
+    ty <- eval S0 ty
+    checkNumTy (Right ty)
+  checkNumTy _ = err $ ArithNotExpected (show ty)
+
   check_arith ty = let ?my = Braty in do
     let inRo = RPr ("left", ty) $ RPr ("right", ty) R0
     let outRo = RPr ("out", ty) R0
