@@ -27,7 +27,8 @@ jobs:
     - uses: actions/checkout@v4
 
     # From: https://raehik.github.io/2021/03/01/caching-stack-and-cabal-haskell-builds-on-github-actions.html
-    - name: cache
+    - id: cache
+      name: cache
       uses: actions/cache@v4
       with:
         path: |
