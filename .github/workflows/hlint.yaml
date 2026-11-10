@@ -1,4 +1,4 @@
-name: Brat CI
+name: HLint
 on:
   pull_request:
     branches: [ main ]
