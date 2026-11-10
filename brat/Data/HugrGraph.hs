@@ -19,7 +19,7 @@ import qualified Data.ByteString.Lazy as BS
 import Data.Aeson (encode)
 
 import Control.Monad.State (State, execState, state, get, put, modify)
-import Data.Foldable (foldl', for_)
+import Data.Foldable (for_)
 import Data.Functor ((<&>))
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
