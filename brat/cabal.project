@@ -1,0 +1,3 @@
+allow-newer:
+  partial-order:base,
+  partial-order:containers
