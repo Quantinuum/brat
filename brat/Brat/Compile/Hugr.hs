@@ -115,12 +115,12 @@ addHole parent sig outPort = do
   hole <- gets (length . holes) -- but anyway
   h <- addNode ("hole " ++ show hole) (parent, OpCustom (holeOp hole sig))
   st <- get
-  put (st { holes = (holes st) :< (h, outPort)})
+  put (st { holes = holes st :< (h, outPort)})
   pure h
 
 filePrefix :: [String] -> Name -> Maybe Name
 filePrefix prefixes (MkName (("checking",_):_filename:ns)) =
-  hasPrefix (["globals"]++prefixes) (MkName ns)
+  hasPrefix ("globals" : prefixes) (MkName ns)
 
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
@@ -259,15 +259,14 @@ compileTarget parent tgtN tgt = do
   edges <- compileInEdges parent tgt
   -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
   for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
-  pure ()
 
-in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
-in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
+inEdges :: Name -> Compile [((OutPort, Val Z), Int)]
+inEdges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
 
 compileInEdges :: NodeId -> Name -> Compile [(PortId NodeId, Int)]
 compileInEdges parent name = do
-  in_edges <- in_edges name
-  catMaybes <$> for in_edges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
+  inEdges <- inEdges name
+  catMaybes <$> for inEdges (\((src, _), tgtPort) -> getOutPort parent src <&> fmap (, tgtPort))
 
 compileWithInputs :: NodeId -> Name -> Compile (Maybe NodeId)
 compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
@@ -283,14 +282,14 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode = case (filePrefix ["decl"] name) of
+  compileNode = case filePrefix ["decl"] name of
     Just _ -> error "Kernel contained call to global; should have been a splice"
     _ -> do
       (ns, _) <- gets bratGraph
       let node = ns M.! name
       trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
       nod_edge_info <- case node of
-        (BratNode _ _ _) -> error "Can't compile classical Brat"
+        (BratNode {}) -> error "Can't compile classical Brat"
         (KernelNode thing ins outs) -> compileNode' thing ins outs
       case nod_edge_info of
         Nothing -> pure Nothing
@@ -323,7 +322,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
         Nothing -> addHole parent sig outPort
 
     Source -> error "Source found outside of compileBox"
-      
+
     Target -> error "Target found outside of compileBox"
 
     Id | Nothing <- filePrefix ["decl"] name -> default_edges <$> do
@@ -500,10 +499,10 @@ makeConditional :: String    -- Label
 makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
-  (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  outTyss_cases <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   let outTys = if allRowsEqual (fst <$> outTyss_cases)
                then fst (head outTyss_cases)
-               else (error "Conditional output types didn't match")
+               else error "Conditional output types didn't match"
   let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
   onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)

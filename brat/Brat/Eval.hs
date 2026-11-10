@@ -134,7 +134,7 @@ quoteCTy lvy my ga (ins :->> outs) = quoteRo my ga ins lvy >>= \case
     (_, Some (outs' :* _)) -> pure (ins' :->> outs')
 
 quoteNum ::  Ny lv -> NumVal SVar -> NumVal (VVar lv)
-quoteNum lvy num = fmap (quoteVar lvy) num
+quoteNum lvy = fmap (quoteVar lvy)
 
 -- first number is next Lvl to use in Value
 --         require every Lvl in Sem is < n (converted by n - 1 - lvl), else must fail at runtime

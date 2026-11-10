@@ -155,7 +155,7 @@ loadStmtsWithEnv ns (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps) (fname, 
       (_, unders, overs, _) <- prefix -! next (show name) thing (S0, Some (Zy :* S0)) ins outs
       pure ((name, VDecl d{fnSig=sig}), (unders, overs))
   trackM "finished kind checking"
-  unless (length holes == 0) $ error "Should be no holes from kind-checking"
+  unless (null holes) $ error "Should be no holes from kind-checking"
   unless (M.null capSets) $ error "Should be no captures from kind-checking"
   -- A list of local functions (read: with bodies) to define with checkDecl
   let to_define = M.fromList [ (name, unders) | ((name, VDecl decl), (unders, _)) <- entries, fnLocality decl == Local ]

@@ -136,7 +136,7 @@ wrapper f (Yield st k) = Yield st (wrapper f . k)
 wrapper f (Fork d par c) = Fork d (wrapper f par) (wrapper f c)
 
 wrapper2 :: (forall a. CheckingSig a -> Maybe a) -> Checking v -> Checking v
-wrapper2 f = wrapper (\s -> pure (f s))
+wrapper2 f = wrapper (pure . f)
 
 localAlias :: (QualName, Alias) -> Checking v -> Checking v
 localAlias (name, alias) = wrapper2 (\case
@@ -147,7 +147,7 @@ localFC :: FC -> Checking v -> Checking v
 localFC f = wrapper (\case
   AskFC -> pure $ Just f
   (Throw e@Err{fc=Nothing}) -> req (Throw (e{fc=Just f})) >> error "Throw returned"
-  _ -> pure $ Nothing)
+  _ -> pure Nothing)
 
 localEnv :: (?my :: Modey m) => Env (EnvData m) -> Checking v -> Checking v
 localEnv = case ?my of
@@ -172,7 +172,7 @@ captureOuterLocals n c = do
  where
   helper :: VEnv -> forall a. CheckingSig a -> Checking (Maybe a)
   helper avail (VLup x) | j@(Just new) <- M.lookup x avail =
-    (req $ AddCapture n (x,new)) >> (pure $ Just j)
+    req (AddCapture n (x,new)) >> pure (Just j)
   helper _ _ = pure Nothing
 
 wrapError :: (Error -> Error) -> Checking v -> Checking v
@@ -272,7 +272,7 @@ handler (Req s k) ctx
       AskNS -> error "AskNS in handler, should only happen under `-!`"
       Throw err -> Left err
       LogHole hole -> do (v,ctx,holes) <- handler (k ()) ctx
-                         return (v,ctx,(hole:holes))
+                         return (v,ctx,hole:holes)
       AskFC -> error "AskFC in handler - shouldn't happen, should always be in localFC"
       VLup s -> handler (k $ M.lookup s (globalVEnv ctx)) ctx
       ALup s -> handler (k $ M.lookup s (aliasTable ctx)) ctx
@@ -350,7 +350,7 @@ handler (Define lbl end v k) ctx = let st@Store{typeMap=tm, valueMap=vm} = store
                                       InEnd inport -> case M.lookup inport (dynamicSet ctx) of
                                         Just fc -> track ("Replace " ++ show end ++ " with " ++ show newDynamics) $
                                                  M.union
-                                                 (M.fromList (zip newDynamics (repeat fc)))
+                                                 (M.fromList (map (, fc) newDynamics))
                                                  (M.delete inport (dynamicSet ctx))
                                         Nothing -> dynamicSet ctx
                           })

@@ -2,7 +2,7 @@ import Brat.Compiler
 import Brat.Machine (runInterpreter)
 
 import qualified Data.ByteString.Lazy as BS (putStr)
-import Data.HugrGraph (to_json)
+import Data.HugrGraph (toJson)
 
 import Data.Text.Lazy.IO (putStr)
 import Control.Monad (when)
@@ -54,5 +54,5 @@ main = do
   else do
     result <- runInterpreter libDirs file runFunc
     case result of
-      Right hugr -> BS.putStr (to_json hugr)
+      Right hugr -> BS.putStr (toJson hugr)
       Left s -> putStr s
