@@ -1,6 +1,6 @@
-Error in test/golden/error/tuple1.brat on line 2:
-foo([n, xs]) = []
-    ^^^^^^^
+Error in test/golden/error/tuple1.brat on line 5:
+goo = foo([3, [1,2]])
+                 ^
 
-  Unimplemented, sorry! -- Pattern matching for dependent tuples
+  Unification error: Couldn't force 1 to be 0
 
