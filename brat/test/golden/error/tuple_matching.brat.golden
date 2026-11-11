@@ -1,0 +1,6 @@
+Error in test/golden/error/tuple_matching.brat on line 2:
+foo([_, _, _]) = []
+    ^^^^^^^^^
+
+  Unimplemented, sorry! -- Pattern matching for dependent tuples
+

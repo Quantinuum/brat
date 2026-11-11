@@ -31,6 +31,7 @@ import Brat.Checker.SolveHoles (typeEq)
 import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd, Solution)
 import Brat.Checker.Types
 import Brat.Constructors
+import Brat.Constructors.Patterns
 import Brat.Error
 import Brat.Eval
 import Brat.FC hiding (end)
@@ -467,16 +468,29 @@ check' (VHole (mnemonic, name)) connectors = do
   pure (((), ()), ([], []))
 -- TODO: Better error message
 check' tm@(Con _ _) ((), []) = typeErr $ "No type to check " ++ show tm ++ " against"
-check' (Con vcon vargs) ((), (hungry, ty):unders) = do
+check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
   trackM ("check' Con vcon=" ++ show vcon ++ "  vargs=" ++ show vargs)
+  fc <- req AskFC
   mkFork "check'Con" $ case (?my, ty) of
       (Braty, Left k) -> do
         (_, leftOvers) <- kindCheck [(hungry, k)] (Con vcon vargs)
         ensureEmpty "kindCheck leftovers" leftOvers
-      (Braty, Right ty) -> aux Braty clup ty
+      (Braty, Right ty) -> eval S0 ty >>= \case
+        VTup ro | Just elems <- juxtFromTerm fc tm -> do
+          (_, unders, [], _) <- anext "tupleRo" Hypo (S0, Some (Zy :* S0)) ro R0
+          (((), ()), ((), rightOvers)) <- check elems ((), unders)
+          if null rightOvers
+          then pure ()
+          else typeErr $ "Too many elements in tuple. Unexpected:\n    " ++ show rightOvers
+        ty -> aux Braty clup ty
       (Kerny, _) -> track "Kerny" $ aux Kerny kclup ty
   pure (((), ()), ((), unders))
  where
+  juxtFromTerm :: FC -> Term Chk Noun -> Maybe (WC (Term Chk Noun))
+  juxtFromTerm fc (Con CNil (WC _ Empty)) = Just (WC fc Empty)
+  juxtFromTerm _ (Con CCons (WC fcJuxt (hd :|: WC fcTail tl))) = WC fcJuxt . (hd :|:) <$> juxtFromTerm fcTail tl
+  juxtFromTerm _ _ = Nothing
+
   aux :: Modey m -> (QualName -> QualName -> Checking (CtorArgs m)) -> Val Z -> Checking ()
   aux my lup ty = do
     -- TODO: Use concurrency to avoid strictness - we don't have to work out that
@@ -709,6 +723,10 @@ check' (Hope ident) ((), (tgt@(NamedPort bang _), ty):unders) = case (?my, ty) o
     pure (((), ()), ((), unders))
   (Braty, Right _ty) -> typeErr "Can only infer kinded things with !"
   (Kerny, _) -> typeErr "Won't infer kernel typed !"
+check' (Tuple ro) ((), (tgt, ty):unders) = case (?my, ty) of
+  (Braty, Left k@(Star [])) -> do
+    kindCheck [(tgt, k)] (Tuple ro)
+    pure (((), ()), ((), unders))
 check' tm _ = error $ "check' " ++ show tm
 
 
@@ -965,6 +983,12 @@ kindCheck ((hungry, Star []):unders) (K (ss :-> ts)) = do
         let val = VFun Kerny (ss :->> ts)
         defineTgt' "kind3" hungry val
         pure ([val], unders)
+
+kindCheck ((hungry, Star []):unders) (Tuple ro) = kindCheckRow Braty "tuple" (fmap unWC <$> ro) >>= \case
+  Some ro -> do
+    let val = VTup ro
+    defineTgt' "kind4tuple" hungry val
+    pure ([val], unders)
 
 -- N.B. This code is currently only called for checking the validity of type aliases
 --

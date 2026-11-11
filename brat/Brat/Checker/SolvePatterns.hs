@@ -218,4 +218,5 @@ lookupConstructor my c ty = eval S0 ty >>= \case
   (VCon tycon args) -> (,(tycon, args)) <$> case my of
     Braty -> clup c tycon
     Kerny -> track ("kclup " ++ show c ++ " " ++ show tycon) $ kclup c tycon
+  (VTup _) -> err $ Unimplemented "Pattern matching for dependent tuples" []
   ty -> typeErr $ "Couldn't normalise type " ++ show ty ++ " to a constructor"
