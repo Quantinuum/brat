@@ -202,8 +202,6 @@ data Sem where
   SFun :: MODEY m => Modey m -> Stack Z Sem n -> CTy m n -> Sem
   SApp :: SVar -> Bwd Sem -> Sem
   STup :: Stack Z Sem n -> Ro Brat n m -> Sem
---  -- Sum types, stash like SLam (shared between all variants)
---  SSum :: MODEY m => Modey m -> Stack Z Sem n -> [Some (Ro m n)] -> Sem
 deriving instance Show Sem
 
 data CTy :: Mode -> N -> Type where
