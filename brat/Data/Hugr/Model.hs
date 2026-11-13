@@ -53,7 +53,7 @@ a <//> b = a :<> (Line 1 b)
 a <+> b = a :<> Leaf " " :<> b
 
 concatLines :: [Doc] -> Doc
-concatLines xs = foldr (flip (</>)) mempty xs
+concatLines xs = foldl' (</>) mempty xs
 
 class Serialise t where
   serialise :: t -> Doc
