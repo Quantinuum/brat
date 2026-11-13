@@ -7,6 +7,8 @@ and(Bool, Bool) -> Bool
 and(true, b) = b
 and(false, b) = false
 
+--!exec true, false --> false, true
+--!exec true, true --> true, false
 halfAdder(Bool, Bool) -> twos :: Bool, ones :: Bool
 halfAdder(a, b) = and(a,b), xor(a,b)
 
@@ -15,6 +17,10 @@ fullAdder = halfAdder, |;
             |, halfAdder;
             xor, |
 
+--!exec 4, [false, true, false, true], [false, true, true, true], true --> false, [true, true, false, true]
+--!exec 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
+--Terminates with "Finished <thunk>"
+--!exec-xfail 2, [true, true], [true, true], false -> true, [true, false]
 adder(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adder(0, [], [], b) = b, []
 adder(succ(n), x ,- xs, y ,- ys, b) =
@@ -22,6 +28,10 @@ adder(succ(n), x ,- xs, y ,- ys, b) =
    let d, z = fullAdder(x, y, c) in
     d, z ,- zs
 
+--!exec 4, [false, true, false, true], [false, true, true, true], true --> false, [true, true, false, true]
+--!exec 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
+--Terminates with "Finished <thunk>"
+--!exec-xfail 2, [true, true], [true, true], false -> true, [true, false]
 adderSnoc(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adderSnoc(0, [], [], b) = b, []
 adderSnoc(succ(n), xs -, x, ys -, y, b) =
@@ -29,6 +39,9 @@ adderSnoc(succ(n), xs -, x, ys -, y, b) =
    let d, zs = adderSnoc(n, xs, ys, c) in
     d, zs -, z
 
+-- Both Suspend with long stack traces
+--!exec-xfail 3, [false, true, true], [false, true, false], true --> false, [true, true, false]
+--!exec-xfail 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
 adderDivConquer(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adderDivConquer(0, [], [], b) = b, []
 adderDivConquer(doub(succ(n)), xsh =,= xsl, ysh =,= ysl, b) =
@@ -45,15 +58,18 @@ if(X :: *, Bool, X, X) -> X
 if(_, true, then, _) = then
 if(_, false, _, else) = else
 
+--!exec 2, [false, true, false, true], [false, true, true, true], true --> false, [true, true, false, true]
 fastAdder(n :: #, Vec(Bool, 2^n), Vec(Bool, 2^n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, 2^n)
 fastAdder(0, [x], [y], b) = let c, z = fullAdder(x, y, b) in c, [z]
 fastAdder(succ(n), xsh =,= xsl, ysh =,= ysl, b) =
   fastAdder(n, xsh, ysh, true), fastAdder(n, xsh, ysh, false), fastAdder(n, xsl, ysl, b) |>
   (d1, zsh1, d0, zsh0, c, zsl => if(Bool, c, d1, d0), if(!, c, zsh1, zsh0) =,= zsl)
 
+--!exec 2, [true, true, false, false] --> [true, true], [false, false]
 chop(n :: #, Vec(Bool, 2 * n)) -> Vec(Bool, n), Vec(Bool, n)
 chop(n, hi =,= lo) = hi, lo
 
+--!exec 1, [true, false], [true, false], [false, true], [false, true] --> [false, true, true, false]
 multAndAddTwo(n :: #, mul1 :: Vec(Bool, 2^n), mul2 :: Vec(Bool, 2^n), add1 :: Vec(Bool, 2^n), add2 :: Vec(Bool, 2^n))
             -> Vec(Bool, 2^(n + 1))
 multAndAddTwo(0, [m1], [m2], [a1], [a2]) = let b, a = fullAdder(and(m1, m2), a1, a2) in [b,a]

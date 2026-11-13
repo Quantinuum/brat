@@ -1,6 +1,10 @@
 add(x :: Int, y :: Int) -> (z :: Int)
 add(x,y) = x + y
 
+--!exec <thunk>
+--the --> below means to call with no arguments; this requires
+--us to have nullary application (*distinct from the Force constructor*)
+--!exec --> 5
 be5 :: { -> Int }
 be5 = { => 5 }
   --> { => 5 }
@@ -10,40 +14,30 @@ f5 = { be5 }
 
 -- Thunked nouns with underscores are syntactic sugar for lambda expressions
 -- where the underscore becomes the lambda's argument
+--!exec 3 --> 3
 id :: { Int -> Int}
 id = { _ }
 
+--!exec 4 --> 9
 use5 :: { Int -> Int }
 use5 = { _ |> (id,be5); add }
 
---!exec [9]
-test_use5 :: Int
-test_use5 = use5(4)
-
+--!exec 1 --> 6
 add5 :: { Int -> Int }
 add5 = {add(_, 5)}
    --> { '0 => add('0, 5) }
 
 -- When there are multiple underscores, they are bound left-to-right
+--!exec 1,2 --> 3
 add__ :: { Int, Int -> Int }
 add__ = { add(_, _) }
     --> { '0, '1 => add('0, '1) }
 
+--!exec 3, true --> 3, true
 id2 :: { Int, Bool -> Int, Bool }
 id2 = { _, _ }
 
 -- It should interact nicely with port pulling too!
+--!exec 3, true --> true, 3
 swap :: { Int, Bool -> fst :: Bool, snd :: Int }
 swap = { snd:_,_ }
-
--- This example needs us to have nullary application *distinct from the Force constructor*
--- be5' :: Int
--- be5' = be5() --> 5
-
---!exec [6]
-add5' :: Int
-add5' = add5(1)
-
---!exec [3]
-add__' :: Int
-add__' = add__(1,2)

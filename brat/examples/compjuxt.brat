@@ -1,65 +1,94 @@
-ext "" f :: { Nat -> Int }
-ext "" g :: { Int -> Nat }
-ext "" addn(Nat, Nat) -> Nat
+type VNat = Vec(Nat, 1)
 
+f(Nat) -> VNat
+f(n) = [n]
+
+g(VNat) -> Nat
+g([n]) = n
+
+addn(Nat, Nat) -> Nat
+addn(x,y) = x + y
+
+--!exec 1, 2 --> 1, 2
 id2 :: { Nat, Nat -> Nat, Nat }
 id2 = { f,f; g,g }
 
 -- Same function, but without curly braces
+--!exec 2, 3 --> 2, 3
 id2'(Nat, Nat) -> Nat, Nat
 id2' = f,f; g,g
 
 -- Compose forced juxtapositions of nouns
-id2a :: { Nat, Int -> Nat, Int }
+--!exec 3, [2] --> 3, [2]
+id2a :: { Nat, VNat -> Nat, VNat }
 id2a = { (f,g); g,f }
 
-id2b :: { Nat, Int -> Nat, Int }
+--!exec 4, [1] --> 4, [1]
+id2b :: { Nat, VNat -> Nat, VNat }
 id2b = { f,g; (g,f) }
 
-id2c :: { Nat, Int -> Nat, Int }
+--!exec 3, [5] --> 3, [5]
+id2c :: { Nat, VNat -> Nat, VNat }
 id2c = { (f,g); (g,f) }
 
 -- Note brackets here; without them, would be parsed as (|, f()); (g(), |)
-mixture :: { Int, Nat, Nat -> Int, Nat, Nat }
+--!exec [2], 3, 5 --> [2], 3, 5
+mixture :: { VNat, Nat, Nat -> VNat, Nat, Nat }
 mixture = { |, (f; g), | }
 
-
+--!exec 3, 5 --> 5, 3
 swap :: { a :: Nat, b :: Nat -> b :: Nat, a :: Nat }
 swap = { x, y => a:id2(x, y) }
+
+--!exec 3, 5 --> 5, 3
 swap' :: { a :: Nat, b :: Nat -> b :: Nat, a :: Nat }
 swap' = x, y => a:id2(x, y)
 
+--!exec 3, 5 --> 8
 funky_application :: { a :: Nat, b :: Nat -> Nat }
 funky_application = { x, y => x, y |> addn }
+
+--!exec 3, 5 --> 8
 funky_application' :: { a :: Nat, b :: Nat -> Nat }
 funky_application' = x, y => x, y |> addn
 
-int :: { -> Int }
-int = { => |(1 :: Int) }
-int' :: Int
-int' = |(1 :: Int)
+--!exec <thunk>
+--!exec --> [1]
+int :: { -> VNat }
+int = { => ([1] :: VNat) }
 
-port_pull(Nat) -> n :: Nat, i :: Int
+--!exec [1]
+int' :: VNat
+int' = [(1 :: Nat)]
+
+--!exec 3 --> 3, [3]
+port_pull(Nat) -> n :: Nat, i :: VNat
 port_pull = { x => i:(x, x |> f, |) }
-port_pull' :: { Nat -> nat :: Nat, int :: Int }
+
+--!exec 3 --> 3, [3]
+port_pull' :: { Nat -> nat :: Nat, int :: VNat }
 port_pull' = x => int:(x, x |> f, |)
 
-
-addi(Int, Int) -> Nat
+--!exec [4], [7] --> 11
+addi(VNat, VNat) -> Nat
 addi = { g, g; addn }
 
-
-juxt_in_comp2 :: { Nat, Nat, Int -> Int, Nat, Int}
+--!exec 2, 3, [5] --> [2], 3, [5]
+juxt_in_comp2 :: { Nat, Nat, VNat -> VNat, Nat, VNat}
 juxt_in_comp2 = { f,f,| ; |,g,| }
 
-sverb_cverb :: { Int -> Nat }
+--!exec [17] --> 4
+sverb_cverb :: { VNat -> Nat }
 sverb_cverb = { |; (z => 4) }
 
-sverb_sverb_cverb :: { Int -> Nat }
+--!exec [19] --> 4
+sverb_sverb_cverb :: { VNat -> Nat }
 sverb_sverb_cverb = { |; |; (z => 4) }
 
+--!exec --> 1, 2
 num_lit :: { -> Nat, Nat }
 num_lit = { => (1, 2) |> id2 }
 
+--!exec 6 --> 7
 into_in_lambda :: { Nat -> Nat }
 into_in_lambda = { x => (1, x) |> addn }

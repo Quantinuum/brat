@@ -163,7 +163,6 @@ test-suite tests
   main-is:             Main.hs
   other-modules:       Test.Abstractor,
                        Test.Checking,
-                       Test.Compile.Hugr,
                        Test.Elaboration,
                        Test.Examples,
                        Test.Failure,
