@@ -334,8 +334,10 @@ takeOutEdges src = do
 --------------------------------------------------------------------------------
 ------------------------------------ Querying ----------------------------------
 --------------------------------------------------------------------------------
-getChildren :: Eq n => HugrGraph n -> n -> [n]
-getChildren hg node = M.keys $ M.filter (== node) (parents hg)
+getChildren :: Ord n => HugrGraph n -> n -> [n]
+getChildren hg node = case M.lookup node (first_children hg) of
+  Nothing -> M.keys $ M.filter (== node) (parents hg)
+  Just firstChildren -> firstChildren ++ M.keys (M.filterWithKey (\k v -> v == node && k `notElem` firstChildren) (parents hg))
 
 inEdges :: Ord n => HugrGraph n -> n -> [(PortId n, Int)]
 inEdges hg n = (edges_in hg) M.! n
