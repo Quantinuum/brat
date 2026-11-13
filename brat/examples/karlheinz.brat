@@ -18,10 +18,10 @@
 -- P-circ, M-circ
 
 type Dist = List(Bool)
-type KCirc(q,b) = { Vec(Qubit, q) -o Vec(Bool, b) }
+type KCirc(q,b) = { Vec(Qubit, q) -o Vec(Bit, b) }
 type OCirc(q,b) = Circ(q, b)
-type PCirc(q) = { Vec(Qubit, q) -o Vec(Bool, q) }
-type MCirc(q,b) = { Vec(Qubit,q) -o Vec(Bool, b) }
+type PCirc(q) = { Vec(Qubit, q) -o Vec(Bit, q) }
+type MCirc(q,b) = { Vec(Qubit,q) -o Vec(Bit, b) }
 
 type Real = Float
 
