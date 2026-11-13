@@ -613,6 +613,8 @@ copyable TMoney = Just False
 copyable (VApp _ _) = Just False
 copyable (TVec elem _) = copyable elem
 copyable TBit = Just True
+copyable TNil = Just True
+copyable (TCons hd tl) = (&&) <$> copyable hd <*> copyable tl
 copyable _ = Nothing
 
 stkLen :: Stack Z t tot -> Ny tot
