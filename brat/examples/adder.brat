@@ -17,6 +17,10 @@ fullAdder = halfAdder, |;
             |, halfAdder;
             xor, |
 
+--!exec 3, [false, true, true], [false, true, false], true --> [False,[True,True,False]]
+--!exec 3, [true, true, true], [true, true, true], false --> [True,[True,True,False]]
+--Next one fails, unclear why:
+--!exec 2, [true, true], [true, true], false -> [True,[True,False]]
 adder(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adder(0, [], [], b) = b, []
 adder(succ(n), x ,- xs, y ,- ys, b) =
