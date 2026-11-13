@@ -17,7 +17,7 @@ instance IsString Doc where
 instance Semigroup Doc where
   Nowt <> b = b
   a <> Nowt = a
-  a <> b = (a :<> b)
+  a <> b = a :<> b
 
 instance Monoid Doc where
   mempty = Nowt
@@ -43,17 +43,17 @@ doc = Leaf
 
 (</>) :: Doc -> Doc -> Doc
 a </> Nowt = a
-a </> b = a :<> (Line 0 b)
+a </> b = a :<> Line 0 b
 
 (<//>) :: Doc -> Doc -> Doc
 a <//> Nowt = a
-a <//> b = a :<> (Line 1 b)
+a <//> b = a :<> Line 1 b
 
 (<+>) :: Doc -> Doc -> Doc
 a <+> b = a :<> Leaf " " :<> b
 
 concatLines :: [Doc] -> Doc
-concatLines xs = foldl' (</>) mempty xs
+concatLines = foldl' (</>) mempty
 
 class Serialise t where
   serialise :: t -> Doc
@@ -206,7 +206,7 @@ instance Serialise Term where
    serialise Wildcard = "_"
    serialise (Var x) = doc x
    serialise (Apply sym []) = doc sym
-   serialise (Apply sym tms) = parens (doc sym <+> (foldr1 (<+>) (serialise <$> tms)))
+   serialise (Apply sym tms) = parens (doc sym <+> foldr1 (<+>) (serialise <$> tms))
    serialise (List pts) = brackets (printListParts pts)
    serialise (Literal lit) = serialise lit
    serialise (Tuple pts) = parens (printTupleParts pts)

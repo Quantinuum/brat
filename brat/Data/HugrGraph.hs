@@ -32,7 +32,7 @@ getRoot :: HugrGraph n -> n
 getRoot HugrGraph {root} = root
 
 getNodes :: HugrGraph n -> [n]
-getNodes HugrGraph {parents, root} = root:(M.keys parents)
+getNodes HugrGraph {parents, root} = root : M.keys parents
 
 data HugrGraph n = HugrGraph {
     root :: n,
@@ -105,9 +105,9 @@ addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
       edges_out = addToMap s (o, tgt) edges_out id,
       edges_in = addToMap t (src, i) edges_in no_other_inedge
     }
-    (Nothing, Just _) -> error $ "addEdge source not present"
-    (Just _, Nothing) -> error $ "addEdge Target not present"
-    _ -> error $ "addEdge nodes not present"
+    (Nothing, Just _) -> error "addEdge source not present"
+    (Just _, Nothing) -> error "addEdge Target not present"
+    _ -> error "addEdge nodes not present"
  where
   addToMap :: Ord k => k -> v -> M.Map k [v] -> ([v] -> [v]) -> M.Map k [v]
   addToMap k v m chk = M.alter (Just . (v:) . maybe [] chk) k m

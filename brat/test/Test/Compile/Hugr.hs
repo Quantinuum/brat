@@ -37,7 +37,7 @@ compileToOutput :: String -> FilePath -> TestTree
 compileToOutput name file = testCaseInfo name $ do
     createDirectoryIfMissing False outputDir
     compileFile root [] file >>= \case
-        Right hs -> mconcat <$> (forM (M.toList hs) $ \(boxName, (hugr, holes)) -> do
+        Right hs -> mconcat <$> forM (M.toList hs) (\(boxName, (hugr, holes)) -> do
             sort (getHoles hugr) @?= sort holes
             -- ignore splices for now
             let outFile = outputDir </> replaceExtension (takeFileName file) ((show boxName) ++ ".json")

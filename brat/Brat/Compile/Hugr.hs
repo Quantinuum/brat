@@ -77,7 +77,7 @@ data Container = Ctr {
 }
 
 runReaderCompile :: Reader r a -> (CompilationState -> r) -> Compile a
-runReaderCompile m f = gets f <&> \st -> (runReader m st)
+runReaderCompile m f = gets f <&> \st -> runReader m st
 
 makeCS :: (Graph, Namespace, Store) -> HugrGraph NodeId -> CompilationState
 makeCS (g, ns, store) hugr =
@@ -124,12 +124,12 @@ addHole parent sig outPort = do
   hole <- gets (length . holes) -- but anyway
   h <- addNode ("hole " ++ show hole) (parent, OpCustom (holeOp hole sig))
   st <- get
-  put (st { holes = (holes st) :< (h, outPort)})
+  put (st { holes = holes st :< (h, outPort)})
   pure h
 
 filePrefix :: [String] -> Name -> Maybe Name
 filePrefix prefixes (MkName (("checking",_):_filename:ns)) =
-  hasPrefix (["globals"]++prefixes) (MkName ns)
+  hasPrefix ("globals" : prefixes) (MkName ns)
 
 runCheckingInCompile :: Free CheckingSig t -> Compile t
 runCheckingInCompile (Ret t) = pure t
@@ -154,7 +154,7 @@ compileCTy (ss :->> ts) = do
 compileRo :: Ro m i j -- The Ro that we're processing
           -> Reader Store [HugrType] -- The hugr type of the row
 compileRo R0 = pure []
-compileRo (RPr (_, ty) ro) = (:) <$> (compileType ty) <*> compileRo ro
+compileRo (RPr (_, ty) ro) = (:) <$> compileType ty <*> compileRo ro
 compileRo (REx (_, k) ro) = (:) <$> compileType (kindType k) <*> compileRo ro
 
 -- Val Z should already be eval'd at this point
@@ -166,7 +166,7 @@ compileType TBool = pure (HTSum (SU (UnitSum 2)))
 compileType TInt = pure hugrInt
 compileType TNat = pure HTUSize
 compileType TFloat = pure hugrFloat
-compileType ty@(TCons _ _) = htTuple <$> (tuple ty)
+compileType ty@(TCons _ _) = htTuple <$> tuple ty
  where
   tuple :: Val n -> Reader Store [HugrType]
   tuple (TCons hd rest) = (:) <$> compileType hd <*> tuple rest
@@ -227,7 +227,7 @@ compileClauses :: NodeId -> [TypedPort] -> NonEmpty (TestMatchData m, Name) -> C
 compileClauses parent ins ((matchData, rhs) :| clauses) = do
   (ns, _) <- gets bratGraph
   -- RHS has to be a box, so it must have a function type
-  outTys <- case nodeOuts <$> (M.lookup rhs ns) of
+  outTys <- case nodeOuts <$> M.lookup rhs ns of
     Just [(_, VFun my cty)] -> compileSig my cty >>= (\(_, outs) -> pure outs)
     Just _ -> error "Expected 1 kernel function type from rhs"
     Nothing -> error "clause not found"
@@ -285,7 +285,7 @@ panic parent msg ins outTys = do
   case errs of
     [err] -> let inRow = TASequence (TAType . snd <$> ins)
                  outRow = TASequence (TAType <$> outTys)
-                 op = (CustomOp "prelude" "panic" sig [inRow, outRow])
+                 op = CustomOp "prelude" "panic" sig [inRow, outRow]
              in addNodeWithInputs "Panic" (parent, OpCustom op) (err:ins) outTys
     _ -> error "wtf?"
 
@@ -322,7 +322,6 @@ compileTarget parent tgtN tgt = do
   edges <- compileInEdges parent tgt
   -- registerCompiled tgt tgtN -- really shouldn't be necessary, not reachable
   for_ edges (\(src, tgtPort) -> addEdge (src, Port tgtN tgtPort))
-  pure ()
 
 in_edges :: Name -> Compile [((OutPort, Val Z), Int)]
 in_edges name = gets bratGraph <&> \(_, es) -> [((src, ty), portNum) | (src, ty, In edgTgt portNum) <- es, edgTgt == name]
@@ -346,7 +345,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
   -- If we only care about the node for typechecking, then drop it and return `Nothing`.
   -- Otherwise, NodeId of compiled node, and list of Hugr in-edges (source and target-port)
   compileNode :: Compile (Maybe (NodeId, [(PortId NodeId, Int)]))
-  compileNode = case (filePrefix ["decl"] name) of
+  compileNode = case filePrefix ["decl"] name of
     Just _ -> error "Kernel contained call to global; should have been a splice"
     _ -> do
       (ns, _) <- gets bratGraph
@@ -355,7 +354,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
             Nothing -> error "AEewafoihwefh;"
       trackM ("compileNode (" ++ show parent ++ ") " ++ show name ++ " " ++ show node)
       nod_edge_info <- case node of
-        (BratNode _ _ _) -> error "Can't compile classical Brat"
+        (BratNode {}) -> error "Can't compile classical Brat"
         (KernelNode thing ins outs) -> compileNode' thing ins outs
       case nod_edge_info of
         Nothing -> pure Nothing
@@ -581,10 +580,10 @@ makeConditional :: String    -- Label
 makeConditional lbl parent discrim otherInputs cases = do
   condId <- freshNode "Conditional" parent
   let rows = getSumVariants (snd discrim)
-  (outTyss_cases) <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
+  outTyss_cases <- for (zip (zip [0..] cases) rows) (\((ix, (name, f)), row) -> makeCase condId name ix (row ++ (snd <$> otherInputs)) f)
   let outTys = if allRowsEqual (fst <$> outTyss_cases)
                then fst (head outTyss_cases)
-               else (error $ "Conditional output types didn't match: " ++ show (fst <$> outTyss_cases))
+               else error $ "Conditional output types didn't match: " ++ show (fst <$> outTyss_cases)
   let condOp = OpConditional (Conditional rows (snd <$> otherInputs) outTys [("label", lbl)])
   setOp condId condOp
   onHugr $ H.setFirstChildren condId (snd <$> outTyss_cases)

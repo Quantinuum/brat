@@ -92,7 +92,7 @@ htList :: HugrType -> HugrType
 htList ty = HTList ty (boundOf ty)
 
 htError :: HugrType
-htError = (HTOpaque "prelude" "error" [] TBAny)
+htError = HTOpaque "prelude" "error" [] TBAny
 
 pattern HTList :: HugrType -> TypeBound -> HugrType
 pattern HTList ty bound = HTOpaque "collections.list" "List" [TAType ty] bound

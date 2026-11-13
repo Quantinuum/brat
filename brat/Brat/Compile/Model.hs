@@ -48,10 +48,10 @@ setInpVar key val = do
 -- The thing had better be defined!
 -- TODO: Allow it not to be?
 getInpVars :: NodeId -> Model [(Int, M.LinkName)]
-getInpVars nid = gets (fromMaybe [] . (Map.lookup nid) . inpVars)
+getInpVars nid = gets (fromMaybe [] . Map.lookup nid . inpVars)
 
 getOutVars :: NodeId -> Model [(Int, M.LinkName)]
-getOutVars nid = gets (fromMaybe [] . (Map.lookup nid) . outVars)
+getOutVars nid = gets (fromMaybe [] . Map.lookup nid . outVars)
 
 getDangling :: NodeId -> Int -> Model (Maybe M.LinkName)
 getDangling nid port = do
@@ -74,14 +74,14 @@ makeInputLink :: NodeId -> Int -> Model M.LinkName
 makeInputLink nid port = do
   name <- freshName
   let link = '%':show name
-  setInpVar nid [(port, ('%':show name))]
+  setInpVar nid [(port, '%':show name)]
   pure link
 
 makeOutputLink :: NodeId -> Int -> Model M.LinkName
 makeOutputLink nid port = do
   name <- freshName
   let link = '%':show name
-  setOutVar nid [(port, ('%':show name))]
+  setOutVar nid [(port, '%':show name)]
   pure link
 
 freshInputLinks :: NodeId
@@ -92,15 +92,15 @@ freshInputLinks :: NodeId
                 -> Model [M.LinkName] -- Combined fresh and existing links
 freshInputLinks nodeId mLinks = do
   links <- for mLinks $ \case
-    Nothing -> (('%':) . show) <$> freshName
+    Nothing -> ('%':) . show <$> freshName
     Just link -> pure link
-  for (zip [0..] links) $ \(ix, link) -> setInpVar nodeId [(ix, link)]
+  for_ (zip [0..] links) $ \(ix, link) -> setInpVar nodeId [(ix, link)]
   pure links
 
 freshOutputLinks :: NodeId -> [a] -> Model [M.LinkName]
 freshOutputLinks nodeId xs = do
-  links <- for xs (\_ -> (('%':) . show) <$> freshName)
-  for (zip [0..] links) $ \(ix, link) -> setOutVar nodeId [(ix, link)]
+  links <- for xs (\_ -> ('%':) . show <$> freshName)
+  for_ (zip [0..] links) $ \(ix, link) -> setOutVar nodeId [(ix, link)]
   pure links
 
 customNode :: OpDef t => t -> [TypeArg] -> [M.LinkName] -> [M.LinkName] -> M.Node
@@ -117,11 +117,10 @@ customNode opdef args inWires outWires = M.Node
 
 convertMeta :: [(String, String)] -> [M.Term]
 convertMeta [] = []
-convertMeta ((key,val):xs) = (M.Apply "compat.meta_json"
+convertMeta ((key,val):xs) = M.Apply "compat.meta_json"
                               [M.Literal (M.LitStr (escape key))
                               ,M.Literal (M.LitStr ('"':(escape val) ++ "\""))
                               ]
-                             )
                              : convertMeta xs
  where
   escape :: String -> String
@@ -141,7 +140,7 @@ convertType (HTSum (SG (GeneralSum rows)))
  = M.Apply "core.adt" [M.List [M.Item (M.List (M.Item . convertType <$> row)) | row <- rows ]]
 convertType (HTOpaque ext typ [] _bound) = M.Var (ext ++ "." ++ typ)
 convertType (HTOpaque ext typ args _bound)
- = M.Apply (ext ++ "." ++ typ) [(convertTypeArg arg) | arg <- args]
+ = M.Apply (ext ++ "." ++ typ) [convertTypeArg arg | arg <- args]
 --convertType (HTFunc polyFuncType) = _
 convertType HTAny = M.Var "?"
 convertType x = error $ "convertType " ++ show x
@@ -202,7 +201,7 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
     -- Check if any of the inputs to the output node come directly from the input
     -- node. If so, we shouldn't make fresh links for them.
     case (\p@(Port src _, _) -> toMaybe (src == inp) p) <$> inputsToOutputNode of
-      [] -> freshInputLinks out (Prelude.const Nothing <$> output sig)
+      [] -> freshInputLinks out (Nothing <$ output sig)
       ps -> do
         danglingLinks <- getOutVars inp
         let mInputLinks = fmap (>>= (\(Port _ outIx, _) -> lookup outIx danglingLinks)) ps
@@ -336,7 +335,7 @@ convertNode hg nodeId = case getOp hg nodeId of
     let [moneyOut, bitOut] = case dfgOuts of
           [m, b] -> [m, b]
           _ -> error "impossible"
-    tketBoolOut <- (('%':).show) <$> freshName
+    tketBoolOut <- ('%':).show <$> freshName
 
     let measureFreeOp = (M.Node
          { op = M.Custom (M.Apply "tket.quantum.MeasureFree" [])
