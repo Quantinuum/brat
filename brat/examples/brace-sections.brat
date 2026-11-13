@@ -13,17 +13,17 @@ f5 = { be5 }
 id :: { Int -> Int}
 id = { _ }
 
---!exec 4 --> [9]
+--!exec 4 --> 9
 use5 :: { Int -> Int }
 use5 = { _ |> (id,be5); add }
 
---!exec 1 --> [6]
+--!exec 1 --> 6
 add5 :: { Int -> Int }
 add5 = {add(_, 5)}
    --> { '0 => add('0, 5) }
 
 -- When there are multiple underscores, they are bound left-to-right
---!exec 1,2 --> [3]
+--!exec 1,2 --> 3
 add__ :: { Int, Int -> Int }
 add__ = { add(_, _) }
     --> { '0, '1 => add('0, '1) }

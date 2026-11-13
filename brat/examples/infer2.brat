@@ -4,16 +4,16 @@ isfull(0) = true
 isfull(_) = false
 
 -- https://github.com/Quantinuum/brat/issues/112
---!exec-xfail [True]
+--!exec-xfail true
 is3full :: Bool
 is3full = isfull(3)
 
 -- https://github.com/Quantinuum/brat/issues/112
---!exec-xfail [True]
+--!exec-xfail true
 is15full :: Bool
 is15full = isfull(15)
 
---!exec [False]
+--!exec false
 is5full :: Bool
 is5full = isfull(5)
 
@@ -22,18 +22,18 @@ hasfulllen(n, x ,- (xs =,= ys)) = hasfulllen(!, xs)
 hasfulllen(_, []) = true
 hasfulllen(_, _) = false
 
---!exec [True]
+--!exec true
 hasfulllen3 :: Bool
 hasfulllen3 = hasfulllen(!, [false, false, false])
 
 eatsodd(n :: #, xs :: Vec(Bool, succ(doub(n)))) -> Nat
 eatsodd(n, _) = n
 
---!exec [2]
+--!exec 2
 mkotwo' :: Nat
 mkotwo' = eatsodd(2, [false,false,false,false,false])
 
 -- https://github.com/Quantinuum/brat/issues/111
---!exec-xfail [2]
+--!exec-xfail 2
 mkotwo :: Nat
 mkotwo = eatsodd(!, [false,false,false,false,false])

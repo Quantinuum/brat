@@ -19,7 +19,7 @@ import Hasochism
 import Control.Monad.State (execState, gets, evalState)
 import qualified Data.Text.Lazy as T
 import Data.Maybe (fromMaybe, fromJust, isNothing)
-import Data.List (uncons)
+import Data.List (intercalate, uncons)
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -37,7 +37,11 @@ interpretGraph (root, (declEnv, _, st, outerGraph, capSets)) runFunc = do
     -- we hope outTask is a Finished. Or a Suspend.
     case outTask of
       Finished [(KernelV hugr)] -> Right hugr
+      Finished vals -> Left $ T.pack $ "Finished with: " ++show_spaced vals
       _ -> Left $ T.pack $ show outTask
+
+show_spaced :: [Value] -> String
+show_spaced = intercalate ", " . fmap show
 
 data Frame where
     BratValues :: EvalEnv -> Frame
@@ -432,8 +436,8 @@ data BratThunk =
 instance Show Value where
   show (IntV x) = show x
   show (FloatV x) = show x
-  show (BoolV x) = show x
-  show (VecV xs) = show xs
+  show (BoolV x) = if x then "true" else "false" -- match Brat syntax
+  show (VecV xs) = "[" ++ show_spaced xs ++ "]"
   show (ThunkV (VectorisedThunks ths)) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"

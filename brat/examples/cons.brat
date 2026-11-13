@@ -21,7 +21,7 @@ three :: Int
 three = add(twoThings)
 
 -- Is equivalent to:
---!exec [3]
+--!exec 3
 three' :: Int
 three' = let x, y = twoThings in add(x, y)
 
@@ -36,7 +36,7 @@ uncons(cons(x, xs)) = x, xs
 
 -- However, on the right hand side, something that represents the right number
 -- of values can be used as the argument to a cons
---!exec [[1,2,3]]
+--!exec [1, 2, 3]
 dup :: List(Int)
 dup = cons(uncons([1,2,3]))
 

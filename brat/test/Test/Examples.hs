@@ -55,7 +55,7 @@ execTestPrefix :: T.Text
 execTestPrefix = T.pack "--!exec"
 
 interpreterOutputPrefix :: String
-interpreterOutputPrefix = "Finished "
+interpreterOutputPrefix = "Finished with: "
 
 data FunctionTestType = SaveHugr T.Text -- arguments
                       | Output T.Text T.Text -- arguments, output
