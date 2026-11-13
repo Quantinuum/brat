@@ -127,11 +127,6 @@ registerNoOutputs nid = modify $ \hugr -> hugr { edges_out = M.alter (\case
 addOrderEdge :: Ord n => (n, n) -> State (HugrGraph n) ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
 
-edgeList :: HugrGraph n -> [(PortId n, PortId n)]
-edgeList (HugrGraph {edges_out}) = [(Port n off, tgt) | (n, vs) <- M.assocs edges_out
-                                                      , (off, tgt) <- vs
-                                   ]
-
 getParent :: Ord n => HugrGraph n -> n -> n
 getParent HugrGraph {parents} n = parents M.! n
 
