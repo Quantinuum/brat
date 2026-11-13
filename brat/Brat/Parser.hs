@@ -658,7 +658,10 @@ parseExpr :: String -> Either SrcErr (WC Flat)
 parseExpr s = addSrcContext "<expr>" s $ do
   toks <- first (wrapParseErr LexErr) (M.parse lex "<expr>" s)
   btoks <- brackets toks
-  first (wrapParseErr ParseErr) (parse expr "<expr>" btoks)
+  first (wrapParseErr ParseErr) (parse maybeExpr "<expr>" btoks)
+ where
+  maybeExpr :: Parser (WC Flat)
+  maybeExpr = expr <|> pure (WC (FC (Pos 0 0) (Pos 0 0)) FEmpty)
 
 parseFile :: String -> String -> Either SrcErr ([Import], FEnv)
 parseFile fname contents = addSrcContext fname contents $ do

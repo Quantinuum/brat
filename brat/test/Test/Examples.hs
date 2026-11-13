@@ -57,12 +57,17 @@ execTestPrefix = T.pack "--!exec"
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished with: "
 
-data FunctionTestType = SaveHugr T.Text -- arguments
-                      | Output T.Text T.Text -- arguments, output
-                      | XfailOutput T.Text T.Text -- arguments, output
+-- we support inline test directives to run functions with arguments. Syntax:
+-- --!exec-hugr <args>                   (arguments are required)
+-- --!exec (<args> -->)? output          (arguments are optional)
+-- --!exec-xfail (<args> -->)? output    (arguments are optional)
+data FunctionTestType = SaveHugr T.Text
+                      | Output (Maybe T.Text) T.Text
+                      | XfailOutput (Maybe T.Text) T.Text
 
-make_test_func :: (Namespace, VMod) -> String -> T.Text -> Either String ((Namespace, VMod), String)
-make_test_func nsmod func_name arg_expr = do
+make_test_func :: (Namespace, VMod) -> String -> Maybe T.Text -> Either String ((Namespace, VMod), String)
+make_test_func nsmod func_name Nothing = Right (nsmod, func_name)
+make_test_func nsmod func_name (Just arg_expr) = do
   arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
   (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
 
@@ -110,9 +115,8 @@ make_test_func nsmod func_name arg_expr = do
 funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTree
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr arg_expr -> testCaseInfo func_name $ do
-        (nsmod, func_to_call) <- if T.null arg_expr
-            then pure (nsmod, func_name)
-            else case make_test_func nsmod func_name arg_expr of
+        let args = if T.null arg_expr then Nothing else Just arg_expr
+        (nsmod, func_to_call) <- case make_test_func nsmod func_name args of
                   Left err -> assertFailure err
                   Right val -> pure val
         hugr <- case interpretGraph nsmod func_to_call of
@@ -129,9 +133,7 @@ funcTest nsmod path func_name testTy = case testTy of
   XfailOutput args out -> expectFail (funcTest nsmod path func_name (Output args out))
   Output args out -> testCase func_name $ do
         let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
-        (nsmod, func_to_call) <- if T.null args
-              then pure (nsmod, func_name)
-              else case make_test_func nsmod func_name args of
+        (nsmod, func_to_call) <- case make_test_func nsmod func_name args of
                   Left err -> assertFailure $ "Could not check args for " ++ func_name ++ ": " ++ err
                   Right val -> pure val
         case interpretGraph nsmod func_to_call of
@@ -200,10 +202,10 @@ getExamplesTests =  do
             | Just args_out <- T.stripPrefix (T.pack " ") r ->
                 funcTest nsmod path func_name (uncurry Output $ split_args args_out)
             | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
-    split_args :: T.Text -> (T.Text, T.Text)
+    split_args :: T.Text -> (Maybe T.Text, T.Text)
     split_args txt = case T.splitOn (T.pack "-->") txt of
-      [output] -> (T.empty, output)
-      [args, out] -> (args, out)
+      [output] -> (Nothing, output)
+      [args, out] -> (Just args, out)
       _ -> error $ "Test line contained more than one -->"
 
 getHoles :: Ord a => HugrGraph a -> [a]
