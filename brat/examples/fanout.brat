@@ -24,6 +24,7 @@ pack_mid = { (x=>x), [\/], .. }
 
 ext "" f :: { Vec(Qubit, 2) -o Bit }
 
+--!exec-hugr
 g(Qubit, Qubit) -o Bit
 g = [\/]; f
 
@@ -34,5 +35,6 @@ poly(_) = { [/\] }
 poly'(X :: *, Vec(X, 3)) -> X, X, X
 poly'(x, xs) = xs |> poly(x)
 
+--!exec-hugr Qubit
 poly2(X :: $) -> { X, X, X -o Vec(X, 3) }
 poly2(_) = { [\/] }

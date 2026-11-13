@@ -4,6 +4,7 @@ import lib.kernel as B hiding (X)
 import lib.kernel as C (Y)
 open import lib.kernel
 
+--!exec-hugr
 test :: { Qubit -o Qubit }
 test =
  lib.kernel.X;
