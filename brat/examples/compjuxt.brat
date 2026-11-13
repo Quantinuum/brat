@@ -57,9 +57,18 @@ funky_application' = x, y => x, y |> addn
 int :: { -> VNat }
 int = { => ([1] :: VNat) }
 
+--!exec <thunk>
+--!exec --> [1]
+int2 :: { -> VNat }
+int2 = { => |([1] :: VNat) } -- identity converts between KVerb and UVerb
+
 --!exec [1]
 int' :: VNat
 int' = [(1 :: Nat)]
+
+--!exec [1]
+int2' :: VNat
+int2' = [|(1 :: Nat)]
 
 --!exec 3 --> 3, [3]
 port_pull(Nat) -> n :: Nat, i :: VNat
