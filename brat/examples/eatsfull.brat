@@ -1,4 +1,8 @@
+--!exec 3, [true, false, true, false, true, false, true] --> 3
 eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
 eatsfull(n, _) = n
+
+--"Exception: Bad arith inputs" in Machine.hs
+--!exec-xfail 2
 mkftwo :: Nat
 mkftwo = eatsfull(!, [false,false,false])
