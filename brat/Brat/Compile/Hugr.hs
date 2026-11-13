@@ -28,11 +28,13 @@ import Brat.Syntax.Value
 import Bwd
 import Control.Monad.Freer
 import Data.Hugr
-import Data.HugrGraph (HugrGraph(..), NodeId)
+import Data.Hugr.Extension.List (listOp)
+import qualified Data.Hugr.Extension.List as ListOp
+import Data.HugrGraph (HugrGraph(..), NodeId, registerNoOutputs)
 import qualified Data.HugrGraph as H
 import Hasochism
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Bifunctor (second)
@@ -42,8 +44,6 @@ import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust)
 import Data.Traversable (for)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
-
-import Debug.Trace
 
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
@@ -173,7 +173,7 @@ compileType ty@(TCons _ _) = htTuple <$> (tuple ty)
   tuple TNil = pure []
   tuple ty = error $ "Found " ++ show ty  ++ " in supposed tuple type"
 compileType TNil = pure (htTuple [])
-compileType ty@(TVec el n) = htList <$> compileType el
+compileType (TVec el _) = htList <$> compileType el
 compileType (TList el)  = htList <$> compileType el
 -- All variables are of kind `TypeFor m xs`, we already checked in `kindCheckRow`
 -- But what do we do if we have a type arg?
@@ -402,9 +402,9 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     Constructor c -> default_edges <$> do
       ins <- compilePorts ins
       case outs of
-        [(_, VCon tycon _)] -> do
+        [(_, VCon tycon args)] -> do
           outs <- compilePorts outs
-          compileConstructor parent tycon c (FunctionType ins outs ["BRAT"])
+          compileConstructor parent (tycon, args) c (FunctionType ins outs ["BRAT"])
     PatternMatch cs -> default_edges <$> do
       ins <- compilePorts ins
       outs <- compilePorts outs
@@ -418,9 +418,13 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
     Selector _c -> error "Todo: selector"
     x -> error $ show x ++ " should have been compiled outside of compileNode"
 
-compileConstructor :: NodeId -> QualName -> QualName -> FunctionType -> Compile NodeId
--- compileConstructor parent CVec CNil _ = addNodeWithInputs (OpCustom (CustomOp "collections::list"
-compileConstructor parent tycon con sig
+compileConstructor :: NodeId -> (QualName, [Val Z]) -> QualName -> FunctionType -> Compile NodeId
+-- TODO: Make a custom value for empty list, but something that can just be picked
+-- up by the hugr model output... maybe? or better as JSON? not sure??
+compileConstructor parent (CVec, [ty, _]) CNil _ = do
+  elemTy <- runReaderCompile (compileType ty) store
+  addNode "new_empty" (parent, OpCustom (listOp ListOp.New elemTy))
+compileConstructor parent (tycon, _) con sig
   | Just b <- isBool con = do
       -- A boolean value is a tag which takes no inputs and produces an empty tuple
       -- This is the same thing that happens in Brat.Checker.Clauses to make the
@@ -633,28 +637,33 @@ compilePrimTest parentId port@(_, ty@(HTSum (SU (UnitSum 2)))) (PrimCtorTest con
   constUnit :: NodeId -> [TypedPort] -> Compile [TypedPort]
   constUnit parentId [_] = makeRowTag "unit" parentId 1 (SoR [[ty], []]) []
 
-compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest con CVec _ outs)
- | CNil <- con = case (con,outs) of
-     (CNil, []) -> makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
-     (CCons, [hd,tl]) ->
-       addNodeWithInputs "uncons" (parentId, OpCustom (CustomOp "collections::list" "pop" popSig [TAType elemTy])) [port] [listTy, htOption [elemTy]] >>= \case
-         [tl, hd_option] -> do
-           let sumTy = SoR [[listTy], [elemTy,listTy]]
-           outs <- makeConditional "option_unwrap" parentId hd_option [tl]
-             [("panic_if_none", \cond [tl] -> do
-                 outs <- panic cond "unwrapped none" [tl] [snd tl]
-                 makeRowTag "panic" cond 0 sumTy [tl])
-             ,("unpack", \cond [hd,tl] -> makeRowTag "pure" cond 1 sumTy [hd,tl])
-             ]
-           assertOne outs
-         _ -> error "impossible"
-     (CSnoc, [tl,hd]) -> error "todo"
-     (CConcatEqEven, [l,r]) -> error "todo"
-     (CConcatEqOdd, [l,m,r]) -> error "todo"
-     (CRiffle, [odds,evens]) -> error "todo"
-     _ -> error "Bad constructor for vec"
- where
-  popSig = FunctionType [listTy] [listTy, htOption [elemTy]] ["collections::list"]
+-- INVARIANT: This compilation code is called on
+compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest con CVec _ outs) = case (con,outs) of
+  (CNil, []) -> do
+    when (bound == TBAny) $ do
+      -- TODO: janky AF?
+      discardNode <- addNode "discard_empty" (parentId, OpCustom (listOp ListOp.Discard elemTy))
+      addEdge (fst port, Port discardNode 0)
+      onHugr (registerNoOutputs discardNode)
+      pure ()
+    makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
+  (CCons, [_,_]) ->
+    addNodeWithInputs "uncons" (parentId, OpCustom (listOp ListOp.Pop elemTy)) [port] [listTy, htOption [elemTy]] >>= \case
+      [tl, hd_option] -> do
+        let sumTy = SoR [[listTy], [elemTy,listTy]]
+        outs <- makeConditional "option_unwrap" parentId hd_option [tl]
+          [("panic_if_none", \cond [tl] -> do
+              outs <- panic cond "unwrapped none" [tl] [snd tl]
+              makeRowTag "panic" cond 0 sumTy outs)
+          ,("unpack", \cond [hd,tl] -> makeRowTag "pure" cond 1 sumTy [hd,tl])
+          ]
+        assertOne outs
+      _ -> error "impossible"
+  (CSnoc, [_tl,_hd]) -> error "todo"
+  (CConcatEqEven, [_l,_r]) -> error "todo"
+  (CConcatEqOdd, [_l,_m,_r]) -> error "todo"
+  (CRiffle, [_odds,_evens]) -> error "todo"
+  _ -> error "Bad constructor for vec"
 
 compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) = do
   let sumOut = HTSum (SG (GeneralSum [[ty], snd <$> outputs]))
@@ -682,9 +691,11 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
            [port, loadPort]
            [sumOut]
 
+-- Shouldn't be used for bool constructors
 constructorOp :: QualName -> QualName -> FunctionType -> HugrOp
 --constructorOp CBit CTrue (FunctionType [] [HTSum (SU (UnitSum 2))] _) = makeRowTag "constructorOp"
-constructorOp tycon c sig = OpCustom (CustomOp "BRAT" ("Ctor::" ++ show tycon ++ "::" ++ show c) sig [])
+constructorOp CVec CCons sig@(FunctionType [elemTy, _] _ _)
+ = OpCustom (CustomOp "builtin" "Vec::cons" sig [TAType elemTy])
 
 undoPrimTest :: NodeId
              -> [TypedPort] -- The inputs we have to put back together
@@ -700,6 +711,10 @@ undoPrimTest parent [] (HTSum (SU (UnitSum 2))) (PrimCtorTest con CBit _ _)
   isBool CFalse = Just False
   isBool CTrue = Just True
   isBool _ = Nothing
+undoPrimTest parent [] ty@(HTList elemTy _) (PrimCtorTest CNil CVec _ _) = do
+  -- Copied from compileConstructor out of laziness
+  emptyList <- addNode "new_empty" (parent, OpCustom (listOp ListOp.New elemTy))
+  pure (Port emptyList 0, ty)
 undoPrimTest parent inPorts outTy (PrimCtorTest c tycon _ _) = do
   let sig = FunctionType (snd <$> inPorts) [outTy] ["BRAT"]
   head <$> addNodeWithInputs

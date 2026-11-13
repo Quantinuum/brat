@@ -20,7 +20,7 @@ import Data.Hugr
 import qualified Data.HugrGraph as HG
 import Hasochism
 
-import Control.Monad.State (execState, gets, evalState, runState)
+import Control.Monad.State (execState, gets, evalState)
 import Data.Foldable (for_)
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.List (uncons)

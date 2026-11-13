@@ -83,7 +83,10 @@ htRotation :: HugrType
 htRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
 
 htOption :: [HugrType] -> HugrType
-htOption tys = HTSum (SG (GeneralSum [[], tys]))
+htOption tys = htEither [] tys
+
+htEither :: [HugrType] -> [HugrType] -> HugrType
+htEither ls rs = HTSum (SG (GeneralSum [ls, rs]))
 
 htList :: HugrType -> HugrType
 htList ty = HTList ty (boundOf ty)
@@ -92,7 +95,7 @@ htError :: HugrType
 htError = (HTOpaque "prelude" "error" [] TBAny)
 
 pattern HTList :: HugrType -> TypeBound -> HugrType
-pattern HTList ty bound = HTOpaque "collections" "list" [TAType ty] bound
+pattern HTList ty bound = HTOpaque "collections.list" "List" [TAType ty] bound
 
 --htArray :: HugrType -> HTValue -> HugrType
 --htArray elemTy size = HTOpaque "collections::array" "array" [size, elemTy] TBAny

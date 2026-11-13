@@ -11,7 +11,8 @@ module Data.HugrGraph(NodeId,
                       splice, splice_new, splice_prepend, inlineDFG,
                       getChildren,
                       inEdges, outEdges,
-                      liftNS
+                      liftNS,
+                      registerNoOutputs
                      ) where
 
 import Brat.Naming (Namespace, Name(..), fresh)
@@ -24,8 +25,6 @@ import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
-
-track = const id
 
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 
@@ -116,6 +115,14 @@ addEdge (src@(Port s o), tgt@(Port t i)) = state $ \h@HugrGraph {..} ->
   no_other_inedge [] = []
   no_other_inedge ((n, j):xs) | i == j = error "multiple in-edges to same port"
                            | otherwise = (n, j) : no_other_inedge xs
+
+
+registerNoOutputs :: Ord n => n -> State (HugrGraph n) ()
+registerNoOutputs nid = modify $ \hugr -> hugr { edges_out = M.alter (\case
+                                                                       Nothing -> Just []
+                                                                       Just _ -> error "Bad call to registerNoOutputs"
+                                                                     ) nid (edges_out hugr)
+                                               }
 
 addOrderEdge :: Ord n => (n, n) -> State (HugrGraph n) ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)

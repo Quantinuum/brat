@@ -2,6 +2,9 @@
 module Brat.Compile.Model (toModelString, toModelEnvelope) where
 
 import Control.Monad.State
+import Data.Hugr.Extension (OpDef(..))
+import qualified Data.Hugr.Extension as Ext
+import qualified Data.Hugr.Extension.List as ListOp
 import Data.List (delete, sortBy)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe)
@@ -99,6 +102,18 @@ freshOutputLinks nodeId xs = do
   links <- for xs (\_ -> (('%':) . show) <$> freshName)
   for (zip [0..] links) $ \(ix, link) -> setOutVar nodeId [(ix, link)]
   pure links
+
+customNode :: OpDef t => t -> [TypeArg] -> [M.LinkName] -> [M.LinkName] -> M.Node
+customNode opdef args inWires outWires = M.Node
+  { op = M.Custom (M.Apply (ext opdef ++ "." ++ opName opdef)
+                           (convertTypeArg <$> args)
+                  )
+  , inputs = inWires
+  , outputs = outWires
+  , regions = []
+  , nodeMetas = []
+  , nodeSignature = Just (convertSig (Ext.signature opdef args))
+  }
 
 convertMeta :: [(String, String)] -> [M.Term]
 convertMeta [] = []
@@ -374,6 +389,15 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = []
          , nodeSignature = Just sig
          }))
+  (OpCustom (CustomOp "builtin" "Vec::cons" _sig args)) -> case args of
+    [ty] -> do
+      nodeInputs hg nodeId >>= \case
+       [hd, tl] -> do
+         outWires <- nodeOutputs hg nodeId
+         pure . Just $ customNode ListOp.Push [ty] [tl,hd] outWires
+       _ -> error "Bad cons: Expected 2 inputs"
+    _ -> error $ "Bad cons: Expected 1 type arg, got " ++ show args
+
   (OpCustom (CustomOp ext op sig args)) -> do
     inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
