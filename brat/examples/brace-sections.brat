@@ -2,6 +2,9 @@ add(x :: Int, y :: Int) -> (z :: Int)
 add(x,y) = x + y
 
 --!exec <thunk>
+--the --> below means to call with no arguments; this requires
+--us to have nullary application (*distinct from the Force constructor*)
+--!exec --> 5
 be5 :: { -> Int }
 be5 = { => 5 }
   --> { => 5 }
@@ -38,8 +41,3 @@ id2 = { _, _ }
 --!exec 3, true --> true, 3
 swap :: { Int, Bool -> fst :: Bool, snd :: Int }
 swap = { snd:_,_ }
-
--- This example needs us to have nullary application *distinct from the Force constructor*
---!exec 5
-be5' :: Int
-be5' = be5()
