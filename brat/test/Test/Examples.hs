@@ -57,10 +57,12 @@ execTestPrefix = T.pack "--!exec"
 interpreterOutputPrefix :: String
 interpreterOutputPrefix = "Finished with: "
 
--- we support inline test directives to run functions with arguments. Syntax:
--- --!exec-hugr <args>                   (arguments are required)
--- --!exec (<args> -->)? output          (arguments are optional)
--- --!exec-xfail (<args> -->)? output    (arguments are optional)
+{- We support inline test directives to run functions with optional arguments.
+   Syntax:
+   --!exec-hugr (<args>)?            (optionally >=1 arguments)
+   --!exec (<args> -->)? output      (optionally >=0 arguments followed by arrow)
+   --!exec-xfail (<args> -->)? output    (optionally >=0 arguments followed by arrow)
+-}
 data FunctionTestType = SaveHugr T.Text
                       | Output (Maybe T.Text) T.Text
                       | XfailOutput (Maybe T.Text) T.Text
