@@ -1,13 +1,11 @@
+--!exec Nat, true, { => 7 }, { => 11 } --> 7
 if(X :: *, Bool, { -> X }, { -> X }) -> X
 if(_, true, then, _) = then()
 if(_, false, _, else) = else()
 
+--!exec true --> 4
 test(Bool) -> Nat
 test(b) = if(Nat, b, { => 4 }, { => 12 })
-
---!exec 4
-t :: Nat
-t = test(true)
 
 --This is an 'xfail' as the expected value is clearly/deliberately wrong
 --!exec-xfail 11
