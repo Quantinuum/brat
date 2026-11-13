@@ -12,11 +12,13 @@ twoThings = 1, 2
 -- > badBinding :: Int, Int
 -- > badBinding = let x = twoThings in x
 
+--!exec 1, 2
 goodBinding :: Int, Int
 goodBinding = let x, y = twoThings in x, y
 
 -- Functions can be applied directly to things that
 -- represent the right number of values
+--!exec 3
 three :: Int
 three = add(twoThings)
 
@@ -44,5 +46,6 @@ dup = cons(uncons([1,2,3]))
 pair(Int, Int) -> [Int, Int]
 pair(a, b) = [a, b]
 
+--!exec [1, 2]
 test :: [Int, Int]
 test = pair(twoThings)
