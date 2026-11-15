@@ -1,3 +1,5 @@
+--!exec 0 --> true
+--!exec 3 --> false
 f :: { Nat -> Bool }
 f = { 0 => true
     | succ(n) => false
