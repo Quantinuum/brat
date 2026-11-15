@@ -11,6 +11,7 @@
 -- zipWith(_, _, _, _, _, [], []) = []
 -- zipWith(X, Y, Z, succ(n), f, cons(x,xs), cons(y,ys)) = cons(f(x,y), zipWith(X,Y,Z,n,f,xs,ys))
 
+--!exec Float, 4, 2.718 --> [2.718, 2.718, 2.718, 2.718]
 replicate(X :: *, n :: #, x :: X) -> Vec(X, n)
 replicate(_, 0, _) = []
 replicate(X, succ(n), x) = cons(x, replicate(X, n, x))
