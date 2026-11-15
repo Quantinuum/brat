@@ -1,28 +1,37 @@
 xs :: List(Int)
 xs = [0,1,2]
 
+--!exec [0, 1, 2]
 xs' :: List(Int)
 xs' = let ys = xs in ys
 
+--!exec [7, 2, 6] --> 7
+--!exec-xfail crash looks like a fail but here it's expected
 unsafeHead :: { List(Int) -> Int }
 unsafeHead(xs) = let cons(x, xs) = xs in x
 
+--!exec [5, true] --> 5, true
 unpair([Int,Bool]) -> Int, Bool
 unpair(p) = let [a, b] = p in a, b
 
 -- f :: List(Int) -> List(Int)
 --(f = let xs) = ([0,1] :: List(Int)) in xs
 
+--!exec 5 --> 5, 5, 5
 triple :: {Int -> Int, Int, Int }
 triple(z) = let x, y = z, z in x, y, z
 
+--!exec 2 --> 3
 inc(Int) -> Int
 inc(n) = succ(n)
 
+--!exec 2 --> 3
 inc2(Int) -> Int
 inc2(x) = let y = x in succ(y)
 
-ext "" map({Int -> Int}, List(Int)) -> List(Int)
+map({ Int -> Int }, List(Int)) -> List(Int)
+map(_, []) = []
+map(f, x ,- xs) = f(x) ,- map(f, xs)
 
 nums :: List(Int)
 nums = let xs = map(inc, xs) in xs
@@ -30,15 +39,18 @@ nums = let xs = map(inc, xs) in xs
 nums' :: List(Int)
 nums' = let xs = map(inc, [0,2,3]) in xs
 
+--!exec [2, 3, 4]
 nums'' :: List(Int)
 nums'' = let i2 = {inc; inc} in map(i2, xs)
 
 dyad :: Int, Bool
 dyad = 42, true
 
+--!exec true
 bind2 :: Bool
 bind2 = let i, b = dyad in b
 
 -- It shouldn't matter if we put brackets in the binding sites
+--!exec true
 bind2' :: Bool
 bind2' = let (i, b) = dyad in b
