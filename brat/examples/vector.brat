@@ -1,6 +1,3 @@
-swap(Nat, Nat) -> Nat, Nat
-swap = a, b => b, a
-
 type A = Nat
 
 isNil :: { Vec(A, 0) -> Bool }
@@ -8,6 +5,8 @@ isNil(nil) = true -- obvs
 -- ALAN this case is ruled out statically, so adding isNil2 instead
 -- isNil(cons(x, xs)) = false
 
+--!exec 0, [] --> true
+--!exec 2, [3, 5] --> false
 isNil2 :: { n :: #, Vec(A, n) -> Bool }
 isNil2(_, nil) = true -- TODO both cases here fail
 isNil2(_, cons(x, xs)) = false
