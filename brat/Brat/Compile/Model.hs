@@ -2,9 +2,7 @@
 module Brat.Compile.Model (toModelString, toModelEnvelope) where
 
 import Control.Monad.State
-import Data.Hugr.Extension (OpDef(..))
-import qualified Data.Hugr.Extension as Ext
-import qualified Data.Hugr.Extension.List as ListOp
+import Data.Foldable (for_)
 import Data.List (delete, sortBy)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe)
@@ -14,6 +12,9 @@ import Data.Traversable (for)
 
 import Brat.Naming (Name, Namespace, fresh)
 import Data.Hugr
+import Data.Hugr.Extension (OpDef(..))
+import qualified Data.Hugr.Extension as Ext
+import qualified Data.Hugr.Extension.List as ListOp
 import Data.HugrGraph
 import qualified Data.Hugr as H
 import qualified Data.Hugr.Model as M
@@ -397,6 +398,45 @@ convertNode hg nodeId = case getOp hg nodeId of
        _ -> error "Bad cons: Expected 2 inputs"
     _ -> error $ "Bad cons: Expected 1 type arg, got " ++ show args
 
+  (OpCustom (CustomOp "builtin" "Vec::snoc" sig args)) -> case args of
+    [ty] -> do
+      inputs <- nodeInputs hg nodeId
+      outputs <- nodeOutputs hg nodeId
+      case (inputs, outputs) of
+       ([tl, hd], [out]) -> do
+         zeroLink <- ('%':).show <$> freshName
+         eitherElem <- ('%':).show <$> freshName
+         let const0 = M.Node
+               { op = M.Custom (M.Apply "core.load_const" [convertType HTUSize, M.Literal (M.LitNat 0)])
+               , inputs = []
+               , outputs = [zeroLink]
+               , regions = []
+               , nodeMetas = []
+               , nodeSignature = Just (M.Apply "core.fn"
+                                       [M.List []
+                                       ,M.List [M.Item (M.Var "prelude.usize")]
+                                       ])
+               }
+             insert = customNode ListOp.Insert [ty] [tl, zeroLink, hd] [out, eitherElem]
+             region = M.Region
+               { kind = M.DFG
+               , sources = inputs
+               , targets = outputs
+               , children = [const0, insert]
+               , regionMetas = []
+               , regionSignature = Just (convertSig sig)
+               }
+
+         pure (Just (M.Node
+           { op = M.Dfg
+           , inputs = inputs
+           , outputs = outputs
+           , regions = [region]
+           , nodeMetas = []
+           , nodeSignature = Just (convertSig sig)
+           }))
+       _ -> error "Confusing number of inputs/outputs"
+    _ -> error "Bad args to snoc"
   (OpCustom (CustomOp ext op sig args)) -> do
     inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId

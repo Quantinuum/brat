@@ -695,6 +695,8 @@ constructorOp :: QualName -> QualName -> FunctionType -> HugrOp
 --constructorOp CBit CTrue (FunctionType [] [HTSum (SU (UnitSum 2))] _) = makeRowTag "constructorOp"
 constructorOp CVec CCons sig@(FunctionType [elemTy, _] _ _)
  = OpCustom (CustomOp "builtin" "Vec::cons" sig [TAType elemTy])
+constructorOp CVec CSnoc sig@(FunctionType [_, elemTy] _ _)
+ = OpCustom (CustomOp "builtin" "Vec::snoc" sig [TAType elemTy])
 
 undoPrimTest :: NodeId
              -> [TypedPort] -- The inputs we have to put back together
