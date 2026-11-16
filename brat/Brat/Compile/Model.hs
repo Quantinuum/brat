@@ -326,7 +326,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeSignature = Just (convertSig sig)
          }))
   (OpCustom (CustomOp "builtin" "measure" _ _)) -> do
-    let sig = convertSig (FunctionType [HTQubit] [htUnit, htBool] ["tket.quantum"])
+    let sig = convertSig (FunctionType [HTQubit] [HTUnit, HTBool] ["tket.quantum"])
     inWires <- nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
     -- Create a DFG region that runs the MeasureFree op, and makes a unit
@@ -358,7 +358,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = []
          , nodeSignature = Just (M.Apply "core.fn"
                                  [M.List [M.Item (M.Var "tket.bool.bool")]
-                                 ,M.List [M.Item (convertType htBool)]
+                                 ,M.List [M.Item (convertType HTBool)]
                                  ])
          })
 
@@ -369,7 +369,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , outputs = [moneyOut]
          , regions = []
          , nodeMetas = []
-         , nodeSignature = Just (convertSig (FunctionType [] [htUnit] []))
+         , nodeSignature = Just (convertSig (FunctionType [] [HTUnit] []))
          })
 
         dfgRegion = M.Region

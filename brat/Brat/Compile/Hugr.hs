@@ -160,19 +160,19 @@ compileRo (REx (_, k) ro) = (:) <$> compileType (kindType k) <*> compileRo ro
 -- Val Z should already be eval'd at this point
 compileType :: Val n -> Reader Store HugrType
 compileType TQ = pure HTQubit
-compileType TMoney = pure htUnit
+compileType TMoney = pure HTUnit
 compileType TBit = pure (HTSum (SU (UnitSum 2)))
 compileType TBool = pure (HTSum (SU (UnitSum 2)))
 compileType TInt = pure hugrInt
 compileType TNat = pure HTUSize
 compileType TFloat = pure hugrFloat
-compileType ty@(TCons _ _) = htTuple <$> tuple ty
+compileType ty@(TCons _ _) = HTTuple <$> tuple ty
  where
   tuple :: Val n -> Reader Store [HugrType]
   tuple (TCons hd rest) = (:) <$> compileType hd <*> tuple rest
   tuple TNil = pure []
   tuple ty = error $ "Found " ++ show ty  ++ " in supposed tuple type"
-compileType TNil = pure (htTuple [])
+compileType TNil = pure (HTTuple [])
 compileType (TVec el _) = htList <$> compileType el
 compileType (TList el)  = htList <$> compileType el
 -- All variables are of kind `TypeFor m xs`, we already checked in `kindCheckRow`
@@ -264,7 +264,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
 
 panic :: NodeId -> String -> [TypedPort] -> [HugrType] -> Compile [TypedPort]
 panic parent msg ins outTys = do
-  let sig = FunctionType (htError : (snd <$> ins)) outTys ["BRAT"]
+  let sig = FunctionType (HTError : (snd <$> ins)) outTys ["BRAT"]
   signalConst <- addNodeWithInputs "ErrorSigConst"
                  (parent, OpConst (ConstOp (HVUSize 1))) [] [HTUSize]
   errSignal <- addNodeWithInputs "ErrorSigLoad"
@@ -647,7 +647,7 @@ compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest co
       pure ()
     makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
   (CCons, [_,_]) ->
-    addNodeWithInputs "uncons" (parentId, OpCustom (listOp ListOp.Pop elemTy)) [port] [listTy, htOption [elemTy]] >>= \case
+    addNodeWithInputs "uncons" (parentId, OpCustom (listOp ListOp.Pop elemTy)) [port] [listTy, HTOption [elemTy]] >>= \case
       [tl, hd_option] -> do
         let sumTy = SoR [[listTy], [elemTy,listTy]]
         outs <- makeConditional "option_unwrap" parentId hd_option [tl]

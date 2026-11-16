@@ -306,7 +306,7 @@ makeParametrisedGateHugr ns op th nqubits =
   float2RotOp = CustomOp
    { extension = "tket.rotation"
    , op_name = "from_halfturns_unchecked"
-   , signature_ = FunctionType [hugrFloat] [htRotation] ["tket.rotation"]
+   , signature_ = FunctionType [hugrFloat] [HTRotation] ["tket.rotation"]
    , args = []
    }
 
@@ -315,7 +315,7 @@ makeParametrisedGateHugr ns op th nqubits =
    , op_name = op
    , signature_ = FunctionType
                   { input = (replicate nqubits HTQubit)
-                             ++ [htRotation]
+                             ++ [HTRotation]
                   , output = replicate nqubits HTQubit
                   , extensions = ["tket.quantum"]
                   }

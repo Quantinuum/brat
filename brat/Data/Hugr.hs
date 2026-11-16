@@ -70,29 +70,29 @@ data HugrType
   | HTAny
  deriving (Eq, Show)
 
-htUnit :: HugrType
-htUnit = HTSum (SG (GeneralSum [[]]))
+pattern HTUnit :: HugrType
+pattern HTUnit = HTSum (SG (GeneralSum [[]]))
 
-htBool :: HugrType
-htBool = HTSum (SU (UnitSum 2))
+pattern HTBool :: HugrType
+pattern HTBool = HTSum (SU (UnitSum 2))
 
-htTuple :: [HugrType] -> HugrType
-htTuple row = HTSum (SG (GeneralSum [row]))
+pattern HTTuple :: [HugrType] -> HugrType
+pattern HTTuple row = HTSum (SG (GeneralSum [row]))
 
-htRotation :: HugrType
-htRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
+pattern HTRotation :: HugrType
+pattern HTRotation = HTOpaque "tket.rotation" "rotation" [] TBCopy
 
-htOption :: [HugrType] -> HugrType
-htOption tys = htEither [] tys
+pattern HTOption :: [HugrType] -> HugrType
+pattern HTOption tys = HTEither [] tys
 
-htEither :: [HugrType] -> [HugrType] -> HugrType
-htEither ls rs = HTSum (SG (GeneralSum [ls, rs]))
+pattern HTEither :: [HugrType] -> [HugrType] -> HugrType
+pattern HTEither ls rs = HTSum (SG (GeneralSum [ls, rs]))
 
 htList :: HugrType -> HugrType
 htList ty = HTList ty (boundOf ty)
 
-htError :: HugrType
-htError = HTOpaque "prelude" "error" [] TBAny
+pattern HTError :: HugrType
+pattern HTError = HTOpaque "prelude" "error" [] TBAny
 
 pattern HTList :: HugrType -> TypeBound -> HugrType
 pattern HTList ty bound = HTOpaque "collections.list" "List" [TAType ty] bound
@@ -184,7 +184,7 @@ data HugrValue
 hvUnit = HVTuple []
 hvRotation rad = HVExtension
                  ["tket.rotation"]
-                 htRotation
+                 HTRotation
                  (CC "ConstRotation" [("half_turns", HVFloat (rad / pi))])
 
 valFromSimple :: SimpleTerm -> HugrValue
