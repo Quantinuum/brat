@@ -76,14 +76,14 @@ instance Show (Term d k) where
     = unwords ["let", show abs, "=", show xs, "in", show body]
   show (NHole (name, _)) = '?' : name
   show (VHole (name, _)) = '?' : name
-  show Empty = "()"
+  show Empty = ""
   show (a :|: b) = bracket PJuxtPull a ++ ", " ++ bracket PJuxtPull b
   show Pass = "pass"
   show (Th comp) = '{' : show comp ++ "}"
-  show (TypedTh comp) = "{:" ++ show comp ++ ":}"
-  show (Force th) = show th ++ "()"
-  show (Forget kv) = "(Forget " ++ show kv ++ ")"
-  show (Emb x) = '「' : show x ++ "」"
+  show (TypedTh comp) = '{' : show comp ++ "}"
+  show (Force th) = show th
+  show (Forget kv) = show kv
+  show (Emb x) = show x
   show tm@(Arith op lhs rhs) = let prec = fromJust (precedence tm) in
                                  unwords [bracket prec lhs
                                          ,showOp op

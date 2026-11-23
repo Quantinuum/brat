@@ -2,5 +2,5 @@ Error in test/golden/error/arity/middle-no-overs.brat on line 5:
 test = { |, swap; swap }
             ^^^^
 
-  Type error: No values for arguments: (1 :: Bool) of swap()
+  Type error: No values for arguments: (1 :: Bool) of swap
 

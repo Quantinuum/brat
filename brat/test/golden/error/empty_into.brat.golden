@@ -2,7 +2,7 @@ Error in test/golden/error/empty_into.brat on line 5:
 intoErr = |> makeInt
           ^^^^^^^^^^
 
-  Type mismatch when checking makeInt()(())
+  Type mismatch when checking makeInt()
 Expected: (0 :: Bool)
 But got:  (0 :: Int)
 
