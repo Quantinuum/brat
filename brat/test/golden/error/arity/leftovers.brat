@@ -1,0 +1,5 @@
+swap(Bool, Bool) -> (x :: Bool), (y :: Bool)
+swap(a,b) = b, a
+
+test(a :: Bool, b :: Bool) -> (x :: Bool)
+test = { |, |; swap }

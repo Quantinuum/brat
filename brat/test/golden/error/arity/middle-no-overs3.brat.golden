@@ -1,0 +1,6 @@
+Error in test/golden/error/arity/middle-no-overs3.brat on line 5:
+test = { |; swap; .. }
+            ^^^^
+
+  Type error: No overs but unders: (b :: Bool) for swap()
+
