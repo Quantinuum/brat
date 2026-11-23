@@ -144,7 +144,7 @@ checkIO tm@(WC fc _) exps acts wireFn errMsg = modily ?my $ do
   let (rows, rest) = zipSuffixes exps acts
   localFC fc $ forM rows $ \(e:|exps, a:|acts) ->
       mkFork "checkIO" $ wrapError (addRowContext (showRow $ e:exps) (showRow $ a:acts)) $ wireFn e a
-  throwLeft $ first (\(b:|bs) -> TypeErr $ errMsg ++ showRow (b:bs) ++ " of " ++ show tm) rest
+  throwLeft $ first (\(b:|bs) -> TypeErr $ errMsg ++ showRow (b:bs) ++ " of " ++ '`' : show tm ++ "`") rest
  where
   addRowContext :: String -> String -> Error -> Error
   addRowContext exp act = \case
@@ -415,7 +415,7 @@ check' (fun :$: arg) (overs, unders) = do
   ((argIns, ()), (leftOvers, argUnders)) <- check arg (overs, ins)
   if null argUnders
   then pure ((argIns, outputs), (leftOvers, leftUnders))
-  else typeErr $ unwords ["Expected function", show fun
+  else typeErr $ unwords ["Expected function", '`' : show fun ++ "`"
                          ,"to consume all of its arguments (" ++ show arg ++ ")\n"
                          ,"but found leftovers:", showRow argUnders
                          ]

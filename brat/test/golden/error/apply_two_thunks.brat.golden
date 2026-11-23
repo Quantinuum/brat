@@ -2,5 +2,6 @@ Error in test/golden/error/apply_two_thunks.brat on line 9:
 go(n) = thunks(n)
         ^^^^^^^^^
 
-  Type error: Expected function thunks to consume all of its arguments (n)
+  Type error: Expected function `thunks` to consume all of its arguments (n)
  but found leftovers: (0 :: Int)
+
