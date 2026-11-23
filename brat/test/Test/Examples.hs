@@ -4,7 +4,7 @@ import Test.Checking (parseAndCheckNamed)
 import Test.Compile.Hugr (compileToOutput, getHoles)
 import Brat.Load (parseFile)
 import Brat.Machine (runInterpreter)
-import Data.HugrGraph (to_json)
+import Data.HugrGraph (toJson)
 
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
@@ -42,9 +42,9 @@ getExamplesTests =  do
             Left err -> assertFailure (show err)
             Right _ -> return () -- OK
         checkTest = parseAndCheckNamed "checking" [] path
-    in if isPrefixOf "--!xfail-parsing" cts then
+    in if "--!xfail-parsing" `isPrefixOf` cts then
          testGroup (show path) [expectFail parseTest]
-       else if isPrefixOf "--!xfail-checking" cts then
+       else if "--!xfail-checking" `isPrefixOf` cts then
          testGroup (show path) [parseTest, expectFail checkTest]
        else
         let interpreterTests = T.breakOnAll execTestPrefix (T.pack cts) <&> \(_, start) ->
@@ -56,7 +56,7 @@ getExamplesTests =  do
                   -- "-xfail " and the (un-)expected result
                   -- "-hugr\n" (checks no splices, outputs hugr for validation)
                   restLine = fromJust $ T.stripPrefix execTestPrefix testLine
-              in if (T.pack "-hugr") == restLine then testCaseInfo func_name $ do
+              in if T.pack "-hugr" == restLine then testCaseInfo func_name $ do
                 let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "json"
                 -- this completely recompiles the file for each test, which is pretty bad
                 hugr <- runInterpreter [] path func_name >>= \case
@@ -65,7 +65,7 @@ getExamplesTests =  do
                 getHoles hugr @?= []
                 -- output the hugr for validation
                 createDirectoryIfMissing False outputDir
-                BS.writeFile outFile $! (BS.toStrict $ to_json hugr)
+                BS.writeFile outFile $! BS.toStrict (toJson hugr)
                 pure $ "Written hugr to " ++ outFile ++ " pending validation"
               else
                 let (is_xfail, eOut) = case T.stripPrefix (T.pack "-xfail ") restLine of
@@ -79,7 +79,7 @@ getExamplesTests =  do
                     Left t -> T.unpack t @?= expectedOutput
                     Right _ -> assertFailure $ "Expected output: '" ++ expectedOutput ++ "' but got a hugr!"
             compileTest = compileToOutput "compilation" path
-            checkAndCompile = if isPrefixOf "--!xfail-compilation" cts
+            checkAndCompile = if "--!xfail-compilation" `isPrefixOf` cts
               then [checkTest, expectFail compileTest] else [compileTest]
         in case interpreterTests of
           [] -> testGroup (show path) checkAndCompile

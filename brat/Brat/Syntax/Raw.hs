@@ -233,7 +233,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
 instance Desugarable (CType' (TypeRowElem RawVType)) where
   type Desugared (CType' (TypeRowElem RawVType)) = CType' (TypeRowElem (Term Chk Noun))
   desugar' :: CType' (TypeRowElem RawVType) -> Desugar (CType' (TypeRowElem (Term Chk Noun)))
-  desugar' cty = traverse desugar' cty
+  desugar' = traverse desugar'
 
 isConOrAlias :: QualName -> Desugar Bool
 isConOrAlias c = do
