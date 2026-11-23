@@ -1,4 +1,4 @@
-Error in test/golden/error/toplevel-leftovers.brat on line 2:
+Error in test/golden/error/arity/toplevel-leftovers.brat on line 2:
 f = 42
     ^^
 

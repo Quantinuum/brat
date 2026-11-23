@@ -1,0 +1,6 @@
+Error in test/golden/error/arity/toplevel-leftovers3.brat on line 2:
+f(x) = x
+  ^
+
+  Type error: Inputs (1 :: Bool) weren't used
+

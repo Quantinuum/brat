@@ -1,4 +1,4 @@
-Error in test/golden/error/toplevel-leftovers2.brat on line 2:
+Error in test/golden/error/arity/toplevel-leftovers2.brat on line 2:
 f(x) = x
        ^
 
