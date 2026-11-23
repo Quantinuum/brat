@@ -2,5 +2,5 @@ Error in test/golden/error/fanout-too-many-overs.brat on line 2:
 f = { [/\] }
       ^^^^
 
-  Type error: Unconnected output(s) (head :: Nat) of [/\]
+  Type error: Unconnected output(s) (head :: Nat) of `[/\]`
 
