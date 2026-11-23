@@ -2,5 +2,5 @@ Error in test/golden/kernel/typed_th.brat on line 5:
 id2 = { let f = {id;id} in q,q' => f(q),f(q') }
                 ^^^^^^^
 
-  Thunks not allowed in kernels: {:id()(「id()」):}
+  Thunks not allowed in kernels: {:id(); (Forget id()):}
 

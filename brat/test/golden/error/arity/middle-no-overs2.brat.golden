@@ -1,7 +1,6 @@
-Error in test/golden/error/arity/middle-leftovers.brat on line 5:
+Error in test/golden/error/arity/middle-no-overs2.brat on line 5:
 test = { |; swap; .. }
-         ^^^^^^^
+            ^^^^
 
-  Type error: Expected function swap() to consume all of its arguments (「|」)
- but found leftovers: (1 :: Bool)
+  Type error: No overs but unders: (1 :: Bool) for swap()
 
