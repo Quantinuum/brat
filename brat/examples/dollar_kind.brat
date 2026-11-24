@@ -1,15 +1,20 @@
+--!exec-hugr Qubit
 kid(X :: $) -> { X -o X }
 kid(_) = { x => x }
 
+--!exec-hugr
 qid(Qubit) -o Qubit
 qid = kid(Qubit)
 
+--!exec-hugr Qubit, Qubit, 3, kid(Qubit)
 lmap(X :: $, Y :: $, n :: #, { X -o Y }) -> { Vec(X, n) -o Vec(Y, n) }
 lmap(_, _, 0, _) = { [] => [] }
 lmap(X, Y, succ(n), f) = { cons(x, xs) => cons(f(x), (lmap(X, Y, n, f))(xs)) }
 
+--!exec-hugr Qubit, Bit
 swap(X :: $, Y :: $) -> { X, Y -o Y, X }
 swap(_, _) = { x, y => y, x }
 
+--!exec-hugr
 test(Qubit, Bit) -o Bit, Qubit
 test = swap(Qubit, Bit)
