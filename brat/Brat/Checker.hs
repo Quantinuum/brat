@@ -476,12 +476,19 @@ check' tm@(Con vcon vargs) ((), (hungry, ty):unders) = do
         (_, leftOvers) <- kindCheck [(hungry, k)] (Con vcon vargs)
         ensureEmpty "kindCheck leftovers" leftOvers
       (Braty, Right ty) -> eval S0 ty >>= \case
-        VTup ro | Just elems <- juxtFromTerm fc tm -> do
-          (_, unders, [], _) <- anext "tupleRo" Hypo (S0, Some (Zy :* S0)) ro R0
-          (((), ()), ((), rightOvers)) <- check elems ((), unders)
-          if null rightOvers
-          then pure ()
-          else typeErr $ "Too many elements in tuple. Unexpected:\n    " ++ show rightOvers
+        VTup ro | Just elems <- juxtFromTerm fc tm ->
+          let len = roTop Zy ro
+              vc = Thinning (thEmpty len)
+          in case varChangerThroughRo vc ro of
+            Some (_ :* outRo) -> do -- outRo is ro weakened by its elements
+             (_, unders, [(danglingTuple, _)], _) <- next "tupleRo" Entuple (S0, Some (Zy :* S0))
+                                                     ro
+                                                     (RPr ("tuple", VTup outRo) R0)
+             (((), ()), ((), rightOvers)) <- check elems ((), unders)
+             wire (danglingTuple, VTup ro, hungry)
+             if null rightOvers
+             then pure ()
+             else typeErr $ "Too many elements in tuple. Unexpected:\n    " ++ show rightOvers
         ty -> aux Braty clup ty
       (Kerny, _) -> track "Kerny" $ aux Kerny kclup ty
   pure (((), ()), ((), unders))
