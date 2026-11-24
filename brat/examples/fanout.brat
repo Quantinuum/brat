@@ -8,6 +8,7 @@ fanout = { [/\] }
 swap(X :: $, Y :: $) -> { X, Y -o Y, X }
 swap(_, _) = { x, y => y, x }
 
+--!exec-xfail  --TODO Selector
 test(Vec(Qubit, 2)) -o Vec(Qubit, 2)
 test = { [/\]; CX; [\/] }
 

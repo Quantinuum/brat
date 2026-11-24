@@ -1,8 +1,12 @@
 open import lib.kernel (Rx)
 
+-- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
+--!exec-xfail 1.37
 double_rot(Float) -> { Qubit -o Qubit }
 double_rot(x) = { q => Rx(x * 2.0)(q) }
 
+-- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
+--!exec-xfail 1.43
 double_rot2(Float) -> { Qubit -o Qubit }
 double_rot2(x) = { q => Rx(x + x)(q) }
 
@@ -17,9 +21,11 @@ quad(Float, Float, Float) -> Float
 quad(a, b, c) = (0.0 - b) + sqrt(b ^ 2.0 - 4.0 * a * c) / 2.0 * a
 
 -- Only works for literals for now
+--!exec 5.0 --> 2.0
 unary_minus(Float) -> Float
 unary_minus(x) = x + -3.0
 
+--!exec 4 --> -6
 unary_minus2(Int) -> Int
 unary_minus2(x) = -2-x
 
@@ -39,6 +45,7 @@ f = 2.1 * 5.3
 g :: Float
 g = 7.2 - 3.9
 
+--!exec 4 --> 5
 inc(Nat) -> Nat
 inc(x) = x + 1
 
@@ -46,13 +53,17 @@ inc(x) = x + 1
 foo :: Nat
 foo = inc(inc(4) + inc(7))
 
+--!exec 0 --> 0
+--!exec 1 --> 0
 dec(Nat) -> Nat
 dec(0) = 0
 dec(succ(n)) = n
 
+--!exec 13
 goo :: Nat
 goo = dec(foo)
 
+--!exec Nat, 3, [2, 4, 6] --> 3
 length(X :: *, n :: #, Vec(X, n)) -> Nat
 length(_, n, _) = n
 
