@@ -1,7 +1,21 @@
-f(n :: #, Vec(Int, full(n))) -> Vec(Int, full(n))
-f(0, []) = []
-f(succ(n), xs) = xs -- Need vector patterns to test more
+--!exec 3, [true, false, true, false, true, false, true] --> 3
+eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
+eatsfull(n, _) = n
 
+--"Exception: Bad arith inputs" in Machine.hs
+--!exec-xfail 2
+mkftwo :: Nat
+mkftwo = eatsfull(!, [false,false,false])
+
+falses :: Vec(Bool, 3)
+falses = [false, false, false]
+
+--!exec 2
+mkftwo' :: Nat
+mkftwo' = eatsfull(!, falses)
+
+--!exec 0, [1], [2] --> [1, 2]
+--!exec 1, [2, 4], [3, 5] --> [3, 2, 5, 4]
 g(n :: #, Vec(Nat, succ(full(n))), Vec(Nat, succ(full(n)))) -> Vec(Nat, succ(full(succ(n))))
 g(0, [x], [y]) = [x, y]
-g(_, _, _) = ?todo -- Do the rest once we have vector patterns
+g(_, xs, ys) = ys =%= xs
