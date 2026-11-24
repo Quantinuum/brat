@@ -103,7 +103,7 @@ interpreterTestsForExample validatorStatus path start =
       -- " " and the expected result
       -- "-xfail " and the (un-)expected result
       -- "-hugr\n" (checks no splices, outputs hugr for validation)
-      restLine = fromJust $ T.stripPrefix execTestPrefix testLine
+      restLine = Just $ T.stripPrefix execTestPrefix testLine
   in if (T.pack "-hugr") == restLine
      then let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_name <.> "hugr"
               makeHugr = do

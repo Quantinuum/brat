@@ -47,4 +47,4 @@ instance OpDef ListOp where
   ext _ = "collections.list"
 
 listOp :: ListOp -> HugrType -> CustomOp
-listOp opdef ht = makeOp opdef [TAType ht]
+listOp opdef ht = makeOp opdef [TAType ht] []

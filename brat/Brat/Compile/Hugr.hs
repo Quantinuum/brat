@@ -33,6 +33,7 @@ import qualified Data.Hugr.Extension.List as ListOp
 import Data.HugrGraph (HugrGraph(..), NodeId, registerNoOutputs)
 import qualified Data.HugrGraph as H
 import Hasochism
+import Util (expect)
 
 import Control.Monad (unless, when)
 import Control.Monad.Reader
@@ -40,10 +41,13 @@ import Control.Monad.State
 import Data.Bifunctor (second)
 import Data.Foldable (traverse_, for_)
 import Data.Functor ((<&>))
+import Data.List.HT (viewR)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust)
 import Data.Traversable (for)
 import Data.List.NonEmpty (NonEmpty(..), nonEmpty)
+
+import Debug.Trace
 
 {-
 For each top level function definition or value in BRAT: we should have a FuncDef node in
@@ -255,7 +259,7 @@ compileClauses parent ins ((matchData, rhs) :| clauses) = do
   didMatch outTys parent ins = gets bratGraph >>= \(ns,_) -> case M.lookup rhs ns of
     Just (BratNode (Box src tgt) _ _) -> do
       ctr@Ctr {parent=dfgId} <- freshNodeWithIO "DidMatch" parent
-      setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) [{-("args", show ins)-}]))
+      setOp dfgId (OpDFG (DFG (FunctionType (snd <$> ins) outTys bratExts) []))
       compileBox ctr (src, tgt)
       for_ (zip (fst <$> ins) (Port dfgId <$> [0..])) addEdge
       pure $ zip (Port dfgId <$> [0..]) outTys
@@ -279,13 +283,13 @@ panic parent msg ins outTys = do
                              (FunctionType
                               [HTUSize, HTString]
                               [HTOpaque "prelude" "error" [] TBAny]
-                              []) []))
+                              []) [] [("source", "panic")]))
           (errSignal ++ errStr)
           [HTString]
   case errs of
     [err] -> let inRow = TASequence (TAType . snd <$> ins)
                  outRow = TASequence (TAType <$> outTys)
-                 op = CustomOp "prelude" "panic" sig [inRow, outRow]
+                 op = CustomOp "prelude" "panic" sig [inRow, outRow] [("source", "panic")]
              in addNodeWithInputs "Panic" (parent, OpCustom op) (err:ins) outTys
     _ -> error "wtf?"
 
@@ -295,7 +299,8 @@ compileBox :: Container  -> (Name, Name) -> Compile BoxInfo
 -- note: we used to compile only KernelNode's here, this may not be right
 compileBox (Ctr parent srcN tgtN) (src, tgt) = do
   -- Compile Source
-  node <- gets ((M.! src) . fst . bratGraph)
+  map <- gets (fst . bratGraph)
+  node <- pure $ map M.! src
   trackM ("compileSource (" ++ show parent ++ ") " ++ show src ++ " " ++ show node)
   let (kind, src_outs) = case node of
         (BratNode Source [] outs) -> (Brat, outs)
@@ -382,7 +387,7 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
             Just (BratNode (Prim (ext,op)) _ [(_, VFun Kerny _)]) -> do
               default_edges
               <$>
-              addNode (show suffix) (parent, OpCustom (CustomOp ext op sig []))
+              addNode (show suffix) (parent, OpCustom (CustomOp ext (traceShowId op) sig [] []))
             x -> error $ "Expected a Prim kernel node but got " ++ show x
         -- All other evaled things are turned into holes to be substituted later
 
@@ -414,9 +419,14 @@ compileWithInputs parent name = gets (M.lookup name . compiled) >>= \case
       setOp outputNode (OpOut (OutputNode (snd <$> ccOuts)  [("source", "PatternMatch"), ("parent", show dfgId)]))
       for_ (zip (fst <$> ccOuts) (Port outputNode <$> [0..])) addEdge
       pure dfgId
+    Selector (PrefixName [] "cons") -> default_edges <$> do
+      ins <- compilePorts ins
+      outs <- compilePorts outs
+      case (ins, outs) of
+        ([HTList elemTy _], [_, _]) ->
+          addNode "select_cons" (parent, OpCustom (CustomOp "builtin" "uncons" (FunctionType ins outs [])  [TAType elemTy] [("source", "selector")]))
     Selector _c -> error "Todo: selector"
     x -> error $ show x ++ " should have been compiled outside of compileNode"
-
 compileConstructor :: NodeId -> (QualName, [Val Z]) -> QualName -> FunctionType -> Compile NodeId
 -- TODO: Make a custom value for empty list, but something that can just be picked
 -- up by the hugr model output... maybe? or better as JSON? not sure??
@@ -591,7 +601,12 @@ makeConditional lbl parent discrim otherInputs cases = do
   traverse_ addEdge (zip (fst <$> otherInputs) (Port condId <$> [1..]))
   pure $ zip (Port condId <$> [0..]) outTys
  where
-  makeCase :: NodeId -> String -> Int -> [HugrType] -> (NodeId -> [TypedPort] -> Compile [TypedPort]) -> Compile ([HugrType], NodeId)
+  makeCase :: NodeId
+           -> String
+           -> Int
+           -> [HugrType]
+           -> (NodeId -> [TypedPort] -> Compile [TypedPort])
+           -> Compile ([HugrType], NodeId)
   makeCase parent name ix tys f = do
     (Ctr caseId inpId outId) <- freshNodeWithIO name parent
     setOp inpId (OpIn (InputNode tys [("source", "makeCase." ++ show ix), ("context", lbl ++ "/" ++ name), ("parent", show parent)]))
@@ -599,7 +614,8 @@ makeConditional lbl parent discrim otherInputs cases = do
     let outTys = snd <$> outs
     setOp outId (OpOut (OutputNode outTys [("source", "makeCase")]))
     for_ (zip (fst <$> outs) (Port outId <$> [0..])) addEdge
-    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) [("name",lbl ++ "/" ++ name)]))
+    setOp caseId (OpCase (Case (FunctionType tys outTys bratExts) (
+                             [("name",lbl ++ "/" ++ name)])))
     pure (outTys, caseId)
 
   allRowsEqual :: [[HugrType]] -> Bool
@@ -636,7 +652,22 @@ compilePrimTest parentId port@(_, ty@(HTSum (SU (UnitSum 2)))) (PrimCtorTest con
   constUnit :: NodeId -> [TypedPort] -> Compile [TypedPort]
   constUnit parentId [_] = makeRowTag "unit" parentId 1 (SoR [[ty], []]) []
 
--- INVARIANT: This compilation code is called on
+--compilePrimTest parentId (_, HTUnit) (PrimCtorTest CNil CNil _ []) =
+--  makeRowTag "true" parentId 1 (SoR [[HTUnit]]) [] >>= assertOne
+
+compilePrimTest parentId port@(_, HTUnit) (PrimCtorTest CNil CNil _ []) = pure port
+{-
+                                                                               do
+  let sig = FunctionType [HTUnit] [] []
+      op = OpCustom (CustomOp "builtin" "delete_unit" sig [] [("source", "compilePrimTest")])
+  -- Don't know if it's linear or not, so we have to discard?
+  discardNode <- addNode "discard_empty" (parentId, op)
+  addEdge (fst port, Port discardNode 0)
+  onHugr (registerNoOutputs discardNode)
+  pure ()
+  makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
+-}
+
 compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest con CVec _ outs) = case (con,outs) of
   (CNil, []) -> do
     when (bound == TBAny) $ do
@@ -647,7 +678,7 @@ compilePrimTest parentId port@(_, listTy@(HTList elemTy bound)) (PrimCtorTest co
       pure ()
     makeRowTag "true" parentId 1 (SoR [[listTy], []]) [] >>= assertOne
   (CCons, [_,_]) ->
-    addNodeWithInputs "uncons" (parentId, OpCustom (listOp ListOp.Pop elemTy)) [port] [listTy, HTOption [elemTy]] >>= \case
+    addNodeWithInputs "unconsPT" (parentId, addMetadata [("Source", "unconsPT")] $ OpCustom (listOp ListOp.Pop elemTy)) [port] [listTy, HTOption [elemTy]] >>= \case
       [tl, hd_option] -> do
         let sumTy = SoR [[listTy], [elemTy,listTy]]
         outs <- makeConditional "option_unwrap" parentId hd_option [tl]
@@ -673,7 +704,8 @@ compilePrimTest parent (port, ty) (PrimCtorTest c tycon unpackingNode outputs) =
                        "BRAT"
                        ("PrimCtorTest::" ++ show tycon ++ "::" ++ show c)
                        sig
-                       []))
+                       []
+                       [("source", "compilePrimTest")]))
   addEdge (port, Port testId 0)
   registerCompiled unpackingNode testId
   pure (Port testId 0, sumOut)
@@ -686,7 +718,7 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
   let sumOut = HTSum (SG (GeneralSum [[ty], []]))
   let sig = FunctionType [ty, ty] [sumOut] ["BRAT"]
   head <$> addNodeWithInputs ("PrimLitTest " ++ show tm)
-           (parent, OpCustom (CustomOp "BRAT" ("PrimLitTest::" ++ show ty) sig []))
+           (parent, OpCustom (CustomOp "BRAT" ("PrimLitTest::" ++ show ty) sig [] []))
            [port, loadPort]
            [sumOut]
 
@@ -694,9 +726,19 @@ compilePrimTest parent port@(_, ty) (PrimLitTest tm) = do
 constructorOp :: QualName -> QualName -> FunctionType -> HugrOp
 --constructorOp CBit CTrue (FunctionType [] [HTSum (SU (UnitSum 2))] _) = makeRowTag "constructorOp"
 constructorOp CVec CCons sig@(FunctionType [elemTy, _] _ _)
- = OpCustom (CustomOp "builtin" "Vec::cons" sig [TAType elemTy])
+ = OpCustom (CustomOp "builtin" "Vec::cons" sig [TAType elemTy] [("source", "constructorOp")])
 constructorOp CVec CSnoc sig@(FunctionType [_, elemTy] _ _)
- = OpCustom (CustomOp "builtin" "Vec::snoc" sig [TAType elemTy])
+ = OpCustom (CustomOp "builtin" "Vec::snoc" sig [TAType elemTy] [("source", "constructorOp")])
+-- TODO: Implement maketupel
+constructorOp CCons CCons ft@(FunctionType ins [out] _) = undefined
+{-
+  let tupleContents = case ins of
+        [hd, HTTuple tl] -> hd:tl
+      sig = FunctionType ins out []
+  in OpCustom (CustomOp "builtin" "Tuple::cons" sig [TAType <$> tupleContents] []
+-}
+-- OpMakeTuple (MakeTupleOp tupleContents)
+constructorOp CNil CNil (FunctionType _ _ _) = OpMakeTuple (MakeTupleOp [])
 
 undoPrimTest :: NodeId
              -> [TypedPort] -- The inputs we have to put back together
@@ -728,6 +770,13 @@ undoPrimTest parent inPorts outTy (PrimLitTest tm) = do
   constId <- addNode "LitConst" (parent, OpConst (ConstOp (valFromSimple tm)))
   head <$> addNodeWithInputs "LitLoad" (parent, OpLoadConstant (LoadConstantOp outTy))
            [(Port constId 0, outTy)] [outTy]
+
+{-
+vectoriseKernel :: (Namespace, Store, Graph)
+                -> String -> Name
+                -> (HugrGraph NodeId, [(NodeId, OutPort)])
+vectoriseKernel = undefined
+-}
 
 compileKernel :: (Namespace, Store, Graph)
               -> String -> Name

@@ -19,6 +19,9 @@ import Data.HugrGraph
 import qualified Data.Hugr as H
 import qualified Data.Hugr.Model as M
 
+import GHC.Stack (HasCallStack)
+
+import Debug.Trace
 
 data ModelState = State
  { ns :: Namespace
@@ -191,7 +194,7 @@ dfgToFunc fnName hg (nodeId, sig, meta) = do
 
 
 -- Invariant: NodeId points to a DFG
-dfgToRegion :: HugrGraph NodeId -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
+dfgToRegion :: HasCallStack => HugrGraph NodeId -> (NodeId, H.FunctionType, [(String, String)]) -> Model M.Region
 dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
   let [inp, out] = fromMaybe (error "no kids") $ Map.lookup nodeId first_children
   -- This isn't great, because if any inputs are wired to the outputs, we
@@ -221,7 +224,7 @@ dfgToRegion hg@(HugrGraph { ..  }) (nodeId, sig, meta) = do
        })
 
 -- Get the links corresponding to the inputs and outputs of a Model Node
-nodeInputs :: HugrGraph NodeId -> NodeId -> Model [M.LinkName] -- inputs
+nodeInputs :: HasCallStack => HugrGraph NodeId -> NodeId -> Model [M.LinkName] -- inputs
 nodeInputs hg nodeId =
   for (sortBy (comparing snd) (inEdges hg nodeId)) $ \(Port srcNode srcIx, tgtIx) -> do
     getDangling srcNode srcIx >>= \case
@@ -238,7 +241,7 @@ nodeOutputs hg nodeId =
 
 -- build a node and all of it's descendants
 -- TODO: If nodes are deleted here, we need to keep a map of where the missing edges should end up
-convertNode :: HugrGraph NodeId -> NodeId -> Model (Maybe M.Node)
+convertNode :: HasCallStack => HugrGraph NodeId -> NodeId -> Model (Maybe M.Node)
 convertNode hg nodeId = case getOp hg nodeId of
   (OpMod ModuleOp) -> pure Nothing -- Compilation should just produce hugrs, no modules
   -- We should write these edges to point to the parent
@@ -246,6 +249,28 @@ convertNode hg nodeId = case getOp hg nodeId of
   (OpOut _) -> error "Output node"
   (OpCase _) -> error "Case node"
   (OpNoop _) -> pure Nothing
+{-
+                do
+    inputs <- nodeInputs hg nodeId
+    outputs <- nodeOutputs hg nodeId
+    sources <- freshInputLinks nodeId ((\_ -> Nothing) <$> inputs)
+    let region = M.Region
+         { kind = M.DFG
+         , sources = sources
+         , targets = sources
+         , children = []
+         , regionMetas = convertMeta [("source", "noop")]
+         , regionSignature = Nothing
+         }
+    pure $ Just $ M.Node
+      { op = M.Dfg
+      , inputs = inputs
+      , outputs = outputs
+      , regions = [region]
+      , nodeMetas = []
+      , nodeSignature = Nothing
+      }
+-}
   -- TODO: Not making the child here? And associating it with the symbol?
   (OpDefn (FuncDefn name _sig _fmeta)) -> case getChildren hg nodeId of
     [bodyId] -> case getOp hg bodyId of
@@ -314,7 +339,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = convertMeta meta
          , nodeSignature = Just signature
          }))
-  (OpCustom (CustomOp "builtin" "fresh" _ _)) -> do
+  (OpCustom (CustomOp "builtin" "fresh" _ _ meta)) -> do
     let sig = FunctionType [] [HTQubit] ["tket.quantum"]
     outWires <- nodeOutputs hg nodeId
     pure (Just (M.Node
@@ -322,10 +347,10 @@ convertNode hg nodeId = case getOp hg nodeId of
          , inputs = []
          , outputs = outWires
          , regions = []
-         , nodeMetas = []
+         , nodeMetas = convertMeta meta
          , nodeSignature = Just (convertSig sig)
          }))
-  (OpCustom (CustomOp "builtin" "measure" _ _)) -> do
+  (OpCustom (CustomOp "builtin" "measure" _ _ _)) -> do
     let sig = convertSig (FunctionType [HTQubit] [HTUnit, HTBool] ["tket.quantum"])
     inWires <- nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
@@ -346,18 +371,18 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = []
          , nodeSignature = Just (M.Apply "core.fn"
                                  [M.List [M.Item (M.Var "prelude.qubit")]
-                                 ,M.List [M.Item (M.Var "tket.bool.bool")]
+                                 ,M.List [M.Item (M.Var "tket.measurement.Measurement")]
                                  ])
          })
 
         readOp = (M.Node
-         { op = M.Custom (M.Apply "tket.bool.read" [])
+         { op = M.Custom (M.Apply "tket.measurement.Read" [])
          , inputs = [tketBoolOut]
          , outputs = [bitOut]
          , regions = []
          , nodeMetas = []
          , nodeSignature = Just (M.Apply "core.fn"
-                                 [M.List [M.Item (M.Var "tket.bool.bool")]
+                                 [M.List [M.Item (M.Var "tket.measurement.Measurement")]
                                  ,M.List [M.Item (convertType HTBool)]
                                  ])
          })
@@ -389,7 +414,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , nodeMetas = []
          , nodeSignature = Just sig
          }))
-  (OpCustom (CustomOp "builtin" "Vec::cons" _sig args)) -> case args of
+  (OpCustom (CustomOp "builtin" "Vec::cons" _sig args _)) -> case args of
     [ty] -> do
       nodeInputs hg nodeId >>= \case
        [hd, tl] -> do
@@ -398,7 +423,7 @@ convertNode hg nodeId = case getOp hg nodeId of
        _ -> error "Bad cons: Expected 2 inputs"
     _ -> error $ "Bad cons: Expected 1 type arg, got " ++ show args
 
-  (OpCustom (CustomOp "builtin" "Vec::snoc" sig args)) -> case args of
+  (OpCustom (CustomOp "builtin" "Vec::snoc" sig args meta)) -> case args of
     [ty] -> do
       inputs <- nodeInputs hg nodeId
       outputs <- nodeOutputs hg nodeId
@@ -432,12 +457,54 @@ convertNode hg nodeId = case getOp hg nodeId of
            , inputs = inputs
            , outputs = outputs
            , regions = [region]
-           , nodeMetas = []
+           , nodeMetas = convertMeta meta
            , nodeSignature = Just (convertSig sig)
            }))
        _ -> error "Confusing number of inputs/outputs"
     _ -> error "Bad args to snoc"
-  (OpCustom (CustomOp ext op sig args)) -> do
+
+  (OpCustom (CustomOp "builtin" "Tuple::cons" sig args _)) -> case args of
+    [ty] -> do
+      nodeInputs hg nodeId >>= \case
+       [hd, tl] -> do
+         outWires <- nodeOutputs hg nodeId
+         pure . Just $ customNode ListOp.Push [ty] [tl,hd] outWires
+       _ -> error "Bad cons: Expected 2 inputs"
+    _ -> error $ "Bad cons: Expected 1 type arg, got " ++ show args
+
+{-
+  (OpCustom (CustomOp "builtin" "uncons" _sig args)) -> case args of
+    [elemTy] -> do
+      inputs <- nodeInputs hg nodeId
+      outputs <- nodeOutputs hg nodeId
+      case (inputs, outputs) of
+        ([list], [hd,tl]) -> do
+          hdOpt <- ('%':).show <$> freshName
+          let pop = customNode ListOp.Pop [elemTy] [list] [tl, hdOpt]
+              insert = customNode ListOp.Insert [ty] [tl, zeroLink, hd] [out, eitherElem]
+              region = M.Region
+                { kind = M.DFG
+                , sources = inputs
+                , targets = outputs
+                , children = [const0, insert]
+                , regionMetas = []
+                , regionSignature = Just (convertSig sig)
+                }
+
+          pure (Just (M.Node
+            { op = M.Dfg
+            , inputs = inputs
+            , outputs = outputs
+            , regions = [region]
+            , nodeMetas = []
+            , nodeSignature = Just (convertSig sig)
+            }))
+          pure . Just $ customNode ListOp.Pop [elemTy] [list] [tl,hd]
+        xs -> error $ "Bad uncons wires: " ++ show xs
+    _ -> error $ "Bad uncons: Expected 1 type arg, got " ++ show args
+-}
+
+  (OpCustom (CustomOp ext op sig args meta)) -> do
     inWires <- if null (input sig) then pure [] else nodeInputs hg nodeId
     outWires <- nodeOutputs hg nodeId
     pure (Just (M.Node
@@ -445,7 +512,7 @@ convertNode hg nodeId = case getOp hg nodeId of
          , inputs = inWires
          , outputs = outWires
          , regions = []
-         , nodeMetas = []
+         , nodeMetas = convertMeta meta
          , nodeSignature = Just (convertSig sig)
          }))
   (OpLoadConstant (LoadConstantOp ty)) -> case inEdges hg nodeId of
@@ -464,6 +531,31 @@ convertNode hg nodeId = case getOp hg nodeId of
       _ -> error "Expected a const node"
     _ -> error "Bad const node"
   (OpConst _) -> pure Nothing
+ {-
+  (OpMakeTuple (MakeTupleOp [])) -> error "todo"
+    outputs <- nodeOutputs hg nodeId
+    pure (Just (M.Node
+     { op = M.Custom (M.Apply "prelude.MakeTuple" [M.List [M.Item (convertType ty) | ty <- tys]])
+     , inputs = inputs
+     , outputs = outputs
+     , regions = []
+     , nodeMetas = []
+     , nodeSignature = Just (convertSig (FunctionType tys [HTTuple tys] []))
+     }))
+-}
+  (OpMakeTuple (MakeTupleOp tys)) -> do
+    inputs <- if null tys then pure [] else nodeInputs hg nodeId
+    outputs <- nodeOutputs hg nodeId
+    pure (Just (M.Node
+     { op = M.Custom (M.Apply "prelude.MakeTuple" [M.List [M.Item (convertType ty) | ty <- tys]])
+     , inputs = inputs
+     , outputs = outputs
+     , regions = []
+     , nodeMetas = []
+     , nodeSignature = Just (convertSig (FunctionType tys [HTTuple tys] []))
+     }))
+
+
   x -> error ("Unimplemented: emission of " ++ show x)
 
 {-

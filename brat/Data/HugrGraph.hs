@@ -26,6 +26,8 @@ import Data.List (nub)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 
+import GHC.Stack (HasCallStack)
+
 newtype NodeId = NodeId Name deriving (Eq, Ord, Show)
 
 getRoot :: HugrGraph n -> n
@@ -127,11 +129,19 @@ registerNoOutputs nid = modify $ \hugr -> hugr { edges_out = M.alter (\case
 addOrderEdge :: Ord n => (n, n) -> State (HugrGraph n) ()
 addOrderEdge (src, tgt) = addEdge (Port src orderEdgeOffset, Port tgt orderEdgeOffset)
 
-getParent :: Ord n => HugrGraph n -> n -> n
-getParent HugrGraph {parents} n = parents M.! n
+(!) :: (Ord k, HasCallStack) => M.Map k v -> k -> v
+(!) = (M.!)
 
-getOp :: Ord n => HugrGraph n -> n -> HugrOp
-getOp HugrGraph {nodes} n = nodes M.! n
+bang :: (HasCallStack, Ord k) => String -> M.Map k v -> k -> v
+bang lbl m k = case M.lookup k m of
+  Just v -> v
+  Nothing -> error lbl
+
+getParent :: Ord n => HugrGraph n -> n -> n
+getParent HugrGraph {parents} n = bang "getParent" parents n
+
+getOp :: (HasCallStack, Ord n) => HugrGraph n -> n -> HugrOp
+getOp HugrGraph {nodes} n = bang "getOp" nodes n
 
 -- Replaces the specified node of the host Hugr (in the State monad), with a new Hugr
 -- (as a subtree), given a key-translation function for any non-root key of the new Hugr
@@ -239,7 +249,7 @@ data UnifySpliceTypeResult a
 -- where both have NodeId keys, by prefixing the new Hugr's keys with the NodeId of
 -- the hole
 splice_prepend :: NodeId -> HugrGraph NodeId -> State (HugrGraph NodeId) ()
-splice_prepend hole add = splice hole add (keyMap M.!)
+splice_prepend hole add = splice hole add (keyMap !)
  where
   prefixRoot :: NodeId -> NodeId
   prefixRoot (NodeId (MkName ids)) = let NodeId (MkName rs) = hole in NodeId $ MkName (rs ++ ids)
@@ -258,7 +268,7 @@ splice_new hole add = modify $ \(host, ns) ->
    (ns_out, keyMap) = foldr newMapping (ns, M.empty) (M.keys (parents add))
    newMapping :: n -> (Namespace, M.Map n NodeId) -> (Namespace, M.Map n NodeId)
    newMapping n (ns, km) = let (nn, ns') = fresh (show n) ns in (ns', M.insert n (NodeId nn) km)
-   host_out = execState (splice hole add (keyMap M.!)) host
+   host_out = execState (splice hole add (keyMap !)) host
   in (host_out, ns_out)
 
 -- Inline a DFG node in the Hugr, i.e. make the children of the DFG become children
@@ -266,15 +276,15 @@ splice_new hole add = modify $ \(host, ns) ->
 inlineDFG :: Ord n => n -> State (HugrGraph n) ()
 inlineDFG dfg = get >>= \h -> case M.lookup dfg (nodes h) of
   (Just (OpDFG _)) -> do
-    let newp = (parents h) M.! dfg
-    let [inp, out] = (first_children h) M.! dfg
+    let newp = (parents h) ! dfg
+    let [inp, out] = (first_children h) ! dfg
     -- rewire edges
     dfg_in_map <- takeInEdgeMap dfg
     input_out_map <- takeOutEdges inp
-    for_ input_out_map $ \(outp, dest) -> addEdge (dfg_in_map M.! outp, dest)
+    for_ input_out_map $ \(outp, dest) -> addEdge (dfg_in_map ! outp, dest)
     dfg_out_map <- takeOutEdges dfg
     output_in_map <- takeInEdgeMap out
-    for_ dfg_out_map $ \(outp, dest) -> addEdge (output_in_map M.! outp, dest)
+    for_ dfg_out_map $ \(outp, dest) -> addEdge (output_in_map ! outp, dest)
     -- remove dfg, inp, out; reparent children of dfg
     let to_remove = [dfg, inp, out]
     modify $ \h -> h {
@@ -334,11 +344,11 @@ getChildren hg node = case M.lookup node (first_children hg) of
   Nothing -> M.keys $ M.filter (== node) (parents hg)
   Just firstChildren -> firstChildren ++ M.keys (M.filterWithKey (\k v -> v == node && k `notElem` firstChildren) (parents hg))
 
-inEdges :: Ord n => HugrGraph n -> n -> [(PortId n, Int)]
-inEdges hg n = (edges_in hg) M.! n
+inEdges :: (HasCallStack, Ord n, Show n) => HugrGraph n -> n -> [(PortId n, Int)]
+inEdges hg n = bang ("inEdges: " ++ show n) (edges_in hg) n
 
 outEdges :: Ord n => HugrGraph n -> n -> [(Int, PortId n)]
-outEdges hg n = (edges_out hg) M.! n
+outEdges hg n = bang "outEdges" (edges_out hg) n
 
 -- nodeInputs :: HugrGraph -> NodeId -> [NodeId]
 -- nodeInputs hg

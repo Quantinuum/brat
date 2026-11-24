@@ -29,7 +29,9 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Text.Lazy as T
 import Bwd
-import Util (mapLup, zipSameLength)
+import Util (expect, mapLup, zipSameLength)
+
+import Debug.Trace
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
@@ -197,13 +199,16 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case mapLup "evalNode" nodes
   (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
   (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
   (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
-  (BratNode (Selector stor) _ _) -> case (stor, ins) of
-      (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
+--  (BratNode (Selector stor) _ _) -> case (stor, ins) of
+--      (PrefixName [] "cons", [VecV (x:xs)]) -> run gi fz (Finished [x, VecV xs])
+--      (PrefixName [] "snoc", [VecV xs]) -> run gi fz (Finished [VecV (init xs), last xs])
   (BratNode Replicate _ _) -> case ins of
     [IntV n, elem] -> run gi fz (Finished [(VecV (replicate n elem))])
   (BratNode MapFun _ _) -> case ins of
     -- We have a vector (or vec of vecs, n-dimensions) of functions
-    [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
+    [IntV len, VecV funs] -> case dig len funs of
+      Left _hg -> undefined
+      Right thunk -> run gi fz (Finished [thunk])
   nw -> run gi fz (StuckOnNode n nw)
  where
    -- Assuming a tree of VecV's whose leaf values are ThunkV's,
@@ -211,18 +216,30 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case mapLup "evalNode" nodes
    -- We assume the tree is of uniform height (and arity at each *level*,
    -- perhaps varying between levels), this should be guaranteed by the checker.
    -- (TODO: consider encoding the expected levels/arities in the MapFun?)
-  dig :: Int -> [Value] -> Value
+  dig :: Int -> [Value] -> Either (HG.HugrGraph HG.NodeId) Value
+  dig n vals | trace ("dig " ++ show n ++ "\n" ++ unlines (("  " ++).show <$> vals) ++ "----------------------------------------") False = undefined
   dig n vals
-   | Just vecs <- mapM getVecs vals = VecV vecs
+   | Just vecs <- traverse getVecs vals = case traverse id vecs of
+     Right vs -> Right (VecV vs)
+     Left _ -> undefined
    | Just ths <- mapM getThunks vals
-   , n == length vals = ThunkV (VectorisedThunks ths)
+   , n == length vals = case homogenous ths of
+     Just (Right ths) -> Right . ThunkV . VectorisedThunks $ ths
    where
-    getVecs :: Value -> Maybe Value
+    homogenous :: [Either a b] -> Maybe (Either [a] [b])
+    homogenous [] = Just (Right [])
+    homogenous (x:xs) = ((x,) <$> homogenous xs) >>= \case
+      (Right x, Right xs) -> Just $ Right (x:xs)
+      (Left x,  Left xs) -> Just $ Left (x:xs)
+      (_, _) -> Nothing
+
+    getVecs :: Value -> Maybe (Either (HG.HugrGraph HG.NodeId) Value)
     getVecs (VecV x) = Just (dig n x)
     getVecs _ = Nothing
 
-    getThunks :: Value -> Maybe BratThunk
-    getThunks (ThunkV th) = Just th
+    getThunks :: Value -> Maybe (Either (HG.HugrGraph HG.NodeId) BratThunk)
+    getThunks (ThunkV th) = Just (Right th)
+    getThunks (KernelV th) = Just (Left th)
     getThunks _ = Nothing
 
 
@@ -251,7 +268,7 @@ run gi (fz :< Alternatives ((TestMatchData _ ms, box):cs) ins) TryNextMatch =
     let MatchSequence matchInputs matchTests matchOutputs = ms
         testInputs = M.fromList (fromJust $ zipSameLength [src | (NamedPort src _,_ty) <- matchInputs] ins)
         outEnv = doAllTests testInputs matchTests
-    in case {- trace ("outEnv: " ++ show outEnv ++ "\nmatchOutputs: " ++ show matchOutputs) -} outEnv of
+    in case {-trace ("outEnv: " ++ show outEnv ++ "\nmatchOutputs: " ++ show matchOutputs)-} outEnv of
         Nothing -> run gi (fz :< Alternatives cs ins) TryNextMatch
         Just env ->
             let vals = [miniEval gi env src | (NamedPort src _, _) <- matchOutputs]
@@ -333,7 +350,15 @@ miniEval gi@((nodes, _), _, _, _) env (Ex node 0) =
         BratNode (Const x) _ _ -> evalSimpleTerm x
         BratNode (Constructor c) _ _ -> evalConstructor c inputs
         BratNode Id _ _ | [v] <- inputs -> v
-        nw -> error $ "miniEval: " ++ show nw
+        nw -> error $ "miniEval: " ++ show nw ++ " " ++ show node
+miniEval gi@((nodes, _), _, _, _) env (Ex node p) =
+  let inputs = miniEval gi env <$> getNodeInputs gi node
+  in  case mapLup "miniEval" nodes node of
+        nw -> error $ "miniEval (non-0): " ++ show nw
+--        BratNode (ArithNode op) _ _ -> evalArith op inputs
+--        BratNode (Const x) _ _ -> evalSimpleTerm x
+--        BratNode (Constructor c) _ _ -> evalConstructor c inputs
+--        BratNode Id _ _ | [v] <- inputs -> v
 
 evalConstructor :: QualName -> [Value] -> Value
 evalConstructor CTrue [] = BoolV True
@@ -449,6 +474,7 @@ data BratThunk =
     BratClosure EvalEnv Name Name  -- Captured environment, src node, tgt node
   | BratPrim String String (CTy Brat Z)
   | VectorisedThunks [BratThunk] -- result of MapFun
+  | VectorisedKernel (HG.HugrGraph HG.NodeId, Int) -- result of MapFun
  deriving Show
 
 instance Show Value where

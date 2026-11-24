@@ -19,6 +19,7 @@ import Bwd
 import Control.Monad.Freer
 import Hasochism
 import Brat.Syntax.Port (toEnd)
+import Util (expect)
 
 import Control.Monad (unless)
 import Data.Bifunctor (first)
@@ -68,7 +69,7 @@ solve my ((src, DontCare):p) = do
   case my of
     Kerny -> do
       ty <- typeOfSrc Kerny src
-      unless (fromJust (copyable ty)) $ typeErr $ "Ignoring linear variable of type " ++ show ty
+      unless (expect "arse" (copyable ty)) $ typeErr $ "Ignoring linear variable of type " ++ show ty
       solve my p
     Braty -> do
       ty <- typeOfSrc Braty src

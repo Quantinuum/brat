@@ -73,7 +73,7 @@ deriving instance Show (TestMatchData a)
 data MatchSequence ty = MatchSequence
   { matchInputs :: [(Src, ty)]
   , matchTests :: [(Src, PrimTest ty)]
-  , matchOutputs ::[(Src, ty)]
+  , matchOutputs :: [(Src, ty)]
   } deriving (Foldable, Functor, Traversable)
 deriving instance Show ty => Show (MatchSequence ty)
 

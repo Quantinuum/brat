@@ -31,6 +31,7 @@ import Brat.Checker.SolveHoles (typeEq)
 import Brat.Checker.SolvePatterns (argProblems, argProblemsWithLeftovers, solve, typeOfEnd, Solution)
 import Brat.Checker.Types
 import Brat.Constructors
+import Brat.Constructors.Patterns (pattern CCons, pattern CNil, pattern CVec)
 import Brat.Error
 import Brat.Eval
 import Brat.FC hiding (end)
@@ -48,7 +49,7 @@ import Brat.Syntax.Simple
 import Brat.Syntax.Value
 import Bwd
 import Hasochism
-import Util (zipSameLength)
+import Util (expect, zipSameLength)
 
 -- Put things into a standard form in a kind-directed manner, such that it is
 -- meaningful to do case analysis on them
@@ -215,7 +216,7 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
   (problem, rightOverSrcs) <- localFC abstFC $ argProblemsWithLeftovers (fst <$> overs) (normaliseAbstractor abst) []
   -- That processes the whole abstractor, so all of the overs in the
   -- `Problem` it creates are used
-  let usedOvers = [ (src, fromJust (lookup src overs)) | (src, _) <- problem ]
+  let usedOvers = [ (src, expect "my problems" (lookup src overs)) | (src, _) <- problem ]
   let rightOvers = [ over | over@(src,_) <- overs, src `elem` rightOverSrcs ]
   case diry @d of
     Chky -> do
@@ -228,8 +229,8 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
           (_, [], fakeOvers, fakeAcc) <- anext' "lambda_fake_source" Hypo (S0, Some (Zy :* S0)) R0 ins SkolemConst
           -- Hypo `check` calls need an environment, even just to compute leftovers;
           -- we get that env by solving `problem` reformulated in terms of the `fakeOvers`
-          let srcMap = fromJust $ zipSameLength (fst <$> usedOvers) (fst <$> fakeOvers)
-          let fakeProblem = [ (fromJust (lookup src srcMap), pat) | (src, pat) <- problem ]
+          let srcMap = expect "zsl0" $ zipSameLength (fst <$> usedOvers) (fst <$> fakeOvers)
+          let fakeProblem = [ (expect "fakeProb" (lookup src srcMap), pat) | (src, pat) <- problem ]
           fakeEnv <- localFC abstFC $ solve ?my fakeProblem >>= (solToEnv . snd)
           pure (fakeEnv, fakeAcc)
         localEnv fakeEnv $ do
@@ -239,8 +240,8 @@ check' (Lambda c@(WC abstFC abst,  body) cs) (overs, unders) = do
           pure (fakeUnders, rightFakeUnders, tgtMap)
 
       let usedFakeUnders = (fst <$> allFakeUnders) \\ (fst <$> rightFakeUnders)
-      let usedUnders = [ fromJust (lookup tgt tgtMap) | tgt <- usedFakeUnders ]
-      let rightUnders = [ fromJust (lookup tgt tgtMap) | (tgt, _) <- rightFakeUnders ]
+      let usedUnders = [ expect "fakeunders" (lookup tgt tgtMap) | tgt <- usedFakeUnders ]
+      let rightUnders = [ expect "unusedfakeunderfs" (lookup tgt tgtMap) | (tgt, _) <- rightFakeUnders ]
       mkFork "LambdaChk" $ do
             sig <- mkSig usedOvers usedUnders
             patOuts <- checkClauses sig usedOvers (c :| cs)
@@ -545,20 +546,98 @@ check' FanOut ((p, ty):overs, ()) = do
           if n < 0
           then err (InternalError $ "Vector of negative length (" ++ show n ++ ")")
           else do
-            wires <- fanoutNodes ?my n (p, valueToBinder ?my ty) elTy
+            wires <- fanoutNodes ?my n (p, valueToBinder ?my ty) (ty, elTy)
             pure (((), wires), (overs, ()))
       | otherwise -> typeErr $ "Can't fanout a Vec with non-constant length: " ++ show n
     _ -> typeErr "Fanout ([/\\]) only applies to Vec"
  where
-  fanoutNodes :: Modey m -> Integer -> (Src, BinderType m) -> Val Z -> Checking [(Src, BinderType m)]
-  fanoutNodes _ 0 _ _ = pure []
-  fanoutNodes my n (dangling, ty) elTy = do
-    (_, [(hungry, _)], [danglingHead, danglingTail], _) <- anext "fanoutNodes" (Selector (plain "cons")) (S0, Some (Zy :* S0))
-      (RPr ("value", binderToValue my ty) R0)
+  fanoutNodes :: Modey m -> Integer -> (Src, BinderType m) -> (Val Z, Val Z)
+              -> Checking [(Src, BinderType m)]
+  fanoutNodes _ n input (vecTy, elTy) = do
+    let rhsTy = mkRhsTy n elTy
+    ((NamedPort (Ex rhs _) _, _), ()) <- makeBox "fanoutRHS" rhsTy $
+      \(overs, unders) -> for_ (expect "zsl1" $ zipSameLength overs unders)
+                          (\((o,_), (u,_)) -> req $ Wire (end o, elTy, end u))
+
+    matchSeq <- mkMatchSeq elTy n input B0 B0 <&> ($ [input])
+    let pmNode = PatternMatch ((matchSeq, rhs) :| [])
+    (_, [(vecIn, _)], fanoutOvers, _) <- anext "fanout" pmNode (S0, Some (Zy :* S0))
+                                         (RPr ("vec", vecTy) R0)
+                                         (nRo n elTy R0)
+    wire (p, vecTy, vecIn)
+
+    pure fanoutOvers
+   where
+    mkRhsTy :: Integer -> Val Z -> CTy m Z
+    mkRhsTy n elTy = nRo n elTy R0 :->> nRo n elTy R0
+
+    emptyVecTy = TVec elTy (VNum (nConstant 0))
+
+{-
+  fanoutNodes :: Modey m -> Integer -> (Src, BinderType m) -> (Val Z, Val Z)
+              -> Checking [(Src, BinderType m)]
+  fanoutNodes _ n input (vecTy, elTy) = do
+    let rhsTy = mkRhsTy n elTy
+    (_, idUnders, idOvers, _) <- anext "useless_id"
+                                 Id
+                                 (S0, Some (Zy :* S0))
+                                 (nRo n elTy R0)
+                                 (nRo n elTy R0)
+
+    (_, [(emptyVecTgt, _)], _, _) <- anext "discard_empty"
+                                     (Prim ("collections.list", "discard_empty"))
+                                     (S0, Some (Zy :* S0))
+                                     (RPr ("vec", emptyVecTy) R0)
+                                     R0
+
+
+    ((NamedPort (Ex rhs _) _, _), ()) <- makeBox "fanoutRHS" rhsTy $
+      \(overs, unders) -> do
+          let (elems, emptyVecSrc) = fromJust $ viewR overs
+          for_ (fromJust $ zipSameLength elems idUnders)
+               (\((o,_), (u,_)) -> req $ Wire (end o, elTy, end u))
+          for_ (fromJust $ zipSameLength idOvers unders)
+               (\((o,_), (u,_)) -> req $ Wire (end o, elTy, end u))
+          wire (fst emptyVecSrc, emptyVecTy, emptyVecTgt)
+
+    (matchSeq, _) <- mkMatchSeq elTy n input B0 B0 <&> (($ [input]) *** fst)
+    let pmNode = PatternMatch ((matchSeq, rhs) :| [])
+    (_, [(vecIn, _)], fanoutOvers, _) <- anext "fanout" pmNode (S0, Some (Zy :* S0))
+                                         (RPr ("vec", vecTy) R0)
+                                         (nRo n elTy R0)
+    wire (p, vecTy, vecIn)
+
+    pure fanoutOvers
+   where
+    mkRhsTy :: Integer -> Val Z -> CTy m Z
+    mkRhsTy n elTy = nRo n elTy (RPr ("empty", emptyVecTy) R0) :->> nRo n elTy R0
+
+    emptyVecTy = TVec elTy (VNum (nConstant 0))
+-}
+  nRo :: Integer -> Val Z -> Ro m Z Z -> Ro m Z Z
+  nRo 0 _ ro = ro
+  nRo n ty ro = RPr (show n, ty) (nRo (n - 1) ty ro)
+
+  mkMatchSeq :: Val Z
+             -> Integer
+             -> (Src, BinderType m) -- Thjng to take apart
+             -> Bwd (Src, PrimTest (BinderType m))  -- Tests
+             -> Bwd (Src, BinderType m) -- Match outputs
+             -> Checking ([(Src, BinderType m)] -> TestMatchData m)
+  mkMatchSeq _ 0 (input@(NamedPort (Ex name _) _), _) testz outz = pure $ -- Input should be Nil here
+    \matchIns -> TestMatchData ?my (MatchSequence matchIns (testz <>> [(input,nilTest)]) (outz <>> []))
+   where
+    -- Add a test that the last element is nil to discard the linear value safely
+    nilTest = PrimCtorTest CNil CVec name []
+
+  mkMatchSeq elTy n input testz outz = do
+    (unconsNode, _, [danglingHead, danglingTail], _) <- anext "uncons" Hypo (S0, Some (Zy :* S0))
+      R0
       (RPr ("head", elTy) (RPr ("tail", TVec elTy (VNum (nConstant (n - 1)))) R0) :: Ro m Z Z)
-    -- Wire the input into the selector node
-    wire (dangling, binderToValue my ty, hungry)
-    (danglingHead:) <$> fanoutNodes my (n - 1) danglingTail elTy
+    mkMatchSeq elTy (n - 1)
+     danglingTail
+     (testz :< (fst input, PrimCtorTest CCons CVec unconsNode [danglingHead, danglingTail]))
+     (outz :< danglingHead)
 
 check' FanIn (overs, (tgt, ty):unders) = do
   ty <- eval S0 (binderToValue ?my ty)
@@ -572,7 +651,7 @@ check' FanIn (overs, (tgt, ty):unders) = do
             Just overs -> pure (((), ()), (overs, unders))
             Nothing -> typeErr ("Not enough inputs to make a vector of size " ++ show n)
       | otherwise -> typeErr $ "Can't fanout a Vec with non-constant length: " ++ show n
-    _ -> typeErr "Fanin ([\\/]) only applies to Vec"
+    _ -> typeErr $ "Fanin ([\\/]) only applies to Vec, not " ++ show ty
  where
   faninNodes :: Modey m
              -> Integer             -- The number of things left to pack up
@@ -632,7 +711,7 @@ check' (Of n e) ((), unders) = case ?my of
               -- in the call to getVecs, so we should work out which elements of
               -- the original unders weren't used, and make sure they prefix the
               -- unders returned from here.
-              let unusedVecTgts :: [Tgt] = fromJust . flip lookup tgtMap . fst <$> elemRightUnders
+              let unusedVecTgts :: [Tgt] = expect "uhoh" . flip lookup tgtMap . fst <$> elemRightUnders
               let (usedVecUnders, unusedVecUnders) = splitAt (length vecUnders - length unusedVecTgts) vecUnders
               -- Wire up the outputs of the replicate nodes to the _used_ vec
               -- unders. The remainder of the replicate nodes don't get used.

@@ -1,6 +1,0 @@
-Error in test/golden/error/unreachablebranch.brat@FC {start = Pos {line = 3, col = 2}, end = Pos {line = 3, col = 10}}:
-f(0) = []
- ^^^^^^^^
-
-  Branch cannot be reached
-

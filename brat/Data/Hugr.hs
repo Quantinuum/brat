@@ -10,6 +10,8 @@ import qualified  Data.Set as S
 
 import Brat.Syntax.Simple
 
+type Metadata = [(String, String)]
+
 orderEdgeOffset :: Int
 orderEdgeOffset = -1
 
@@ -258,6 +260,7 @@ data CustomOp = CustomOp
   , op_name :: String
   , signature_ :: FunctionType
   , args :: [TypeArg]
+  , metadata :: [(String, String)]
   } deriving (Eq, Show)
 
 -- In BRAT, we're not using the type parameter machinery of hugr for
@@ -273,14 +276,14 @@ data CallOp = CallOp
   } deriving (Eq, Show)
 
 intOp :: String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp
-intOp opName ins outs = CustomOp "arithmetic.int_ops" opName (FunctionType ins outs ["arithmetic.int_ops"])
+intOp opName ins outs args = CustomOp "arithmetic.int_ops" opName (FunctionType ins outs ["arithmetic.int_ops"]) args []
 
 binaryIntOp :: String -> CustomOp
 binaryIntOp name
  = intOp name [hugrInt, hugrInt] [hugrInt] [TANat intWidth]
 
 floatOp :: String -> [HugrType] -> [HugrType] -> [TypeArg] -> CustomOp
-floatOp opName ins outs = CustomOp "arithmetic.float_ops" opName (FunctionType ins outs ["arithmetic.float_ops"])
+floatOp opName ins outs args = CustomOp "arithmetic.float_ops" opName (FunctionType ins outs ["arithmetic.float_ops"]) args []
 
 binaryFloatOp :: String -> CustomOp
 binaryFloatOp name = floatOp name [hugrFloat, hugrFloat] [hugrFloat] []
@@ -291,10 +294,10 @@ data CallIndirectOp = CallIndirectOp
 
 holeOp :: Int -> FunctionType -> CustomOp
 holeOp idx sig = CustomOp "BRAT" "Hole" sig
-                        [TANat idx, TAType (HTFunc (PolyFuncType [] sig))]
+                        [TANat idx, TAType (HTFunc (PolyFuncType [] sig))] []
 
 isHole :: HugrOp -> Maybe (Int, FunctionType)
-isHole (OpCustom (CustomOp "BRAT" "Hole" sig args)) =
+isHole (OpCustom (CustomOp "BRAT" "Hole" sig args _)) =
   let [TANat idx, _] = args in Just (idx, sig) -- crash rather than return false for bad args
 isHole _ = Nothing
 
@@ -312,7 +315,7 @@ substOp :: {- outerSig :: -}FunctionType
         -> {- innerSigs :: -}[FunctionType]{- length n -}
         -> CustomOp
 substOp outerSig innerSigs
-  = CustomOp "BRAT" "Substitute" sig [toArg outerSig, TASequence (toArg <$> innerSigs)]
+  = CustomOp "BRAT" "Substitute" sig [toArg outerSig, TASequence (toArg <$> innerSigs)] []
  where
   fnExts (FunctionType _ _ exts) = S.fromList exts
   combinedExts = S.toList $ foldr S.union (fnExts outerSig) (fnExts <$> innerSigs)
@@ -329,7 +332,7 @@ toSeq tys = TASequence (TAType <$> tys)
 partialOp :: FunctionType  -- Signature of the function that is partially evaluated
           -> Int  -- Number of arguments that are evaluated
           -> CustomOp
-partialOp funcSig numSupplied = CustomOp "BRAT" "Partial" sig args
+partialOp funcSig numSupplied = CustomOp "BRAT" "Partial" sig args []
  where
   sig :: FunctionType
   sig = FunctionType
@@ -382,9 +385,11 @@ addMetadata :: [(String, String)] -> HugrOp -> HugrOp
 addMetadata md (OpDFG (DFG { .. })) = OpDFG (DFG { metadata = metadata ++ md, .. })
 addMetadata md (OpCase (Case { .. })) = OpCase (Case { metadata = metadata ++ md, .. })
 addMetadata md (OpIn (InputNode { .. })) = OpIn (InputNode { metadata = metadata ++ md, .. })
+addMetadata md (OpOut (OutputNode { .. })) = OpOut (OutputNode { metadata = metadata ++ md, .. })
 addMetadata md (OpTag (TagOp { .. })) = OpTag (TagOp { metadata = metadata ++ md, .. })
 addMetadata md (OpDefn (FuncDefn { .. })) = OpDefn (FuncDefn { metadata = metadata ++ md, .. })
 addMetadata md (OpConditional (Conditional { .. })) = OpConditional (Conditional { metadata = metadata ++ md, .. })
+addMetadata md (OpCustom (CustomOp { .. })) = OpCustom (CustomOp { metadata = metadata ++ md, .. })
 addMetadata _ op = op
 
 data Hugr node = Hugr ([(node, HugrOp)], [(PortId node, PortId node)]) deriving (Eq, Show)

@@ -52,7 +52,11 @@ log2 m | m > 1, (n, 0) <- m `divMod` 2 = (1+) <$> log2 n
 log2 1 = pure 0
 log2 _ = Nothing
 
-mapLup :: Ord k => String -> M.Map k v -> k -> v
+mapLup :: (Show k, Ord k) => String -> M.Map k v -> k -> v
 mapLup lbl m k = case M.lookup k m of
-  Nothing -> error $ "mapLup fail: " ++ lbl
+  Nothing -> error $ "mapLup fail: " ++ lbl ++ "\n  " ++ show k
   Just v -> v
+
+expect :: String -> Maybe a -> a
+expect msg Nothing = error msg
+expect _ (Just a) = a
