@@ -37,3 +37,10 @@ type SwapPair(X, Y) = [Y, X]
 
 swp :: SwapPair([X :: *, X], [X :: *, n :: #, Vec(X, n)])
 swp = [[Bool, 2, [true, false]], [Nat, 42]]
+
+shredForHead([X :: *, n :: #, Vec(X, n)]) -> X :: *, Option(X)
+shredForHead([X, 0, []]) = X, none
+shredForHead([X, succ(_), x ,- _]) = X, some(x)
+
+shredNested([X :: *, [Y :: *, [n :: #, Vec([X, Y], succ(n))]]]) -> [X :: *, Y :: *, [X, Y]]
+shredNested([_, [_, [_, [x,y] ,- _]]]) = [!, !, [x,y]]
