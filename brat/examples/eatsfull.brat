@@ -6,3 +6,10 @@ eatsfull(n, _) = n
 --!exec-xfail 2
 mkftwo :: Nat
 mkftwo = eatsfull(!, [false,false,false])
+
+falses :: Vec(Bool, 3)
+falses = [false, false, false]
+
+--!exec 2
+mkftwo' :: Nat
+mkftwo' = eatsfull(!, falses)

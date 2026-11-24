@@ -1,6 +1,0 @@
-eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
-eatsfull(n, _) = n
-falses :: Vec(Bool, 3)
-falses = [false, false, false]
-mkftwo :: Nat
-mkftwo = eatsfull(!, falses)
