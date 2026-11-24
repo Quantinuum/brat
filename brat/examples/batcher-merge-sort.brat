@@ -1,8 +1,11 @@
+--!exec 3, [13,5,11,5,9,15,1,7] --> [1, 5, 5, 7, 9, 11, 13, 15]
 sort(n :: #, Vec(Nat, 2^n)) -> Vec(Nat, 2^n)
 sort(0, [x]) = [x]
 sort(succ(n), xs =,= ys) = merge(n, sort(n, xs), sort(n, ys))
 
 -- Compare And Swap
+--!exec 5, 3 --> 3, 5
+--!exec 3, 5 --> 3, 5
 cas(Nat, Nat) -> Nat, Nat
 cas(0, b) = 0, b
 cas(a, 0) = 0, a
@@ -11,6 +14,7 @@ cas(succ(a), succ(b)) = let a', b' = cas(a, b) in succ(a'), succ(b')
 -- cas(succ(a), succ(b)) = cas(a, b) |> { succ(_), succ(_) }
 
 -- Merging two sorted vectors into one
+--!exec 3, [2,5,7,8,9,15,16,19], [3, 4, 6, 10, 11, 12, 16, 18] --> [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 16, 18, 19]
 merge(n :: #, Vec(Nat, 2^n), Vec(Nat, 2^n)) -> Vec(Nat, 2^(n + 1))
 merge(0, [x], [y]) = cas(x, y) |> (x, y => [x, y])
 -- OR:
@@ -30,20 +34,9 @@ merge(succ(n), xs0 =%= xs1, ys0 =%= ys1)
 
 
 -- Example of how to write with vectorising `of`
+--!exec 1, [1, 2, 3, 4] --> [1, 2, 3, 4]
+--!exec 1, [1, 3, 2, 4] --> [1, 2, 3, 4]
 fixOffBy1(n :: #, Vec(Nat, 2^(n + 1))) -> Vec(Nat, 2^(n + 1))
 fixOffBy1(n, lo ,- (mid0 =%= mid1) -, hi) =
   let mid0', mid1' = (full(n) of cas)(mid0, mid1)
   in  lo ,- (mid0' =%= mid1') -, hi
-
-
---!exec [1, 2, 3, 4]
-test_fix1 :: Vec(Nat, 4)
-test_fix1 = fixOffBy1(1, [1,3,2,4])
-
---!exec [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 16, 18, 19]
-test_merge :: Vec(Nat, 16)
-test_merge = merge(3, [2,5,7,8,9,15,16,19], [3, 4, 6, 10, 11, 12, 16, 18])
-
---!exec [1, 5, 5, 7, 9, 11, 13, 15]
-test_sort :: Vec(Nat, 8)
-test_sort =sort(3, [13,5,11,5,9,15,1,7])
