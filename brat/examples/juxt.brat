@@ -1,14 +1,18 @@
 -- Expectation: This file parses and typechecks
 
+--!exec-hugr
 I :: { Qubit -o Qubit }
 I = { q => q }
 
+--!exec-hugr
 I' :: { Qubit -o Qubit }
 I' = { I }
 
+--!exec-hugr
 I2 :: { Qubit, Qubit -o Qubit, Qubit }
 I2 = { I, I }
 
+--!exec-hugr
 I4 :: { Qubit, Qubit -o Qubit, Qubit }
 I4 = { I, (x => x)}
 
@@ -16,18 +20,23 @@ I4 = { I, (x => x)}
 id(Nat) -> Nat
 id = x => x
 
+--!exec 2, 3 --> 2, 3
 id2(x :: Nat, y :: Nat) -> (x :: Nat), (y :: Nat)
 id2 = { id,id }
 
+--!exec 3, 5 --> 3, 5
 id3(Nat, Nat) -> Nat, Nat
 id3 = x, y => (id,id)(x, y)
 
+--!exec 5, 8 --> 5, 8
 id4 :: { Nat, Nat -> Nat, Nat }
 id4 = { id, (x => x)}
 
+--!exec 2, 3, 5 --> 2, 3, 5
 asym(Nat, Nat, Nat) -> Nat, Nat, Nat
 asym = { id,id2 }
 
+--!exec 3, 4, 5, 6 --> 3, 4, 5, 6
 sandwich :: { Nat, Nat, Nat, Nat -> Nat, Nat, Nat, Nat }
 sandwich = { id,id2,id }
 
@@ -39,5 +48,6 @@ boolToNat(Bool) -> Nat
 boolToNat(true) = 1
 boolToNat(false) = 0
 
+--!exec 3, false --> true, 0
 notId :: { Nat, Bool -> Bool, Nat }
 notId = { natToBool, boolToNat}
