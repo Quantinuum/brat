@@ -1,0 +1,18 @@
+-- All of these failing as per https://github.com/Quantinuum/brat/issues/150
+
+--Fails in Machine.hs: "Exception: Internal error: Unhandled constructor Nat"
+--!exec-xfail true, Nat, Vec(Nat, 4) --> Nat
+which(Bool, A :: *, B :: *) -> (out :: *)
+which(true, a, b) = a
+which(false, a, b) = b
+
+
+--Fails in Machine.hs: "Exception: Internal error: Unhandled constructor Int"
+--!exec-xfail Int
+test1 :: (out :: *)
+test1 = which(true, Int, Int)
+
+--Fails in Machine.hs: "Exception: Internal error: Unhandled constructor Bool"
+--!exec-xfail Bool
+test2 :: (out :: *)
+test2 = which(true, Bool, Bool)
