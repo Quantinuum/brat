@@ -279,6 +279,16 @@ getThunks Braty ((src, Right ty):rest) = do
 getThunks Kerny ((src, Right ty):rest) = do
   ty <- awaitTypeDefinition ty
   case ty of
+    -- Special case: when a classical function is called in a kernel context
+    -- that only takes kind arguments, we can infer the arguments.
+    -- E.g. a function with type:
+    --   `foo(X :: $, n :: #) -> { ... -o ... }`
+    -- can be called in a kernel either as:
+    --   `...; foo(x, y); ...`
+    -- or (the case handled here):
+    --   `...; foo; ...`
+    -- which will have the same result as writing:
+    --   `...; foo(!, !); ...`
     VFun Braty (bss :->> out@(RPr (_, VFun Kerny (_ :->> _)) R0))
      | isRoAllKinds bss -> do
        -- Eval the Braty function
@@ -289,8 +299,8 @@ getThunks Kerny ((src, Right ty):rest) = do
        -- Instantiate the kernel function rows with those ends
        case kty of
          Right (VFun Kerny (kss :->> kts)) -> do
-           -- Eval the result of that function
-           (node, kunders, kovers, _) <- anext "hopeful_eval" (Splice (end kfunc))
+           -- Splice in the kernel produced by that function call
+           (node, kunders, kovers, _) <- anext "hopeful_splice" (Splice (end kfunc))
                                          (S0, Some (Zy :* S0)) kss kts
            (nodes, unders, overs) <- getThunks Kerny rest
            pure (node:nodes, kunders <> unders, kovers <> overs)
