@@ -304,16 +304,17 @@ makeParametrisedGateHugr ns op th nqubits =
    , args = []
    }
 
-miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
+-- Stuff that happens incidentally to pattern matching are sufficiently well
+-- behaved that we can evaluate them directly without the stack machine.
+miniEval :: HasCallStack => GraphInfo -> EvalEnv -> OutPort -> Value
 miniEval _ env x | Just v <- M.lookup x env = v
 miniEval gi@((nodes, _), _, _, _) env (Ex node 0) =
   let inputs = miniEval gi env <$> getNodeInputs gi node
   in  case nodes M.! node of
         BratNode (ArithNode op) _ _ -> evalArith op inputs
         BratNode (Const x) _ _ -> evalSimpleTerm x
-        BratNode (Constructor c) _ _ -> evalConstructor c inputs
         BratNode Id _ _ | [v] <- inputs -> v
-        nw -> error $ "miniEval: " ++ show nw
+        nw -> error $ "miniEval(" ++ show inputs ++ "): " ++ show (node, nw)
 
 evalConstructor :: QualName -> [Value] -> Value
 evalConstructor CTrue [] = BoolV True
