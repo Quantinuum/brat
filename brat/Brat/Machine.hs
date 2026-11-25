@@ -196,6 +196,7 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case nodes M.! n of
   (BratNode MapFun _ _) -> case ins of
     -- We have a vector (or vec of vecs, n-dimensions) of functions
     [IntV len, VecV funs] -> run gi fz (Finished [dig len funs])
+  (BratNode Entuple _ _) -> run gi fz (Finished [TupleV ins])
   nw -> run gi fz (StuckOnNode n nw)
  where
    -- Assuming a tree of VecV's whose leaf values are ThunkV's,
@@ -347,6 +348,10 @@ doAllTests env ((NamedPort outport _, test):tests) =
     PrimCtorTest ctor ty _ outSrcs -> do
       outputs <- testCtor ty ctor (env M.! outport)
       doAllTests (env `M.union` M.fromList (zip (end . fst <$> outSrcs) outputs)) tests
+    PrimUntuple _ outs -> case M.lookup outport env of
+      Just (TupleV elems)
+       | Just env' <- zipSameLength (end . fst <$> outs) elems ->
+          doAllTests (env `M.union` (M.fromList env')) tests
 
 captureEnv :: Bwd Frame -> S.Set OutPort -> EvalEnv
 captureEnv B0 _ = M.empty
@@ -424,6 +429,7 @@ data Value =
   | ThinConsV Bool Value
   | DummyV
   | StringV String
+  | TupleV [Value]
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
@@ -435,12 +441,13 @@ instance Show Value where
   show (IntV x) = show x
   show (FloatV x) = show x
   show (BoolV x) = show x
-  show (VecV xs) = show xs
+  show (VecV xs) = 'v' : show xs
   show (ThunkV (VectorisedThunks ths)) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"
   show (ThinConsV b val) = (if b then "1" else "0") ++ "-" ++ show val
   show DummyV = "Dummy"
   show (StringV str) = show str
+  show (TupleV xs) = 't' : show xs
 
 type EvalEnv = M.Map OutPort Value

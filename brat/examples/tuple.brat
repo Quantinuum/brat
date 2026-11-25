@@ -50,3 +50,7 @@ type TList(X) = [n :: #, list :: Vec(X, n)]
 concat(TList(Nat), TList(Nat)) -> TList(Nat)
 concat([0, []], [y, ys]) = [y, ys]
 concat([succ(n), xs -, x], [m, ys]) = concat([n, xs], [succ(m), x ,- ys])
+
+--!exec [t[5,v[1,2,3,4,5]]]
+test_concat1 :: TList(Nat)
+test_concat1 = concat([3, [1,2,3]],[2, [4,5]])
