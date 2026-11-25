@@ -88,6 +88,7 @@ data PrimTest ty
       [(Src, ty)]  -- ...these sources for extracted data descend
   | PrimLitTest
       SimpleTerm    -- the literal against which we're testing for equality
+  | PrimUntuple Name [(Src, ty)]
  deriving (Foldable, Functor, Traversable)
 deriving instance Show ty => Show (PrimTest ty)
 

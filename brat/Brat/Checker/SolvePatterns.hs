@@ -104,12 +104,13 @@ solve my ((src, pat@(PCon c abs)):p) = do
     (Kerny, ty) -> solveConstructor Kerny src (c, abs) ty p
     (Braty, Right (VTup ro)) | Just pats <- consToJuxt pat -> do
       -- Pattern has to be cons r nil as appropriate
-      (_, [(hungryForTuple, _)], elemOvers, _) <-
+      (untupleNode, _, elemOvers, _) <-
         let ?my = my in
-              anext "" Untuple (S0, Some (Zy :* S0)) (RPr ("", VTup ro) R0) ro
-      wire (src, VTup ro, hungryForTuple)
-      let tupleProblem = fromJust (zipSameLength (fst <$> elemOvers) pats)
-      solve my (tupleProblem ++ p)
+              anext "untuple" Untuple (S0, Some (Zy :* S0)) R0 ro
+      (tests, sol) <- solve my (fromJust (zipSameLength (fst <$> elemOvers) pats) ++ p)
+      pure ((src, PrimUntuple untupleNode elemOvers):tests
+           ,sol
+           )
     (Braty, Right ty) -> solveConstructor Braty src (c, abs) ty p
     (Braty, Left Nat) -> case c of
       -- Special case for 0, so that we can call `unifyNum` instead of pattern
