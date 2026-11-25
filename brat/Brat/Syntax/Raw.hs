@@ -232,7 +232,7 @@ instance (Kindable k) => Desugarable (Raw d k) where
   desugar' RFanOut = pure FanOut
   desugar' RFanIn = pure FanIn
   desugar' (ROf n e) = Of <$> desugar n <*> desugar e
-  desugar' (RTuple ro) = Tuple <$> (traverse (traverse desugar) ro)
+  desugar' (RTuple ro) = Tuple <$> traverse (traverse desugar) ro
 
 instance Desugarable (CType' (TypeRowElem RawVType)) where
   type Desugared (CType' (TypeRowElem RawVType)) = CType' (TypeRowElem (Term Chk Noun))

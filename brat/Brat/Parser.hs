@@ -310,7 +310,7 @@ flatIOWithSpanFC :: Parser (WC [FlatIO])
 flatIOWithSpanFC = spanningFC =<< flatIO
 
 vec :: Parser (WC Flat)
-vec = (fmap FSeq) <$> inBracketsFC Square elements
+vec = fmap FSeq <$> inBracketsFC Square elements
  where
   -- This is something very similar to FlatIO, but it allows more expressions
   -- by letting the "type" be `expr' (succ PJuxtPull)` instead of `expr' PApp`.

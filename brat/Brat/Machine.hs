@@ -351,7 +351,7 @@ doAllTests env ((NamedPort outport _, test):tests) =
     PrimUntuple _ outs -> case M.lookup outport env of
       Just (TupleV elems)
        | Just env' <- zipSameLength (end . fst <$> outs) elems ->
-          doAllTests (env `M.union` (M.fromList env')) tests
+          doAllTests (env `M.union` M.fromList env') tests
 
 captureEnv :: Bwd Frame -> S.Set OutPort -> EvalEnv
 captureEnv B0 _ = M.empty
