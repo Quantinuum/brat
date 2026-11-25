@@ -44,3 +44,9 @@ shredForHead([X, succ(_), x ,- _]) = X, some(x)
 
 shredNested([X :: *, [Y :: *, [n :: #, Vec([X, Y], succ(n))]]]) -> [X :: *, Y :: *, [X, Y]]
 shredNested([_, [_, [_, [x,y] ,- _]]]) = [!, !, [x,y]]
+
+type TList(X) = [n :: #, list :: Vec(X, n)]
+
+concat(TList(Nat), TList(Nat)) -> TList(Nat)
+concat([0, []], [y, ys]) = [y, ys]
+concat([succ(n), xs -, x], [m, ys]) = concat([n, xs], [succ(m), x ,- ys])
