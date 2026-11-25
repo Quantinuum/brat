@@ -289,6 +289,13 @@ getThunks Kerny ((src, Right ty):rest) = do
     --   `...; foo; ...`
     -- which will have the same result as writing:
     --   `...; foo(!, !); ...`
+    --
+    -- TODO: We should extend this to handle deeper nesting of function calls
+    --       that eventually produce a kernel, so that we can write
+    --         `...; foo; ...`
+    --       and get the result of
+    --         `...; foo(!, !)(!)(!, !, !); ...`
+    --       if appropriate.
     VFun Braty (bss :->> out@(RPr (_, VFun Kerny (_ :->> _)) R0))
      | isRoAllKinds bss -> do
        -- Eval the Braty function
