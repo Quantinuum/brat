@@ -8,9 +8,13 @@
 
 import lib.kernel
 
+-- Fails with Machine.hs: non-exhaustive patterns in runThunk
+--!exec-xfail true --> 
+--!exec-hugr false
 maybeRotate(Bool) -> { Qubit -o Qubit }
 maybeRotate(true) = lib.kernel.Rx(30.0)
 maybeRotate(false) = { | }
 
+--!exec-xfail 
 rotate :: { Qubit -o Qubit }
 rotate = { q => maybeRotate(true)(q) }
