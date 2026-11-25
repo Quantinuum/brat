@@ -17,6 +17,7 @@ import qualified Data.HugrGraph as HG
 import Hasochism
 
 import Control.Monad.State (execState, gets, evalState)
+import Data.Foldable (for_)
 import qualified Data.Text.Lazy as T
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.List (intercalate, uncons)
@@ -262,6 +263,7 @@ run gi fz t = run gi fz (Suspend [] t)
 
 runPrim :: Namespace -> (String, String) -> [Value] -> Maybe [Value]
 runPrim _ ("arith","i2f") [IntV v] = Just [FloatV (fromIntegral v)]
+runPrim ns ("tket", op) [FloatV th] | op `elem` ["Rx", "Ry", "Rz"] = Just [KernelV (makeParametrisedGateHugr ns op th 1)]
 runPrim ns ("tket", op) [FloatV th] | op `elem` ["CRx", "CRy", "CRz"] = Just [KernelV (makeParametrisedGateHugr ns op th 2)]
 runPrim _ _ _ = Nothing
 
@@ -271,27 +273,27 @@ makeParametrisedGateHugr ns op th nqubits =
    hugr $ flip execState (makeCS (emptyGraph, newRoot, initStore) (dfgHugr ns')) $ do
      parent <- gets (HG.getRoot . hugr)
      Ctr {parent,input,output} <- makeIO "" parent
-     onHugr $ HG.setOp input (OpIn (InputNode [HTQubit, HTQubit] []))
-     onHugr $ HG.setOp output (OpOut (OutputNode [HTQubit, HTQubit] []))
+     onHugr $ HG.setOp input (OpIn (InputNode io_qubits []))
+     onHugr $ HG.setOp output (OpOut (OutputNode io_qubits []))
      -- TODO: Make this a rotation (using hvRotation) when we use the actual TKET
      -- ops, we're just targeting dummy ops in the BRAT extension for the sake of
      -- getting things going until hugr is updated.
      constTh <- addNode "k_th" (parent, OpConst (ConstOp (hvFloat th)))
      th <- addNode "th" (parent, OpLoadConstant (LoadConstantOp hugrFloat))
      gate <- addNode "gate" (parent, addMetadata [("Our","Gate")] $ OpCustom gateOp)
-     addEdge (Port input 0, Port gate 0)
-     addEdge (Port input 1, Port gate 1)
+      -- Might be 1 or 2 inputs to the gate
+     for_ [0..nqubits-1] (\offset -> addEdge (Port input offset, Port gate offset))
      addEdge (Port constTh 0, Port th 0)
-     addEdge (Port th 0, Port gate 2)
-     addEdge (Port gate 0, Port output 0)
-     addEdge (Port gate 1, Port output 1)
+     addEdge (Port th 0, Port gate nqubits)
+     -- Might be 1 or 2 wires to the output
+     for_ [0..nqubits-1] (\offset -> addEdge (Port gate offset, Port output offset))
  where
   dfgHugr :: Namespace -> HG.HugrGraph HG.NodeId
   dfgHugr = evalState (HG.new "" (OpDFG (DFG signature [])))
 
   signature = FunctionType
-   { input = [HTQubit | _ <- [1..nqubits]]
-   , output = [HTQubit | _ <- [1..nqubits]]
+   { input = io_qubits
+   , output = io_qubits
    , extensions = bratExts
    }
 
@@ -299,13 +301,14 @@ makeParametrisedGateHugr ns op th nqubits =
    { extension = "BRAT" -- TODO: Make this "tket.quantum"
    , op_name = op
    , signature_ = FunctionType
-                  { input = [HTQubit | _ <- [1..nqubits]]
-                             ++ [hugrFloat] -- TODO: Make this hugrRotation
-                  , output = [HTQubit | _ <- [1..nqubits]]
+                  { input = io_qubits ++ [hugrFloat] -- TODO: Make this hugrRotation
+                  , output = io_qubits
                   , extensions = bratExts
                   }
    , args = []
    }
+
+  io_qubits = [HTQubit | _ <- [1..nqubits]]
 
 miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
 miniEval _ env x | Just v <- M.lookup x env = v

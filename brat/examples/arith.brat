@@ -1,12 +1,10 @@
 open import lib.kernel (Rx)
 
--- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
---!exec-xfail 1.37
+--!exec-hugr 1.37
 double_rot(Float) -> { Qubit -o Qubit }
 double_rot(x) = { q => Rx(x * 2.0)(q) }
 
--- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
---!exec-xfail 1.43
+--!exec-hugr 1.43
 double_rot2(Float) -> { Qubit -o Qubit }
 double_rot2(x) = { q => Rx(x + x)(q) }
 

@@ -60,8 +60,7 @@ justMeasure = { c, d => M2(c, d) }
 idq :: { Qubit -o Qubit }
 idq = { q => q }
 
--- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
---!exec-xfail 0.314
+--!exec-hugr 0.314
 phasedBell :: { (th :: Float) -> { c :: Qubit, d :: Qubit -o c :: Bit, d :: Bit } }
 phasedBell(th) = {
   H,|;
