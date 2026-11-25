@@ -67,15 +67,15 @@ data FunctionTestType = SaveHugr T.Text
                       | Output (Maybe T.Text) T.Text
                       | XfailOutput (Maybe T.Text) T.Text
 
-make_test_func :: (Namespace, VMod) -> String -> Maybe T.Text -> Either String ((Namespace, VMod), String)
-make_test_func nsmod func_name Nothing = Right (nsmod, func_name)
-make_test_func nsmod func_name (Just arg_expr) = do
+makeTestFunc :: (Namespace, VMod) -> String -> Maybe T.Text -> Either String ((Namespace, VMod), String)
+makeTestFunc nsmod func_name Nothing = Right (nsmod, func_name)
+makeTestFunc nsmod func_name (Just arg_expr) = do
   arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
   (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
 
   let env :: RawEnv = ([], [], M.empty) -- Will mean test args cannot use aliases etc.
   arg_noun <- first (("In desugaring: " ++) . showError) (runDesugar env (desugar' raw_arg_noun))
-  let app :: WC (Term Syn Noun) = WC fc $ (WC fc $ Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
+  let app :: WC (Term Syn Noun) = WC fc $ WC fc (Force (WC fc (Var (plain func_name)))) :$: (WC fc arg_noun)
       (ns, (oldDeclEnv, oldHoles, oldStore, oldGraph, oldCaps)) = nsmod
       test_func_name = findNameNotIn (M.keysSet oldDeclEnv) ("test_" ++ func_name)
       doCheck :: Checking (VDecl, Overs Brat UVerb) = do
@@ -84,7 +84,7 @@ make_test_func nsmod func_name (Just arg_expr) = do
         -- We're gonna check a function application, i.e. `app` above, but we want
         -- to put that inside a VDecl, which requires declaring its types :(.
         (((), outs :: [(Src, BinderType Brat)]), ((), ())) <- let ?my = Braty in "$rhs" -! check app ((), ())
-        
+
         -- Do we need a non-empty stack here? Not sure for what
         outs :: Some (Ro Brat Z :* Stack Z End) <- rowToRo Braty outs S0
 
@@ -108,7 +108,7 @@ make_test_func nsmod func_name (Just arg_expr) = do
        runWithGraph (M.map fst oldDeclEnv) oldStore ns oldGraph doCheck
   -- sanity check the arguments
   when (noCaps /= M.empty) $ Left "arguments capture"
-  when (length noHoles /= 0) $ Left "holes in arguments"
+  unless (null noHoles) $ Left "holes in arguments"
 
   let newDeclEnv = M.insert (plain test_func_name) (overs, decl) oldDeclEnv
       newNsmod = (ns, (newDeclEnv, oldHoles, newStore, newGraph, oldCaps))
@@ -118,13 +118,13 @@ funcTest :: (Namespace, VMod) -> String -> String -> FunctionTestType -> TestTre
 funcTest nsmod path func_name testTy = case testTy of
   SaveHugr arg_expr -> testCaseInfo func_name $ do
         let args = if T.null arg_expr then Nothing else Just arg_expr
-        (nsmod, func_to_call) <- case make_test_func nsmod func_name args of
+        (nsmod, func_to_call) <- case makeTestFunc nsmod func_name args of
                   Left err -> assertFailure err
                   Right val -> pure val
         hugr <- case interpretGraph nsmod func_to_call of
               Left s -> assertFailure $ "Expected hugr, got " ++ T.unpack s
               Right hugr -> pure hugr
-        (getHoles hugr == []) @? "holes in hugr"
+        null (getHoles hugr) @? "holes in hugr"
         -- output the hugr for validation
         -- TODO multiple tests of the same function will overwrite each other here,
         -- we need to pass in an ordinal, line number, or something.
@@ -135,7 +135,7 @@ funcTest nsmod path func_name testTy = case testTy of
   XfailOutput args out -> expectFail (funcTest nsmod path func_name (Output args out))
   Output args out -> testCase func_name $ do
         let expectedOutput = interpreterOutputPrefix ++ T.unpack (T.strip out)
-        (nsmod, func_to_call) <- case make_test_func nsmod func_name args of
+        (nsmod, func_to_call) <- case makeTestFunc nsmod func_name args of
                   Left err -> assertFailure $ "Could not check args for " ++ func_name ++ ": " ++ err
                   Right val -> pure val
         case interpretGraph nsmod func_to_call of
@@ -157,12 +157,12 @@ getExamplesTests =  do
   testGroup "examples" <$> mapM (\path -> readFile path >>= mkTest path) paths
  where
   mkTest :: String -> String -> IO TestTree
-  mkTest path cts =
-    if L.isPrefixOf "--!xfail-parsing" cts then
+  mkTest path cts
+    | "--!xfail-parsing" `L.isPrefixOf` cts =
       pure $ testGroup (show path) [expectFail parseTest]
-    else if L.isPrefixOf "--!xfail-checking" cts then
+    |  "--!xfail-checking" `L.isPrefixOf` cts =
       pure $ testGroup (show path) [parseTest, expectFail checkTest]
-    else do
+    | otherwise = do
       maybe_mod <- catch (compileToGraph [] path <&> Just) (\(e :: IOError) -> pure Nothing)
       let interpreterTests = case maybe_mod of
             Nothing -> [testCaseInfo "execution" $ pure "SKIPPED as did not compile"]

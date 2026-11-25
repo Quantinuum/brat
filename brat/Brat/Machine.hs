@@ -37,11 +37,11 @@ interpretGraph (root, (declEnv, _, st, outerGraph, capSets)) runFunc = do
     -- we hope outTask is a Finished. Or a Suspend.
     case outTask of
       Finished [KernelV hugr] -> Right hugr
-      Finished vals -> Left $ T.pack $ "Finished with: " ++show_spaced vals
+      Finished vals -> Left $ T.pack $ "Finished with: " ++ showSpaced vals
       _ -> Left $ T.pack $ show outTask
 
-show_spaced :: [Value] -> String
-show_spaced = intercalate ", " . fmap show
+showSpaced :: [Value] -> String
+showSpaced = intercalate ", " . fmap show
 
 data Frame where
     BratValues :: EvalEnv -> Frame
@@ -437,7 +437,7 @@ instance Show Value where
   show (IntV x) = show x
   show (FloatV x) = show x
   show (BoolV x) = if x then "true" else "false" -- match Brat syntax
-  show (VecV xs) = "[" ++ show_spaced xs ++ "]"
+  show (VecV xs) = "[" ++ showSpaced xs ++ "]"
   show (ThunkV (VectorisedThunks ths)) = "<vectorized thunk of " ++ show (length ths) ++ ">"
   show (ThunkV _) = "<thunk>"
   show (KernelV k) = "Kernel (" ++ show k ++ ")"

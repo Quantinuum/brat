@@ -1262,7 +1262,7 @@ runChecking :: VEnv
     -> Namespace
     -> Checking a
     -> Either Error (a, ([TypedHole], Store, Graph, CaptureSets))
-runChecking ve initStore ns m = runWithGraph ve initStore ns mempty m
+runChecking ve initStore ns = runWithGraph ve initStore ns mempty
 
 runWithGraph :: VEnv
                -> Store

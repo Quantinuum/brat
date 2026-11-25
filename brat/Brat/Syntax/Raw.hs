@@ -296,7 +296,7 @@ desugarAliases (a@(TypeAlias fc name _ _):as) = do
     (a :) <$> desugarAliases as
 
 runDesugar :: RawEnv -> Desugar a -> Either Error a
-runDesugar env m = fmap fst . runExcept $ flip runReaderT (env, B0) $ flip runStateT root m
+runDesugar env m = fmap fst . runExcept $ flip runReaderT (env, B0) $ runStateT m root
 
 desugarEnv :: RawEnv -> Either Error ([CoreFuncDecl], [TypeAlias])
 desugarEnv env@(decls, aliases, aliasTbl)
