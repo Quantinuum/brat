@@ -6,10 +6,10 @@ nn_ising(sites :: #, Float, Float)
      -> { Vec(Qubit, sites) -o Vec(Qubit, sites) }
 nn_ising(0, _, _) = { [] => [] }
 nn_ising(1, x, y) = { [q] => [(Rx(x))(q)] }
-nn_ising(succ(succ(n)), x, y) = { qs => qs |>
-  uncons(succ(n));
-  Rx(x), uncons(n);
+nn_ising(succ(succ(_)), x, y) = { qs => qs |>
+  uncons;
+  Rx(x), uncons;
   ZZ(y), ..;
-  |, (recons(n); nn_ising(succ(n), x, y));
-  recons(succ(n))
+  |, (recons; nn_ising(!, x, y));
+  recons
 }
