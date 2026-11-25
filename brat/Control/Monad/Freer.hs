@@ -23,7 +23,7 @@ updateEnd (News m) e = case M.lookup e m of
 -- The RHS of the operation is the newer news
 -- Invariant: The domains of these Newses are disjoint
 instance Semigroup News where
-  (News m1) <> n2@(News m2) = News (m2 `M.union` (M.map (/// n2) m1))
+  (News m1) <> n2@(News m2) = News (m2 `M.union` M.map (/// n2) m1)
 
 instance Monoid News where
   mempty = News M.empty
@@ -86,7 +86,7 @@ instance Applicative (Free sig) where
   -- Make progress on the left
   Ret f <*> ma = fmap f ma
   Req sig k <*> ma = Req sig ((<*> ma) . k)
-  Define lbl e v k1 <*> ma = Define lbl e v $ \n -> (k1 n) <*> (ma /// n)
+  Define lbl e v k1 <*> ma = Define lbl e v $ \n -> k1 n <*> (ma /// n)
 
   -- What happens when Yield is on the left
   y <*> Ret v = fmap ($ v) y

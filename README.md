@@ -44,7 +44,7 @@ make hlint-fix
 The [`brat/examples`](brat/examples) directory contains some examples of BRAT programs.
 For example:
 - Quantum teleportation: [teleportation.brat](brat/examples/teleportation.brat)
-- Quantum Fourier transform: [teleportation.brat](brat/examples/teleportation.brat)
+- Quantum Fourier transform: [qft.brat](brat/examples/qft.brat)
 - Magic State Distillation: [magic-state-distillation.brat](brat/examples/magic-state-distillation.brat)
 - Simple Repeat-Until-Success: [rus.brat](brat/examples/rus.brat)
 - Ising Hamiltonian: [ising.brat](brat/examples/ising.brat)
