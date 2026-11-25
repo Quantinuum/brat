@@ -8,7 +8,8 @@ fanout = { [/\] }
 swap(X :: $, Y :: $) -> { X, Y -o Y, X }
 swap(_, _) = { x, y => y, x }
 
---!exec-xfail  --TODO Selector
+-- Fails with "Todo: Selector" - see https://github.com/Quantinuum/brat/issues/2
+--!exec-xfail 
 test(Vec(Qubit, 2)) -o Vec(Qubit, 2)
 test = { [/\]; CX; [\/] }
 
