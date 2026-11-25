@@ -2,20 +2,23 @@ open import lib.functional
 open import lib.kernel
 open import lib.math
 
+-- Quite a few execution failures here, covered by
+-- https://github.com/Quantinuum/brat/issues/149
+
 --!exec-hugr
 or(Bit, Bit) -o Bit
 or(true, _) = true
 or(_, y) = y
 
 -- Fails in Data/HugrGraph.hs with "Exception: Expected DFG" (wrong sig)
---!exec-xfail <hugr>
+--!exec-xfail 
 any(n :: #) -> { Vec(Bit, n) -o Bit }
 any(n) = fold(Bit, or, { => false }, n)
 
 -- Decoder for the [[5,3,1]] "perfect" error code
 -- TODO: Add vectorisation and fanin/out
--- Fails in Brat/Compile/Hugr.hs with "TODO: Selector" 
---!exec-xfail <hugr>
+-- Fails with "Todo: selector", https://github.com/Quantinuum/brat/issues/2
+--!exec-xfail 
 decoder(Vec(Qubit, 5)) -o Vec(Qubit, 5)
 decoder = {
   [/\];
@@ -33,7 +36,12 @@ decoder = {
 phi :: Float
 phi = arccos(1.0 / sqrt(3.0))
 
--- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
+-- Machine suspends as it can't handle `fresh`
+--!exec-xfail 
+test :: { Money -o Qubit }
+test = fresh
+
+-- Fails with Machine.hs "Non-exhaustive patterns in function runThunk".
 --!exec-xfail 
 prepare_noisy_1(Money) -o Qubit
 prepare_noisy_1 = {
@@ -52,7 +60,7 @@ measure_all(succ(n)) = { q ,- qs =>
 }
 
 -- Fails in Data/HugrGraph.hs with "Exception: Expected DFG" (wrong sig)
---!exec-xfail 4 -->
+--!exec-xfail 4 
 measure_syndrome(n :: #)
              -> { Vec(Qubit, n)
                -o Bit, Vec(Money, n)
