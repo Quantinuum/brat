@@ -22,11 +22,10 @@ import Control.Monad ((>=>))
 import Control.Monad.Freer
 import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Data.Bifunctor
-import Data.Foldable (foldrM)
+import Data.Foldable (foldrM, for_)
 import Data.Kind (Type)
 import Data.List (partition)
 import Data.Maybe (isJust)
-import Data.Traversable (for)
 import Data.Type.Equality (TestEquality(..), (:~:)(..))
 import qualified Data.Set as S
 import Prelude hiding (last)
@@ -302,7 +301,7 @@ getThunks Kerny ((src, Right ty):rest) = do
        (_, unders, [(kfunc, kty)], _) <- next "$!_prehope_eval" (Eval (end src))
                                         (S0, Some (Zy :* S0)) bss out
        fc <- req AskFC
-       for unders $ \(hungry, _) -> req (ANewDynamic (end hungry) fc)
+       for_ unders $ \(hungry, _) -> req (ANewDynamic (end hungry) fc)
        -- Instantiate the kernel function rows with those ends
        case kty of
          Right (VFun Kerny (kss :->> kts)) -> do
