@@ -307,7 +307,7 @@ makeParametrisedGateHugr ns op th nqubits =
 
 -- Stuff that happens incidentally to pattern matching are sufficiently well
 -- behaved that we can evaluate them directly without the stack machine.
-miniEval :: HasCallStack => GraphInfo -> EvalEnv -> OutPort -> Value
+miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
 miniEval _ env x | Just v <- M.lookup x env = v
 miniEval gi@((nodes, _), _, _, _) env (Ex node 0) =
   let inputs = miniEval gi env <$> getNodeInputs gi node
