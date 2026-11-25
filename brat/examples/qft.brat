@@ -5,6 +5,7 @@ ext "arith.i2f" to_float(Nat) -> Float
 pi :: Float
 pi = 3.1415926535897
 
+--!exec-hugr 7, 3
 entangle(n :: #, Nat)
       -> { Qubit, Vec(Qubit, n) -o
            Qubit, Vec(Qubit, n) }
