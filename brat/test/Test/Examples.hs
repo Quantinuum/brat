@@ -26,7 +26,7 @@ import Hasochism (N(..), Ny(..), Some(..), (:*)(..))
 
 import Bwd
 import Control.Exception (catch)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Data.Bifunctor (first)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
