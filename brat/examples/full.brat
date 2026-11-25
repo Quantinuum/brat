@@ -1,8 +1,10 @@
 --!exec 3, [true, false, true, false, true, false, true] --> 3
+--!exec 2, [false, false, false] --> 2
 eatsfull(n :: #, xs :: Vec(Bool, full(n))) -> Nat
 eatsfull(n, _) = n
 
 --"Exception: Bad arith inputs" in Machine.hs
+-- https://github.com/Quantinuum/brat/issues/152
 --!exec-xfail 2
 mkftwo :: Nat
 mkftwo = eatsfull(!, [false,false,false])
