@@ -19,7 +19,7 @@ fullAdder = halfAdder, |;
 
 --!exec 4, [false, true, false, true], [false, true, true, true], true --> false, [true, true, false, true]
 --!exec 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
---Terminates with "Finished <thunk>"
+--Terminates with "Finished <thunk>", https://github.com/Quantinuum/brat/issues/151
 --!exec-xfail 2, [true, true], [true, true], false -> true, [true, false]
 adder(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adder(0, [], [], b) = b, []
@@ -30,7 +30,7 @@ adder(succ(n), x ,- xs, y ,- ys, b) =
 
 --!exec 4, [false, true, false, true], [false, true, true, true], true --> false, [true, true, false, true]
 --!exec 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
---Terminates with "Finished <thunk>"
+--Terminates with "Finished <thunk>", https://github.com/Quantinuum/brat/issues/151
 --!exec-xfail 2, [true, true], [true, true], false -> true, [true, false]
 adderSnoc(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adderSnoc(0, [], [], b) = b, []
