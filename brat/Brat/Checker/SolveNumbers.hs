@@ -64,13 +64,13 @@ solveNumMeta mine e nv = case (e, numVars nv) of
 
 unifyNum :: (End -> Maybe String) -> NumVal (VVar Z) -> NumVal (VVar Z) -> Checking ()
 unifyNum mine nv0 nv1 = do
-  trailM $ ("unifyNum In\n  " ++ show nv0 ++ "\n  " ++ show nv1)
+  trailM ("unifyNum In\n  " ++ show nv0 ++ "\n  " ++ show nv1)
   nv0 <- numEval S0 nv0
   nv1 <- numEval S0 nv1
   unifyNum' mine (quoteNum Zy nv0) (quoteNum Zy nv1)
   nv0 <- numEval S0 (quoteNum Zy nv0)
   nv1 <- numEval S0 (quoteNum Zy nv1)
-  trailM $ ("unifyNum Out\n  " ++ show (quoteNum Zy nv0) ++ "\n  " ++ show (quoteNum Zy nv1))
+  trailM ("unifyNum Out\n  " ++ show (quoteNum Zy nv0) ++ "\n  " ++ show (quoteNum Zy nv1))
 
 -- Need to keep track of which way we're solving - which side is known/unknown
 -- Things which are dynamically unknown must be Tgts - information flows from Srcs
@@ -101,14 +101,14 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
       (VPar e@(InEnd p), VPar e'@(ExEnd dangling))
        | Just _ <- mine e -> do
           req (Wire (dangling, TNat, p))
-          defineTgt' ("flex-flex In Ex") (NamedPort p "") (VNum (nVar v'))
+          defineTgt' "flex-flex In Ex" (NamedPort p "") (VNum (nVar v'))
        | Just _ <- mine e' -> do
           req (Wire (dangling, TNat, p))
-          defineSrc' ("flex-flex In Ex") (NamedPort dangling "") (VNum (nVar v))
+          defineSrc' "flex-flex In Ex" (NamedPort dangling "") (VNum (nVar v))
        | otherwise -> mkYield "flexFlex" (S.singleton e) >> unifyNum mine (nVar v) (nVar v')
       (VPar e@(InEnd p), VPar e'@(InEnd p'))
        | Just _ <- mine e -> defineTgt' "flex-flex In In1" (NamedPort p "") (VNum (nVar v'))
-       | Just _ <- mine e' -> defineTgt' "flex-flex In In0"(NamedPort p' "") (VNum (nVar v))
+       | Just _ <- mine e' -> defineTgt' "flex-flex In In0" (NamedPort p' "") (VNum (nVar v))
        | otherwise -> mkYield "flexFlex" (S.fromList [e, e']) >> unifyNum mine (nVar v) (nVar v')
 
   lhsStrictMono :: StrictMono (VVar Z) -> NumVal (VVar Z) -> Checking ()
@@ -159,7 +159,7 @@ unifyNum' mine (NumValue lup lgro) (NumValue rup rgro)
       -- = 2^k + 2^k * y
       -- Hence, the predecessor is (2^k - 1) + (2^k * y)
   demandSucc (NumValue k x) | k > 0 = pure (NumValue (k - 1) x)
-  demandSucc (NumValue 0 (StrictMonoFun (mono@(StrictMono k (Linear (VPar e))))))
+  demandSucc (NumValue 0 (StrictMonoFun mono@(StrictMono k (Linear (VPar e)))))
     | Just loc <- mine e = do
       pred <- loc -! traceChecking "makePred" makePred e
       pure (nPlus ((2^k) - 1) (nVar (VPar pred)))

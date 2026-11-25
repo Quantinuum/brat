@@ -13,7 +13,7 @@ import Brat.Load
 import Brat.Naming (Namespace, root, split)
 import Brat.Syntax.Raw (desugarEnv)
 
-import Control.Monad (forM, when)
+import Control.Monad (forM_, when)
 import Control.Monad.Except
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -23,7 +23,7 @@ printDeclsHoles libDirs file = do
   env <- runExceptT $ loadFilename root libDirs file
   (declEnv, holes, _, _, _) <- eitherIO env
   putStrLn "Decls:"
-  forM (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
+  forM_ (M.toList declEnv) $ \(name, (src_tys, _vdecl)) ->
     putStrLn $ show name ++ " :: " ++ intercalate ", " (map (show . snd) src_tys)
   putStrLn ""
   putStrLn "Holes:"

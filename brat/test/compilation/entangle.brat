@@ -14,7 +14,7 @@ vid(_) = { qs => qs }
 
 all_h(n :: #) -> { Vec(Qubit, n) -o Vec(Qubit, n) }
 all_h(zero) = { xs => xs }
-all_h(succ(n)) = { uncons(n); H, all_h(n); recons(n) }
+all_h(succ(n)) = { uncons; H, all_h; recons }
 
 swap(Qubit, Qubit) -o Qubit, Qubit
 swap = { a, b => b, a }

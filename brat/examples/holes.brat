@@ -2,7 +2,7 @@ ha :: Nat
 ha = ?idx
 
 -- Holes can go in kernels
-f :: { Qubit -o Qubit, Bool }
+f :: { Qubit -o Qubit, Bit }
 f = { q => q, ?b }
 
 -- And stand for kernels!

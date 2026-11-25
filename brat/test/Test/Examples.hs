@@ -130,7 +130,7 @@ funcTest nsmod path func_name testTy = case testTy of
         -- we need to pass in an ordinal, line number, or something.
         let outFile = outputDir </> dropExtension (takeFileName path) ++ "_" ++ func_to_call <.> "json"
         createDirectoryIfMissing False outputDir
-        BS.writeFile outFile $! (BS.toStrict $ HG.to_json hugr)
+        BS.writeFile outFile $! (BS.toStrict $ HG.toJson hugr)
         pure $ "Written hugr to " ++ outFile ++ " pending validation"
   XfailOutput args out -> expectFail (funcTest nsmod path func_name (Output args out))
   Output args out -> testCase func_name $ do

@@ -55,9 +55,6 @@ defaultConstructors = M.fromList
        (REx ("elementType", Star []) (REx ("tailLength", Nat) R0))
        (RPr ("head", VApp (VInx (VS VZ)) B0)
         (RPr ("tail", TVec (VApp (VInx (VS VZ)) B0) (VNum $ nVar (VInx VZ))) R0)))
-     ,(CCons, CArgs [VPVar, VPCon (plain "nil") []] (Sy Zy)
-       (REx ("elementType", Star []) R0)
-       (RPr ("value", VApp (VInx VZ) B0) R0))
      ,(CCons, CArgs [VPVar, VPVar] (Sy (Sy Zy))
        (REx ("headTy", Star [])
         (REx ("tailTy", Star []) R0))
@@ -116,13 +113,21 @@ defaultConstructors = M.fromList
 kernelConstructors :: ConstructorMap Kernel
 kernelConstructors = M.fromList
   [(CNil, M.fromList
-     [(CVec, CArgs [VPVar, VPNum NP0] (Sy Zy) (REx ("elementType", Dollar []) R0) R0)]
+     [(CVec, CArgs [VPVar, VPNum NP0] (Sy Zy) (REx ("elementType", Dollar []) R0) R0)
+     ,(CNil, CArgs [] Zy R0 R0)
+     ]
    )
   ,(CCons, M.fromList
      [(CVec, CArgs [VPVar, VPNum (NP1Plus NPVar)] (Sy (Sy Zy))
        (REx ("elementType", Dollar []) (REx ("tailLength", Nat) R0))
        (RPr ("head", VApp (VInx (VS VZ)) B0)
         (RPr ("tail", TVec (VApp (VInx (VS VZ)) B0) (VNum $ nVar (VInx VZ))) R0)))
+     ,(CCons, CArgs [VPVar, VPVar] (Sy (Sy Zy))
+       (REx ("headTy", Dollar [])
+        (REx ("tailTy", Dollar []) R0))
+       (RPr ("head", VApp (VInx (VS VZ)) B0)
+        (RPr ("tail", VApp (VInx VZ) B0) R0)))
+
      ])
   ,(CSnoc, M.fromList
      [(CVec, CArgs [VPVar, VPNum (NP1Plus NPVar)] (Sy (Sy Zy))
@@ -132,6 +137,25 @@ kernelConstructors = M.fromList
      ])
   ,(CTrue, M.fromList [(CBit, CArgs [] Zy R0 R0)])
   ,(CFalse, M.fromList [(CBit, CArgs [] Zy R0 R0)])
+  ,(CConcatEqEven, M.fromList
+     [(CVec, CArgs [VPVar, VPNum (NP2Times NPVar)] (Sy (Sy Zy))
+      (REx ("elementType", Dollar []) (REx ("halfLength", Nat) R0))
+      (RPr ("lhs", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0))
+        (RPr ("rhs", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0)) R0)))
+     ])
+  ,(CRiffle, M.fromList
+     [(CVec, CArgs [VPVar, VPNum (NP2Times NPVar)] (Sy (Sy Zy))
+      (REx ("elementType", Dollar []) (REx ("halfLength", Nat) R0))
+      (RPr ("evens", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0))
+        (RPr ("odds", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0)) R0)))
+     ])
+  ,(CConcatEqOdd, M.fromList
+     [(CVec, CArgs [VPVar, VPNum (NP1Plus (NP2Times NPVar))] (Sy (Sy Zy))
+      (REx ("elementType", Dollar []) (REx ("halfLength", Nat) R0))
+      (RPr ("lhs", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0))
+        (RPr ("mid", VApp (VInx (VS VZ)) B0)
+          (RPr ("rhs", TVec (VApp (VInx (VS VZ)) B0) (VApp (VInx VZ) B0)) R0))))
+     ])
   ]
 
 defaultTypeConstructors :: M.Map (Mode, QualName) [(PortName, TypeKind)]
@@ -140,7 +164,6 @@ defaultTypeConstructors = M.fromList
   ,((Brat, CList),   [("listValue", Star [])])
   ,((Brat, CVec),    [("X", Star []), ("n", Nat)])
   ,((Brat, CBool),   [])
-  ,((Brat, CBit),    [])
   ,((Brat, CInt),    [])
   ,((Brat, CFloat),  [])
   ,((Brat, CString), [])
@@ -152,7 +175,8 @@ defaultTypeConstructors = M.fromList
   ,((Kernel, CMoney), [])
   ,((Kernel, CVec), [("X", Dollar []), ("n", Nat)])
   ,((Kernel, CBit), [])
-  ,((Kernel, CBool), [])
+  ,((Kernel, CNil),  [])
+  ,((Kernel, CCons), [("head", Dollar []), ("tail", Dollar [])])
   ]
 
 {-

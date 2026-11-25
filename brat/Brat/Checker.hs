@@ -756,7 +756,7 @@ checkClause my fnName cty clause = modily my $ do
           trackM $ "[[[[[[TestMatchData\n" ++ show match ++ "\n]]]]]]"
           pure (sol, match, patRo :->> outRo, fmap (Some . (patEz :*) . abstractEndz patEz) <$> defs)
 
-  for defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
+  for_ defs $ \((name, kind), Some (_ :* val)) -> trackM ("Def: " ++ show ((name, kind), val))
 
   -- Now actually make a box for the RHS and check it
   ((boxPort, _ty), _) <- let ?my = my in makeBox (clauseName ++ "_rhs") rhsCty $ \(rhsOvers, rhsUnders) -> do
@@ -779,7 +779,7 @@ checkClause my fnName cty clause = modily my $ do
      -- would arise if we've not yet defined the outer src
      let vars = fst <$> sol
      env <- mkEnv vars rhsOvers
-     (localEnv (env <> defs) $ "$rhs" -! check @m (rhs clause) ((), rhsUnders))
+     localEnv (env <> defs) $ "$rhs" -! check @m (rhs clause) ((), rhsUnders)
   let NamedPort {end=Ex rhsNode _} = boxPort
   pure (match, rhsNode)
  where
@@ -803,8 +803,8 @@ checkClause my fnName cty clause = modily my $ do
          outPorts <- depOutPorts def
          srcAndTys <- for outPorts (\outport -> (NamedPort outport "",) <$> typeOfEnd Braty (ExEnd outport))
          zx <- pure $ foldl (\sol srcAndTy -> insert ("$" ++ show (end (fst srcAndTy)), srcAndTy) sol) zx srcAndTys
-         (sol, defs) <- worker (zx {-:< entry-}) sol
-         pure ({-(patVar, (src, Left k)):-}sol, ((patVar, k), def):defs)
+         (sol, defs) <- worker zx sol
+         pure (sol, ((patVar, k), def):defs)
     -- Pat vars beginning with '_' aren't in scope, we can ignore them
     -- (but if they're kinded they might come up later as the dependency of something else)
     worker zx (('_':_, _):sol) = worker zx sol
@@ -1084,7 +1084,7 @@ kindCheckRow' :: forall m n
               -> Checking (Int, VEnv, Some (Endz :* Ro m n))
 kindCheckRow' _ ez env (_,i) [] = pure (i, env, Some (ez :* R0))
 
-kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) ((Named (show i) ty):rest)
+kindCheckRow' my nys env (name, i) ((Anon ty):rest) = kindCheckRow' my nys env (name, i) (Named (show i) ty:rest)
 kindCheckRow' Braty (ny :* s) env (name,i) ((Named p (Left k)):rest) = do -- s is Stack Z n
   let dangling = Ex name (ny2int ny)
   req (Declare (ExEnd dangling) Braty (Left k) Definable) -- assume none are SkolemConst??
@@ -1294,7 +1294,7 @@ runWithGraph ve initStore ns g m = do
     -- show multiple error locations
     hs@((_,fc):_) -> Left $ Err (Just fc) (RemainingNatHopes (show . fst <$> hs))
  where
-  isNatKinded tyMap e = case tyMap M.! (InEnd e) of
+  isNatKinded tyMap e = case tyMap M.! InEnd e of
     (EndType Braty (Left Nat), _) -> True
     _ -> False
 

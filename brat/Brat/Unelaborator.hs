@@ -34,9 +34,9 @@ unelab dy ky (top :-: bot) = case ky of
 unelab dy ky (f :$: s) = FApp (unelab dy KVerby <$> f) (unelab Chky ky <$> s)
 unelab dy _ (Lambda (abs,rhs) cs) = FLambda ((abs, unelab dy Nouny <$> rhs) :| (second (fmap (unelab Chky Nouny)) <$> cs))
 unelab _ _ (Con c args) = FCon c (unelab Chky Nouny <$> args)
-unelab _ _ (C (ss :-> ts)) = FFn ((unelabRo ss)
+unelab _ _ (C (ss :-> ts)) = FFn (unelabRo ss
                                   :->
-                                  (unelabRo ts)
+                                  unelabRo ts
                                  )
 unelab _ _ (K (ss :-> ts)) = FKernel (unelabKernRo ss :-> unelabKernRo ts)
 unelab _ _ Identity = FIdentity
@@ -47,5 +47,5 @@ unelab _ _ FanOut = FFanOut
 unelabKernRo :: [TypeRowElem (Term Chk Noun)] -> [TypeRowElem (WC Flat)]
 unelabKernRo = fmap (fmap (dummyFC . unelab Chky Nouny))
 
-unelabRo :: [(TypeRowElem (KindOr (Term Chk Noun)))] -> [TypeRowElem (WC (KindOr Flat))]
+unelabRo :: [TypeRowElem (KindOr (Term Chk Noun))] -> [TypeRowElem (WC (KindOr Flat))]
 unelabRo = fmap (fmap (dummyFC . fmap (unelab Chky Nouny)))

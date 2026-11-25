@@ -22,7 +22,7 @@ import Control.Monad ((>=>))
 import Control.Monad.Freer
 import Control.Monad.State.Lazy (StateT(..), runStateT)
 import Data.Bifunctor
-import Data.Foldable (foldrM)
+import Data.Foldable (foldrM, for_)
 import Data.Kind (Type)
 import Data.List (partition)
 import Data.Maybe (isJust)
@@ -277,10 +277,48 @@ getThunks Braty ((src, Right ty):rest) = do
   pure (node:nodes, unders <> unders', overs <> overs')
 getThunks Kerny ((src, Right ty):rest) = do
   ty <- awaitTypeDefinition ty
-  (src, ss :->> ts) <- vectorise Kerny (src,ty)
-  (node, unders, overs, _) <- let ?my = Kerny in anext "Splice" (Splice (end src)) (S0, Some (Zy :* S0)) ss ts
-  (nodes, unders', overs') <- getThunks Kerny rest
-  pure (node:nodes, unders <> unders', overs <> overs')
+  case ty of
+    -- Special case: when a classical function is called in a kernel context
+    -- that only takes kind arguments, we can infer the arguments.
+    -- E.g. a function with type:
+    --   `foo(X :: $, n :: #) -> { ... -o ... }`
+    -- can be called in a kernel either as:
+    --   `...; foo(x, y); ...`
+    -- or (the case handled here):
+    --   `...; foo; ...`
+    -- which will have the same result as writing:
+    --   `...; foo(!, !); ...`
+    --
+    -- TODO: We should extend this to handle deeper nesting of function calls
+    --       that eventually produce a kernel, so that we can write
+    --         `...; foo; ...`
+    --       and get the result of
+    --         `...; foo(!, !)(!)(!, !, !); ...`
+    --       if appropriate.
+    VFun Braty (bss :->> out@(RPr (_, VFun Kerny (_ :->> _)) R0))
+     | isRoAllKinds bss -> do
+       -- Eval the Braty function
+       (_, unders, [(kfunc, kty)], _) <- next "$!_prehope_eval" (Eval (end src))
+                                        (S0, Some (Zy :* S0)) bss out
+       fc <- req AskFC
+       for_ unders $ \(hungry, _) -> req (ANewDynamic (end hungry) fc)
+       -- Instantiate the kernel function rows with those ends
+       case kty of
+         Right (VFun Kerny (kss :->> kts)) -> do
+           -- Splice in the kernel produced by that function call
+           (node, kunders, kovers, _) <- anext "hopeful_splice" (Splice (end kfunc))
+                                         (S0, Some (Zy :* S0)) kss kts
+           (nodes, unders, overs) <- getThunks Kerny rest
+           pure (node:nodes, kunders <> unders, kovers <> overs)
+         _ -> error "impossible"
+    _ -> do
+     (src, ss :->> ts) <- vectorise Kerny (src,ty)
+     (node, unders, overs, _) <- let ?my = Kerny in
+                                   anext "Splice" (Splice (end src))
+                                   (S0, Some (Zy :* S0)) ss ts
+     (nodes, unders', overs') <- getThunks Kerny rest
+     pure (node:nodes, unders <> unders', overs <> overs')
+
 getThunks Braty ((src, Left (Star args)):rest) = do
   (node, unders, overs) <- case bwdStack (B0 <>< args) of
     Some (_ :* stk) -> do
@@ -290,6 +328,11 @@ getThunks Braty ((src, Left (Star args)):rest) = do
   (nodes, unders', overs') <- getThunks Braty rest
   pure (node:nodes, unders <> unders', overs <> overs')
 getThunks m ro = err $ ExpectedThunk (showMode m) (showRow ro)
+
+isRoAllKinds :: Ro Brat i j -> Bool
+isRoAllKinds R0 = True
+isRoAllKinds (RPr _ _) = False
+isRoAllKinds (REx _ ro) = isRoAllKinds ro
 
 -- The type given here should be normalised
 vecLayers :: Modey m -> Val Z -> Checking ([(Src, NumVal (VVar Z))] -- The sizes of the vector layers
@@ -692,6 +735,7 @@ valPats2Val (k:ks) (v:vs) = do
 valPats2Val [] [] = pure (B0, [])
 valPats2Val _ _ = err $ InternalError "Type args didn't match expected - kindCheck should've sorted it"
 
+{-# ANN traceChecking ("HLint: ignore Redundant pure" :: String) #-}
 traceChecking :: String -> (a -> Checking b) -> (a -> Checking b)
 traceChecking _lbl m a = do
   -- trackM ("Enter " ++ lbl ++ ": " ++ show a)

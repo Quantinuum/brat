@@ -791,7 +791,7 @@ declSignature = try nDecl <|> vDecl where
 
    kernel :: Parser (WC (CType' (TypeRowElem (WC Flat))))
    kernel = do
-     WC startFC ins <- inBracketsFC Paren $ flatIO'
+     WC startFC ins <- inBracketsFC Paren flatIO'
      match Lolly
      WC endFC outs <- spanningFC =<< flatIO'
      pure (WC (spanFC startFC endFC) (ins :-> outs))
