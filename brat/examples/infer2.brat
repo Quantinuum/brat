@@ -3,13 +3,11 @@ isfull(succ(doub(n))) = isfull(n)
 isfull(0) = true
 isfull(_) = false
 
--- https://github.com/Quantinuum/brat/issues/112
---!exec-xfail true
+--!exec true
 is3full :: Bool
 is3full = isfull(3)
 
--- https://github.com/Quantinuum/brat/issues/112
---!exec-xfail true
+--!exec true
 is15full :: Bool
 is15full = isfull(15)
 

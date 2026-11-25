@@ -39,9 +39,8 @@ adderSnoc(succ(n), xs -, x, ys -, y, b) =
    let d, zs = adderSnoc(n, xs, ys, c) in
     d, zs -, z
 
--- Both Suspend with long stack traces
---!exec-xfail 3, [false, true, true], [false, true, false], true --> false, [true, true, false]
---!exec-xfail 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
+--!exec 3, [false, true, true], [false, true, false], true --> false, [true, true, false]
+--!exec 3, [true, true, true], [true, true, true], false --> true, [true, true, false]
 adderDivConquer(n :: #, Vec(Bool, n), Vec(Bool, n), carryIn :: Bool) -> carryOut :: Bool, Vec(Bool, n)
 adderDivConquer(0, [], [], b) = b, []
 adderDivConquer(doub(succ(n)), xsh =,= xsl, ysh =,= ysl, b) =
