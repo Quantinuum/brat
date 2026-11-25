@@ -1,3 +1,7 @@
+--!exec Nat, 3, 5, thinning1, [2, 4, 6, 8, 10] --> [2, 6, 8]
+--!exec Bool, 5, 5, identity(5), [true, false, true, true, false] --> [true, false, true, true, false]
+--!exec Bool, 0, 5, empty(5), [false, true, false, true, false] --> []
+--!exec Nat, 1, 5, thinning, [1,2,3,4,5] --> [3]
 select(X :: *, n :: #, m :: #, Thin(n, m), Vec(X, m)) -> Vec(X, n)
 select(_, _, _, zero, []) = []
 select(_, _, _, succ(th), x ,- xs) = x ,- select(!, !, !, th, xs)
