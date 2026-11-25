@@ -308,6 +308,7 @@ makeParametrisedGateHugr ns op th nqubits =
    , op_name = "from_halfturns_unchecked"
    , signature_ = FunctionType [hugrFloat] [HTRotation] ["tket.rotation"]
    , args = []
+   , metadata = []
    }
 
   gateOp = CustomOp
@@ -320,6 +321,7 @@ makeParametrisedGateHugr ns op th nqubits =
                   , extensions = ["tket.quantum"]
                   }
    , args = []
+   , metadata = []
    }
 
 miniEval :: GraphInfo -> EvalEnv -> OutPort -> Value
