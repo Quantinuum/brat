@@ -36,6 +36,10 @@ defaultConstructors = M.fromList
      [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
      ,(CInt, CArgs [] Zy R0 (RPr ("value", TInt) R0))
      ])
+  ,(CFull, M.fromList
+     [(CNat, CArgs [] Zy R0 (RPr ("value", TNat) R0))
+     ,(CInt, CArgs [] Zy R0 (RPr ("value", TInt) R0))
+     ])
   ,(CZero, M.fromList
      [(CNat, CArgs [] Zy R0 R0)
      ,(CInt, CArgs [] Zy R0 R0)

@@ -145,8 +145,7 @@ splitM s = do
 isConstructor :: QualName -> Desugar Bool
 isConstructor c = pure (c `member` defaultConstructors
                         || (Brat, c) `member` defaultTypeConstructors
-                        || (Kernel, c) `member` defaultTypeConstructors
-                        || c `member` natConstructors)
+                        || (Kernel, c) `member` defaultTypeConstructors)
 
 isAlias :: QualName -> Desugar Bool
 isAlias name = do

@@ -25,7 +25,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Bwd
-import Util (zipSameLength)
+import Util (log2, zipSameLength)
 
 type GraphInfo = (Graph, Store, Namespace, CaptureSets)
 
@@ -387,6 +387,7 @@ testCtor CBool CFalse (BoolV False) = Just []
 testCtor CNat CZero (IntV 0) = Just []
 testCtor CNat CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
 testCtor CNat CDoub (IntV x) | (half, 0) <- x `divMod` 2 = Just [IntV half]
+testCtor CNat CFull (IntV x) | Just pow <- log2 (toInteger x+1) = Just [IntV $ fromInteger pow]
 testCtor CThin CZero (IntV 0) = Just []
 testCtor CThin CSucc (IntV x) | x > 0 = Just [IntV (x - 1)]
 testCtor CThin CSucc (ThinConsV True th) = Just [th]
