@@ -1,5 +1,6 @@
 module Brat.Parser (parseFile) where
 
+import Brat.Constructors (defaultConstructors, CtorArgs(..))
 import Brat.Constructors.Patterns
 import Brat.Error
 import Brat.FC
@@ -14,6 +15,7 @@ import qualified Brat.Syntax.Common as Syntax
 import Brat.Syntax.FuncDecl (FuncDecl(..), Locality(..))
 import Brat.Syntax.Concrete
 import Brat.Syntax.Simple
+import Brat.Syntax.Value (isRoEmpty, Ro)
 import Data.Bracket
 import Util ((**^))
 
@@ -26,11 +28,12 @@ import Data.List (intercalate, uncons)
 import Data.List.HT (chop, viewR)
 import Data.List.NonEmpty (toList, NonEmpty(..), nonEmpty)
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Set (empty)
 import Prelude hiding (lex, round)
 import Text.Megaparsec hiding (Pos, Token, State, empty, match, ParseError, parse)
-import qualified Text.Megaparsec as M (parse)
+import qualified Text.Megaparsec as MP (parse)
 
 newtype CustomError = Custom String deriving (Eq, Ord)
 
@@ -150,6 +153,13 @@ chainl1 px pf = px >>= rest
     Just (f, y) -> rest (f x y)
     Nothing     -> pure x
 
+constructorsWhereAnyTypeHasArgs :: (forall m i j. Ro m i j -> Bool) -> [String]
+-- TODO this handling of PrefixName won't work when we have qualified names in the
+-- constructor table, but when we have qualified (i.e. user-defined) constructors),
+-- we won't be able to tell what's a constructor or not during parsing anyway.
+constructorsWhereAnyTypeHasArgs pred = [n | (PrefixName [] n, tys) <- M.assocs defaultConstructors,
+  any (\(CArgs _ _ _ argRo) -> pred argRo) (M.elems tys)]
+
 abstractor :: Parser (WC Abstractor)
 abstractor = do ps <- many (try portPull)
                 abs <- try (inBrackets Paren binders) <|> binders
@@ -212,7 +222,7 @@ abstractor = do ps <- many (try portPull)
       WC fc () <- matchString c
       pure $ WC fc (PCon (plain c) AEmpty)
 
-    nullaryConstructors = msum (try . nullaryConstructor <$> ["zero", "nil", "none", "true", "false"])
+    nullaryConstructors = msum (try . nullaryConstructor <$> constructorsWhereAnyTypeHasArgs isRoEmpty)
 
     constructorWithArgs :: String -> Parser (WC Pattern)
     constructorWithArgs c = do
@@ -220,8 +230,7 @@ abstractor = do ps <- many (try portPull)
       abs <- inBracketsFC Paren (unWC <$> abstractor)
       pure $ WC (spanFCOf str abs) (PCon (plain c) (unWC abs))
 
-    -- TODO: Consult the constructor table!
-    constructorsWithArgs = msum (try . constructorWithArgs <$> ["succ", "doub", "cons", "some", "omit"])
+    constructorsWithArgs = msum (try . constructorWithArgs <$> constructorsWhereAnyTypeHasArgs (not . isRoEmpty))
 
 simpleTerm :: Parser (WC SimpleTerm)
 simpleTerm =
@@ -657,7 +666,7 @@ instance FCStream [BToken] where
 
 parseFile :: String -> String -> Either SrcErr ([Import], FEnv)
 parseFile fname contents = addSrcContext fname contents $ do
-  toks <- first (wrapParseErr LexErr) (M.parse lex fname contents)
+  toks <- first (wrapParseErr LexErr) (MP.parse lex fname contents)
   btoks <- brackets toks
   first (wrapParseErr ParseErr) (parse pfile fname btoks)
  where
