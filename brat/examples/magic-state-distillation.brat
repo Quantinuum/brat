@@ -76,15 +76,16 @@ prepare_noisy(n :: #) -> { Vec(Money, n) -o Vec(Qubit, n) }
 prepare_noisy(n) = map(Money, Qubit, n, prepare_noisy_1)
 
 -- Running this doesn't terminate, that would produce an infinite hugr
--- We need to break the cycle with Hugr Calls rather than splices...
--- exec-hugr
+-- We need to break the cycle with Hugr Calls rather than splices:
+-- https://github.com/Quantinuum/brat/issues/157
+-- no do not exec-hugr !!
 redistill_if_bad(Qubit, Bit, Vec(Money, 4))
               -o Qubit, Vec(Money, 4)
 redistill_if_bad(q, false, ms) = q, ms
 redistill_if_bad(q, true, ms) = let m, _ = measure(q) in
                                   distill(cons(m, ms))
 
--- exec-hugr
+-- as above https://github.com/Quantinuum/brat/issues/157
 distill(Vec(Money, 5)) -o Qubit, Vec(Money, 4)
 distill = {
   prepare_noisy;
