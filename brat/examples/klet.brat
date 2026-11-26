@@ -16,6 +16,6 @@ swap = { [a, b] => [b, a] }
 vtangle :: { Vec(Qubit, 2) -o Vec(Qubit, 2) }
 vtangle = { qs => let [a,b] = qs in let c, d = lib.kernel.CX(a,b) in [c,d] }
 
---!exec-hugr -->
+--!exec-hugr --yes call it with args
 id2 :: { -> {Qubit -o Qubit} }
 id2 = { => let th = {lib.kernel.X; lib.kernel.X} in {q => th(q)} }
