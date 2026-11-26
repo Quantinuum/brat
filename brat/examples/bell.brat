@@ -61,6 +61,6 @@ phasedBell(th) = {
   M,M
 }
 
---!exec-xfail 
+--!exec-hugr
 test_phasedBell :: { Qubit, Qubit -o Bit, Bit }
 test_phasedBell = phasedBell(1.43)
