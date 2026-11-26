@@ -1,0 +1,5 @@
+swap(Bool, Bool) -> Bool, Bool
+swap(a,b) = b, a
+
+test(Bool, Bool) -> Bool, Bool
+test = { |; swap; .. }

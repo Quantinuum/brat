@@ -53,21 +53,23 @@ assertKVerb s@(WC fc r) = case kind r of
     Syny -> pure $ WC fc (RForce s)
     Chky -> Left $ Err (Just fc) (ElabErr "Verb required at this position (cannot force since the type cannot be synthesised)")
 
+data CompositionType = Composition | Application
+
 mkCompose :: (Dirable d1, Kindable k1, Dirable d2, Kindable k2)
-          => WC (Raw d1 k1) -> WC (Raw d2 k2)
+          => CompositionType
+          -> WC (Raw d1 k1) -> WC (Raw d2 k2)
           -> Either Error SomeRaw'
-mkCompose a f = do
-  -- There are two ways we could elaborate (f: KVerb) applied to (a: Syn).
-  -- Either (Emb a) or (Forget f) is possible, but we prefer (Emb a),
-  -- as this makes it easier to spot applications of constructors in desugaring.
-  case assertKVerb f of
-    Right f -> do  -- traditionally `f(a)`: intermediate type from f
-      a <- assertChk a
-      pure $ SomeRaw' (f ::$:: a)
-    Left _ -> do -- traditionally 'a |> f' or 'a;f': intermediate type from a
-      a <- assertSyn a
-      f <- assertUVerb f
-      pure $ SomeRaw' (a ::-:: f)
+mkCompose ct a f = case assertKVerb f of
+  Right f -> do
+    case ct of
+      Composition | Right a <- assertSyn a -> pure $ SomeRaw' (a ::-:: WC (fcOf f) (RForget f))
+      _ -> do
+        a <- assertChk a
+        pure $ SomeRaw' (f ::$:: a)
+  Left _ -> do
+    a <- assertSyn a
+    f <- assertUVerb f
+    pure $ SomeRaw' (a ::-:: f)
 
 elaborateType :: WC Flat -> Either Error (WC (Raw Chk Noun))
 elaborateType = elaborateChkNoun
@@ -104,7 +106,7 @@ elaborate' (FApp f a) = do
   (SomeRaw f) <- elaborate f
   (SomeRaw a) <- elaborate a
   a <- assertNoun a
-  mkCompose a f
+  mkCompose Application a f
 elaborate' (FJuxt a b) = do
   (SomeRaw a) <- elaborate a
   (SomeRaw b) <- elaborate b
@@ -143,7 +145,7 @@ elaborate' (FCompose a b) = do
   (SomeRaw a) <- case assertKVerb a of
     Right a -> pure $ SomeRaw a
     Left _ -> SomeRaw <$> assertUVerb a
-  mkCompose a b
+  mkCompose Composition a b
 elaborate' (FLambda ((abs,rhs) :| cs)) = do
   SomeRaw rhs <- elaborate rhs
   rhs <- assertNoun rhs

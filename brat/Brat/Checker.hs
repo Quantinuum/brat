@@ -144,7 +144,7 @@ checkIO tm@(WC fc _) exps acts wireFn errMsg = modily ?my $ do
   let (rows, rest) = zipSuffixes exps acts
   localFC fc $ forM rows $ \(e:|exps, a:|acts) ->
       mkFork "checkIO" $ wrapError (addRowContext (showRow $ e:exps) (showRow $ a:acts)) $ wireFn e a
-  throwLeft $ first (\(b:|bs) -> TypeErr $ errMsg ++ showRow (b:bs) ++ " for " ++ show tm) rest
+  throwLeft $ first (\(b:|bs) -> TypeErr $ errMsg ++ showRow (b:bs) ++ " of " ++ show tm) rest
  where
   addRowContext :: String -> String -> Error -> Error
   addRowContext exp act = \case
@@ -160,7 +160,7 @@ checkInputs :: forall m d . (CheckConstraints m KVerb, ?my :: Modey m)
             -> [(Src, BinderType m)] -- Expected
             -> [(Tgt, BinderType m)] -- Actual
             -> Checking [(Src, BinderType m)]
-checkInputs tm overs unders = checkIO tm overs unders (checkWire ?my tm False) "No overs but unders: "
+checkInputs tm overs unders = checkIO tm overs unders (checkWire ?my tm False) "No values for arguments: "
 
 checkOutputs :: forall m k . (CheckConstraints m k, ?my :: Modey m)
              => WC (Term Syn k)
@@ -168,7 +168,7 @@ checkOutputs :: forall m k . (CheckConstraints m k, ?my :: Modey m)
              -> [(Src, BinderType m)] -- Actual
              -> Checking [(Tgt, BinderType m)]
 checkOutputs _ unders overs | track ("checkOutputs\n  " ++ show unders ++ "\n  " ++ show overs) False = undefined
-checkOutputs tm unders overs = checkIO tm unders overs (flip $ checkWire ?my tm True) "No unders but overs: "
+checkOutputs tm unders overs = checkIO tm unders overs (flip $ checkWire ?my tm True) "Unconnected output(s) "
 
 check :: (CheckConstraints m k
          ,EvMode m

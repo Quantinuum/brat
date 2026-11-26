@@ -1,0 +1,6 @@
+Error in test/golden/error/arity/leftovers.brat on line 5:
+test = { |, |; swap }
+               ^^^^
+
+  Type error: Unconnected output(s) (y :: Bool) of (Forget swap())
+
