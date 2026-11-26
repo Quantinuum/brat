@@ -186,7 +186,7 @@ evalNode gi@(g@(nodes, _), st, root, cs) fz n ins = case nodes M.! n of
           capturedSrcs = S.fromList [src | (NamedPort src _name, _ty) <- concat (M.elems captureSet)]
       in run gi fz (Finished [ThunkV $ BratClosure (captureEnv fz capturedSrcs) src tgt])
   (BratNode (PatternMatch (c:|cs)) _ _) -> run gi (fz :< Alternatives (c:cs) ins) TryNextMatch
-  (BratNode (Constructor c) _ _) -> run gi fz (Finished [evalConstructor c ins])
+  (BratNode (Constructor c) _ [(_,ty)]) -> run gi fz (Finished [evalConstructor ty c ins])
   (BratNode (Dummy _) _ _) -> run gi fz (Finished [DummyV])
   (BratNode (Prim (ext, op)) [] [(_, VFun Braty cty)]) -> run gi fz (Finished [ThunkV (BratPrim ext op cty)])
   (BratNode (Selector stor) _ _) -> case (stor, ins) of
@@ -317,26 +317,32 @@ miniEval gi@((nodes, _), _, _, _) env (Ex node 0) =
         BratNode Id _ _ | [v] <- inputs -> v
         nw -> error $ "miniEval(" ++ show inputs ++ "): " ++ show (node, nw)
 
-evalConstructor :: QualName -> [Value] -> Value
-evalConstructor CTrue [] = BoolV True
-evalConstructor CFalse [] = BoolV False
-evalConstructor CZero [] = IntV 0
-evalConstructor CSucc [IntV n] = IntV (n + 1)
-evalConstructor CSucc [th@(ThinConsV _ _)] = ThinConsV True th
-evalConstructor COmit [th] = ThinConsV False th
-evalConstructor CDoub [IntV n] = IntV (2 * n)
-evalConstructor CFull [IntV n] = IntV ((2 ^ n) - 1)
-evalConstructor CNil [] = VecV []
-evalConstructor CCons [hd, VecV tl] = VecV (hd:tl)
-evalConstructor CSnoc [VecV tl, hd] = VecV (tl ++ [hd])
-evalConstructor CConcatEqEven [VecV ls, VecV rs] = VecV (ls ++ rs)
-evalConstructor CRiffle [VecV evens, VecV odds] = VecV (riffle evens odds)
+evalConstructor :: Val Z -- The output type of the constructor, which is required
+                         -- for disambiguation for tuples/vecs.
+                -> QualName -> [Value] -- Constructor name, args
+                -> Value
+evalConstructor _ CTrue [] = BoolV True
+evalConstructor _ CFalse [] = BoolV False
+evalConstructor _ CZero [] = IntV 0
+evalConstructor _ CSucc [IntV n] = IntV (n + 1)
+evalConstructor _ CSucc [th@(ThinConsV _ _)] = ThinConsV True th
+evalConstructor _ COmit [th] = ThinConsV False th
+evalConstructor _ CDoub [IntV n] = IntV (2 * n)
+evalConstructor _ CFull [IntV n] = IntV ((2 ^ n) - 1)
+evalConstructor ty CNil [] | ty `elem` [VTup R0, TNil] = TupleV []
+evalConstructor (TVec _ _) CNil [] = VecV []
+evalConstructor (TList _) CNil [] = VecV []
+evalConstructor _ CCons [hd, VecV tl] = VecV (hd:tl)
+evalConstructor _ CCons [hd, TupleV elems] = TupleV (hd:elems)
+evalConstructor _ CSnoc [VecV tl, hd] = VecV (tl ++ [hd])
+evalConstructor _ CConcatEqEven [VecV ls, VecV rs] = VecV (ls ++ rs)
+evalConstructor _ CRiffle [VecV evens, VecV odds] = VecV (riffle evens odds)
  where
   riffle [] [] = []
   riffle (e:es) (o:os) = e:o:riffle es os
-evalConstructor CQubit [] = DummyV
-evalConstructor CConcatEqOdd [VecV ls, mid, VecV rs] = VecV (ls ++ mid:rs)
-evalConstructor name _ = error $ "Internal error: Unhandled constructor " ++ show name
+evalConstructor _ CQubit [] = DummyV
+evalConstructor _ CConcatEqOdd [VecV ls, mid, VecV rs] = VecV (ls ++ mid:rs)
+evalConstructor ty name _ = error $ "Internal error: Unhandled constructor " ++ show name ++ " for type " ++ show ty
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
 doAllTests env [] = Just env
