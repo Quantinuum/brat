@@ -1,0 +1,6 @@
+Error in test/golden/error/tuple_too_long.brat on line 5:
+goo = foo([3, [1,2,3], Bool])
+                       ^^^^
+
+  Type error: No type to check Bool(()) against
+

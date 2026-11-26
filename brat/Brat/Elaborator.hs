@@ -5,12 +5,15 @@ import Data.Bifunctor (second)
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Map (empty)
 
+import Brat.Constructors.Patterns (pattern CNil, pattern CCons)
 import Brat.FC
+import Brat.QualName (plain)
 import Brat.Syntax.Common
 import Brat.Syntax.Concrete
 import Brat.Syntax.FuncDecl (FunBody(..), FuncDecl(..))
 import Brat.Syntax.Raw
 import Brat.Error
+import Bwd
 
 assertSyn :: Dirable d => WC (Raw d k) -> Either Error (WC (Raw Syn k))
 assertSyn s@(WC fc r) = case dir r of
@@ -196,6 +199,33 @@ elaborate' FIdentity = pure $ SomeRaw' RIdentity
 elaborate' FUnderscore = Left (dumbErr (InternalError "Unexpected '_'"))
 elaborate' FFanOut = pure $ SomeRaw' RFanOut
 elaborate' FFanIn = pure $ SomeRaw' RFanIn
+elaborate' (FSeq row) = do
+  stuff <- elabIO row
+  case tupleOrList B0 stuff of
+    Left r -> pure (SomeRaw' r)
+    Right r -> pure (SomeRaw' r)
+ where
+  tupleOrList :: Bwd (WC (Raw Chk Noun))
+              -> [TypeRowElem (WC (KindOr (Raw Chk Noun)))]
+              -> Either (Raw Chk Noun) -- Tuple
+                 (Raw Chk Noun) -- List
+  tupleOrList tmz [] = Right (listify (tmz <>> []))
+  tupleOrList _ (Anon (WC _ (Left _)):_) = error "Invalid syntax"
+  tupleOrList tmz (Anon (WC fc (Right ty)):xs) = tupleOrList (tmz :< WC fc ty) xs
+  tupleOrList tmz rights@(Named _ (WC _ (Left _)):_) = Left (RTuple ((Anon . fmap Right <$> tmz) <>> rights))
+  tupleOrList tmz (Named x (WC fc (Right ty)):rest) =
+    let tm = WC fc (REmb (WC fc (RVar (plain x)))) ::::: [Anon (Right ty)] in
+         case tupleOrList (tmz :< WC fc (REmb (WC fc tm))) rest of
+           Left _ -> error "Wrong" -- Why so defensive?
+           Right x -> Right x
+
+  listify :: [WC (Raw Chk Noun)] -> Raw Chk Noun
+  -- This dummyFC is not ideal, hopefully wont come up
+  listify [] = RCon CNil (dummyFC REmpty)
+  listify [x] = RCon CCons (WC (fcOf x) (x ::|:: WC (fcOf x) (listify [])))
+  listify (x:rest@(y:_)) = let endFC = fcOf (last rest)
+                               tl = listify rest in
+    RCon CCons (WC (spanFC (fcOf x) endFC) $ x ::|:: WC (spanFC (fcOf y) endFC) tl)
 
 elaborateBratType :: WC (KindOr Flat) -> Either Error (WC (KindOr (Raw Chk Noun)))
 elaborateBratType (WC fc (Left k)) = pure (WC fc (Left k))

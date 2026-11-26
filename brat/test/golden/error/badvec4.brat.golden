@@ -1,6 +1,6 @@
 Error in test/golden/error/badvec4.brat on line 2:
 v3 = [1,2]
-     ^^^^^
+        ^
 
   Unification error: Couldn't force 1 to be 0
 

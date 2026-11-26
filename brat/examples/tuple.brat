@@ -1,0 +1,50 @@
+id(X :: *, x :: X) -> X
+id(_, x) = x
+
+test :: Bool
+test = id(Bool, true)
+
+-- This "[...]" should be `Con "Tuple" ...`
+-- which means kindCheck that `...` is a Row
+tuple :: [X :: *, n :: #, Vec(X, n)]
+tuple = [Nat, 0, []]
+
+elput(tup :: [X :: *, n :: #, Vec(X, n)]) -> []
+elput(_) = []
+--
+useId :: [n :: #, Vec(Bool, n)]
+useId = id([n :: #, Vec(Bool, n)], [2, [true, false]])
+
+tupleTuple :: []
+tupleTuple = elput([Bool, 1, [true]])
+
+again :: []
+again = elput(tuple)
+
+xs :: List(Nat)
+xs = [0,2,3]
+
+nested :: [X :: *, [X, Y :: *, Y]]
+nested = [Bool, [true, Nat, 0]]
+
+type SwapPair(X, Y) = [Y, X]
+
+swp :: SwapPair([X :: *, X], [X :: *, n :: #, Vec(X, n)])
+swp = [[Bool, 2, [true, false]], [Nat, 42]]
+
+shredForHead([X :: *, n :: #, Vec(X, n)]) -> X :: *, Option(X)
+shredForHead([X, 0, []]) = X, none
+shredForHead([X, succ(_), x ,- _]) = X, some(x)
+
+shredNested([X :: *, [Y :: *, [n :: #, Vec([X, Y], succ(n))]]]) -> [X :: *, Y :: *, [X, Y]]
+shredNested([_, [_, [_, [x,y] ,- _]]]) = [!, !, [x,y]]
+
+type TList(X) = [n :: #, list :: Vec(X, n)]
+
+concat(TList(Nat), TList(Nat)) -> TList(Nat)
+concat([0, []], [y, ys]) = [y, ys]
+concat([succ(n), xs -, x], [m, ys]) = concat([n, xs], [succ(m), x ,- ys])
+
+--!exec [t[5,v[1,2,3,4,5]]]
+test_concat1 :: TList(Nat)
+test_concat1 = concat([3, [1,2,3]],[2, [4,5]])

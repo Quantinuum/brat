@@ -19,6 +19,7 @@ import Bwd
 import Control.Monad.Freer
 import Hasochism
 import Brat.Syntax.Port (toEnd)
+import Util (zipSameLength)
 
 import Control.Monad (unless)
 import Data.Bifunctor (first)
@@ -96,11 +97,20 @@ solve my ((src, Lit tm):p) = do
     _ -> typeErr $ "Literal " ++ show tm ++ " isn't valid at this type"
   (tests, sol) <- solve my p
   pure ((src, PrimLitTest tm):tests, sol)
-solve my ((src, PCon c abs):p) = do
+solve my ((src, pat@(PCon c abs)):p) = do
   ty <- typeOfSrc my src
   mine <- mineToSolve
   case (my, ty) of
     (Kerny, ty) -> solveConstructor Kerny src (c, abs) ty p
+    (Braty, Right (VTup ro)) | Just pats <- consToJuxt pat -> do
+      -- Pattern has to be cons r nil as appropriate
+      (untupleNode, _, elemOvers, _) <-
+        let ?my = my in
+              anext "untuple" Untuple (S0, Some (Zy :* S0)) R0 ro
+      (tests, sol) <- solve my (fromJust (zipSameLength (fst <$> elemOvers) pats) ++ p)
+      pure ((src, PrimUntuple untupleNode elemOvers):tests
+           ,sol
+           )
     (Braty, Right ty) -> solveConstructor Braty src (c, abs) ty p
     (Braty, Left Nat) -> case c of
       -- Special case for 0, so that we can call `unifyNum` instead of pattern
@@ -127,7 +137,11 @@ solve my ((src, PCon c abs):p) = do
           pure ((src, PrimCtorTest c CNat node kids):tests, sol)
         _ -> typeErr $ "Couldn't find Nat constructor " ++ show c
     (Braty, Left k) -> typeErr $ "Pattern " ++ show c ++ " invalid for kind " ++ show k
-
+ where
+  consToJuxt :: Pattern -> Maybe [Pattern]
+  consToJuxt PNil = Just []
+  consToJuxt (PCons hd tl) = (hd:) <$> consToJuxt tl
+  consToJuxt _ = Nothing
 
 typeOfEnd :: Modey m -> End -> Checking (BinderType m)
 typeOfEnd my e = (req (TypeOf e) <&> fst) >>= \case
@@ -218,4 +232,5 @@ lookupConstructor my c ty = eval S0 ty >>= \case
   (VCon tycon args) -> (,(tycon, args)) <$> case my of
     Braty -> clup c tycon
     Kerny -> track ("kclup " ++ show c ++ " " ++ show tycon) $ kclup c tycon
+  (VTup _) -> err $ Unimplemented "Pattern matching for dependent tuples" []
   ty -> typeErr $ "Couldn't normalise type " ++ show ty ++ " to a constructor"

@@ -109,6 +109,7 @@ data ErrorMsg
  | ThunkLeftUnders String
  | BracketErr BracketErrMsg
  | RemainingNatHopes [String]
+ | UnexpectedRightOvers String
 
 instance Show ErrorMsg where
   show (TypeErr x) = "Type error: " ++ x
@@ -194,6 +195,7 @@ instance Show ErrorMsg where
   show (ThunkLeftUnders unders) = "Expected function to return additional values of type: " ++ unders
   show (BracketErr msg) = show msg
   show (RemainingNatHopes hs) = unlines ("Expected to work out values for these holes:":(("    " ++) <$> hs))
+  show (UnexpectedRightOvers x) = "Unexpected arguments:\n    " ++ x
 
 data Error = Err { fc  :: Maybe FC
                  , msg :: ErrorMsg

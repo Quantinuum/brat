@@ -1,0 +1,6 @@
+Error in test/golden/error/tuple1.brat on line 5:
+goo = foo([3, [1,2]])
+                 ^
+
+  Unification error: Couldn't force 1 to be 0
+

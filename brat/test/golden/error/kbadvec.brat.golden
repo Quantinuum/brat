@@ -1,6 +1,6 @@
 Error in test/golden/error/kbadvec.brat on line 2:
 triple = { b => [b] }
-                ^^^
+                 ^
 
   Unification error: Couldn't force 2 to be 0
 

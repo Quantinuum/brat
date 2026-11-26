@@ -50,4 +50,5 @@ data Flat
  | FFanIn
  | FIdentity
  | FOf ({- number :: -}WC Flat) {- of -} ({- expr -}WC Flat)
+ | FSeq (TypeRow (WC (KindOr Flat)))
  deriving Show

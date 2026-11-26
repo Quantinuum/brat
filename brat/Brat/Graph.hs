@@ -51,6 +51,8 @@ data NodeType :: Mode -> Type where
   ArithNode :: ArithOp -> NodeType Brat
   Replicate :: NodeType Brat
   MapFun :: NodeType a
+  Entuple :: NodeType a
+  Untuple :: NodeType a
   -- The thing that gets plugged into type hopes when we solve them
   Dummy :: TypeKind -> NodeType Brat
 
@@ -86,6 +88,7 @@ data PrimTest ty
       [(Src, ty)]  -- ...these sources for extracted data descend
   | PrimLitTest
       SimpleTerm    -- the literal against which we're testing for equality
+  | PrimUntuple Name [(Src, ty)]
  deriving (Foldable, Functor, Traversable)
 deriving instance Show ty => Show (PrimTest ty)
 

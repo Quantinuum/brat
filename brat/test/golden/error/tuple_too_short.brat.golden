@@ -1,0 +1,7 @@
+Error in test/golden/error/tuple_too_short.brat on line 5:
+goo = foo([3])
+         ^^^^^
+
+  Type error: Too many elements in tuple. Unexpected:
+    [(NamedPort {end = In checking_tuple_too_short_check_defs_1_goo_3_$rhs_check'Con_1_tupleRo 1, portName = "0"},Vec(Nat, VPar In checking_tuple_too_short_check_defs_1_goo_3_$rhs_check'Con_1_tupleRo 0))]
+
