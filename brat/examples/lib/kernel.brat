@@ -6,18 +6,18 @@ ext "tket.Z" Z :: { Qubit -o Qubit }
 ext "tket.H" H :: { Qubit -o Qubit }
 ext "tket.S" S :: { Qubit -o Qubit }
 ext "tket.T" T :: { Qubit -o Qubit }
-ext "tket.Rx" Rx(Float) -> { Qubit -o Qubit }
-ext "tket.Ry" Ry(Float) -> { Qubit -o Qubit }
-ext "tket.Rz" Rz(Float) -> { Qubit -o Qubit }
 ext "tket.CX" CX :: { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.CY" CY :: { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.CZ" CZ :: { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.CH" CH :: { Qubit, Qubit -o Qubit, Qubit }
-ext "tket.CRx" CRx(Float) -> { Qubit, Qubit -o Qubit, Qubit }
-ext "tket.CRy" CRy(Float) -> { Qubit, Qubit -o Qubit, Qubit }
-ext "tket.CRz" CRz(Float) -> { Qubit, Qubit -o Qubit, Qubit }
 ext "tket.M" M :: { Qubit -o Bit }
 
+ext "builtin.Rx" Rx(Float) -> { Qubit -o Qubit }
+ext "builtin.Ry" Ry(Float) -> { Qubit -o Qubit }
+ext "builtin.Rz" Rz(Float) -> { Qubit -o Qubit }
+ext "builtin.CRx" CRx(Float) -> { Qubit, Qubit -o Qubit, Qubit }
+ext "builtin.CRy" CRy(Float) -> { Qubit, Qubit -o Qubit, Qubit }
+ext "builtin.CRz" CRz(Float) -> { Qubit, Qubit -o Qubit, Qubit }
 ext "builtin.measure" measure :: { Qubit -o q::Money, b::Bit }
 ext "builtin.fresh" fresh :: { Money -o Qubit }
 
