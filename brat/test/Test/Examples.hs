@@ -161,10 +161,10 @@ compileOutputDir = compilePrefix </> "output"
 getExamplesTests :: IO TestTree
 getExamplesTests =  do
   paths <- findByExtension [".brat"] "examples"
-  testGroup "examples" <$> mapM (\path -> readFile path >>= mkTest path) paths
+  testGroup "examples" <$> mapM (\path -> readFile path >>= testTreeForFile path) paths
  where
-  mkTest :: String -> String -> IO TestTree
-  mkTest path cts
+  testTreeForFile :: String -> String -> IO TestTree
+  testTreeForFile path cts
     | "--!xfail-parsing" `L.isPrefixOf` cts =
       pure $ testGroup (show path) [expectFail parseTest]
     |  "--!xfail-checking" `L.isPrefixOf` cts =
