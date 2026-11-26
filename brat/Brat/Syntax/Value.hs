@@ -431,6 +431,9 @@ data NumPat
  = NP0
  | NP1Plus NumPat
  | NP2Times NumPat
+ -- (TODO) we should really have a NPFull here for completeness. However,
+ -- NumPat is only used for `let` patterns which are due for reimplementation
+ -- anyway: https://github.com/Quantinuum/brat/issues/2 hence leaving.
  | NPVar
  deriving Show
 
