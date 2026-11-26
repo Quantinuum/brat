@@ -3,6 +3,10 @@ open import lib.kernel (Rx)
 double_rot(Float) -> { Qubit -o Qubit }
 double_rot(x) = { q => Rx(x * 2.0)(q) }
 
+--!exec-hugr
+test_double_rot :: { Qubit -o Qubit }
+test_double_rot = double_rot(1.37)
+
 double_rot2(Float) -> { Qubit -o Qubit }
 double_rot2(x) = { q => Rx(x + x)(q) }
 

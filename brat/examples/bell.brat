@@ -60,3 +60,7 @@ phasedBell(th) = {
   Rz(th),|;
   M,M
 }
+
+--!exec-hugr
+test_phasedBell :: { Qubit, Qubit -o Bit, Bit }
+test_phasedBell = phasedBell(1.43)
