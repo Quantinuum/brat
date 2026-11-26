@@ -340,6 +340,8 @@ evalConstructor CRiffle [VecV evens, VecV odds] = VecV (riffle evens odds)
   riffle (e:es) (o:os) = e:o:riffle es os
 evalConstructor CQubit [] = DummyV
 evalConstructor CConcatEqOdd [VecV ls, mid, VecV rs] = VecV (ls ++ mid:rs)
+evalConstructor CSome [v] = OptionV (Just v)
+evalConstructor CNone [] = OptionV Nothing
 evalConstructor name _ = error $ "Internal error: Unhandled constructor " ++ show name
 
 doAllTests :: EvalEnv -> [(Src, PrimTest (BinderType Brat))] -> Maybe EvalEnv
@@ -418,6 +420,8 @@ testCtor CVec CConcatEqOdd (VecV vs) = do
   (half, 1) <- pure (length vs `divMod` 2)
   (xs, y:zs) <- pure (splitAt half vs)
   pure [VecV xs, y, VecV zs]
+testCtor COption CNone (OptionV Nothing) = Just []
+testCtor COption CSome (OptionV (Just x)) = Just [x]
 testCtor _ _ _ = Nothing
 
 data Value =
@@ -430,6 +434,7 @@ data Value =
   | ThinConsV Bool Value
   | DummyV
   | StringV String
+  | OptionV (Maybe Value)
 
 data BratThunk =
     -- this might want to be [EvalEnv] or something like that
@@ -448,5 +453,7 @@ instance Show Value where
   show (ThinConsV b val) = (if b then "1" else "0") ++ "-" ++ show val
   show DummyV = "Dummy"
   show (StringV str) = show str
+  show (OptionV Nothing) = "none"
+  show (OptionV (Just v)) = "some(" ++ show v ++ ")"
 
 type EvalEnv = M.Map OutPort Value
