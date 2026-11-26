@@ -41,6 +41,10 @@ adderDivConquer(succ(doub(n)), xsh =, xmid ,= xsl, ysh =, ymid ,= ysl, b) =
     let e, zsh = adderDivConquer(n, xsh, ysh, d) in
      e, zsh =, zmid ,= zsl
 
+--!exec-xfail [False,[True,True,False]]
+testDivConq :: Bool, Vec(Bool, 3)
+testDivConq = adderDivConquer(3, [false, true, true], [false, true, false], true)
+
 if(X :: *, Bool, X, X) -> X
 if(_, true, then, _) = then
 if(_, false, _, else) = else
