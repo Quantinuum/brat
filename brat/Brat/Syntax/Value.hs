@@ -227,6 +227,9 @@ data Ro :: Mode
       -> {--------------------------} Ro m bot top
       -> Ro m bot {--------------------------} top
 
+isRoEmpty :: Ro m bot top -> Bool
+isRoEmpty R0 = True
+isRoEmpty _ = False
 
 instance forall m top bot. MODEY m => Show (Ro m bot top) where
   show ro = intercalate ", " $ roToList ro
