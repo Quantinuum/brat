@@ -11,7 +11,7 @@ Rz = ?rz
 
 --!exec-hugr 0.314
 pba(Float) -> {c :: Qubit,d::Qubit -o c::Qubit,d::Qubit}
-pba = th => { x, y => (lib.kernel.H, |)(x, y) }
+pba = th => { x, y => (lib.kernel.Rx(th), |)(x, y) }
 
 --!exec-hugr 0.314
 pbb(Float) ->  {c :: Qubit,d::Qubit -o c::Qubit,d::Qubit}
