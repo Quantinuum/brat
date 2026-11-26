@@ -4,12 +4,6 @@ id(_, x) = x
 test :: Bool
 test = id(Bool, true)
 
-pure(X :: *, x :: X, n :: #) -> Vec(X, n)
-pure(X, x, n) = ?awef
-
-call :: Vec(Bool, 1)
-call = pure(Bool, true, 1)
-
 -- This "[...]" should be `Con "Tuple" ...`
 -- which means kindCheck that `...` is a Row
 tuple :: [X :: *, n :: #, Vec(X, n)]
