@@ -173,7 +173,7 @@ getExamplesTests =  do
       maybe_mod <- catch (compileToGraph [] path <&> Just) (\(e :: IOError) -> pure Nothing)
       let interpreterTests = case maybe_mod of
             Nothing -> [testCaseInfo "execution" $ pure "SKIPPED as did not compile"]
-            Just nsmod -> testLinesWithFunc <&> makeTest nsmod
+            Just nsmod -> testLinesWithFunc <&> (\(testLine, func_name) -> funcTest nsmod path func_name (parseDirective testLine))
       pure $ if null trailingTestLines then
         case interpreterTests of
           [] -> testGroup (show path) [checkTest]
@@ -198,18 +198,17 @@ getExamplesTests =  do
             "" -> (testsSinceLastFunc', testsWithFuncName)
             func_name -> (B0, (testsSinceLastFunc' <&> (,func_name)) <>> testsWithFuncName)
       ) (B0, []) (T.breakOnAll execTestPrefix (T.pack cts))
-    makeTest :: (Namespace, VMod) -> (T.Text, String) -> TestTree
-    makeTest nsmod (testLine, func_name) = case fromJust $ T.stripPrefix execTestPrefix testLine of
+    parseDirective :: T.Text -> FunctionTestType
+    parseDirective testLine = case fromJust $ T.stripPrefix execTestPrefix testLine of
         -- testLine is execTestPrefix followed by either
         -- " " and the expected result
         -- "-xfail " and the (un-)expected result
         -- "-hugr\n" (checks no splices, outputs hugr for validation)
-          r | Just args <- T.stripPrefix (T.pack "-hugr") r ->
-                funcTest nsmod path func_name (SaveHugr args)
-          r | Just args_out <- T.stripPrefix (T.pack "-xfail ") r ->
-                funcTest nsmod path func_name (uncurry XfailOutput $ split_args args_out)
+          r | Just args <- T.stripPrefix (T.pack "-hugr") r -> (SaveHugr args)
+            | Just args_out <- T.stripPrefix (T.pack "-xfail ") r ->
+                (uncurry XfailOutput $ split_args args_out)
             | Just args_out <- T.stripPrefix (T.pack " ") r ->
-                funcTest nsmod path func_name (uncurry Output $ split_args args_out)
+                (uncurry Output $ split_args args_out)
             | otherwise -> error $ "Invalid exec test line: " ++ T.unpack testLine
     split_args :: T.Text -> (Maybe T.Text, T.Text)
     split_args txt = case T.splitOn (T.pack "-->") txt of
