@@ -1,17 +1,24 @@
---!xfail-compilation
 open import lib.functional
 open import lib.kernel
 open import lib.math
 
+-- Quite a few execution failures here, covered by
+-- https://github.com/Quantinuum/brat/issues/149
+
+--!exec-hugr
 or(Bit, Bit) -o Bit
 or(true, _) = true
 or(_, y) = y
 
+-- Fails in Data/HugrGraph.hs with "Exception: Expected DFG" (wrong sig)
+--!exec-xfail 
 any(n :: #) -> { Vec(Bit, n) -o Bit }
 any(n) = fold(Bit, or, { => false }, n)
 
 -- Decoder for the [[5,3,1]] "perfect" error code
 -- TODO: Add vectorisation and fanin/out
+-- Fails with "Todo: selector", https://github.com/Quantinuum/brat/issues/2
+--!exec-xfail 
 decoder(Vec(Qubit, 5)) -o Vec(Qubit, 5)
 decoder = {
   [/\];
@@ -29,6 +36,13 @@ decoder = {
 phi :: Float
 phi = arccos(1.0 / sqrt(3.0))
 
+-- Machine suspends as it can't handle `fresh`
+--!exec-xfail 
+test :: { Money -o Qubit }
+test = fresh
+
+-- Fails with Machine.hs "Non-exhaustive patterns in function runThunk".
+--!exec-xfail 
 prepare_noisy_1(Money) -o Qubit
 prepare_noisy_1 = {
   fresh;
@@ -36,6 +50,7 @@ prepare_noisy_1 = {
   Rz(pi / 4.0)
 }
 
+--!exec-hugr 5
 measure_all(n :: #) -> { Vec(Qubit, n) -o Vec(Bit, n), Vec(Money, n) }
 measure_all(0) = { [] => [], [] }
 measure_all(succ(n)) = { q ,- qs =>
@@ -44,6 +59,8 @@ measure_all(succ(n)) = { q ,- qs =>
       b ,- bs, m ,- ms
 }
 
+-- Fails in Data/HugrGraph.hs with "Exception: Expected DFG" (wrong sig)
+--!exec-xfail 4 
 measure_syndrome(n :: #)
              -> { Vec(Qubit, n)
                -o Bit, Vec(Money, n)
@@ -53,15 +70,22 @@ measure_syndrome(n) = {
   any(n), |
 }
 
+-- Fails with Machine.hs "Non-exhaustive patterns in function runThunk"
+--!exec-xfail 3
 prepare_noisy(n :: #) -> { Vec(Money, n) -o Vec(Qubit, n) }
 prepare_noisy(n) = map(Money, Qubit, n, prepare_noisy_1)
 
+-- Running this doesn't terminate, that would produce an infinite hugr
+-- We need to break the cycle with Hugr Calls rather than splices:
+-- https://github.com/Quantinuum/brat/issues/157
+-- no do not exec-hugr !!
 redistill_if_bad(Qubit, Bit, Vec(Money, 4))
               -o Qubit, Vec(Money, 4)
 redistill_if_bad(q, false, ms) = q, ms
 redistill_if_bad(q, true, ms) = let m, _ = measure(q) in
                                   distill(cons(m, ms))
 
+-- as above https://github.com/Quantinuum/brat/issues/157
 distill(Vec(Money, 5)) -o Qubit, Vec(Money, 4)
 distill = {
   prepare_noisy;

@@ -1,20 +1,27 @@
 -- This file tests some basics
 
 -- this is a test comment
+-- the next line is a directive for a test
+--!exec Bool, true --> true, true
 copy(Ty :: *, value :: Ty) -> (left :: Ty), (right :: Ty)
 copy = Ty, x => x, x
 
+--!exec Nat, 2, 3 --> 3, 2
 swap(Ty :: *, agneta :: Ty, bjorn :: Ty) -> (benny :: Ty), (annefried :: Ty)
 swap = Ty, a, b => b, a
 
+--!exec 3 --> []
 discardNat(value :: Nat) -> []
 discardNat = x => []
 
 id(Ty :: *, value :: Ty) -> (value :: Ty)
 id = Ty, x => x
 
+--!exec Int, 3 --> 3
 testy(Ty :: *, x :: Ty) -> (x :: Ty)
 testy = Ty, x => id(Ty, x)
 
+--!exec <thunk>
+--!exec Int, 3 --> 3
 noun :: (id :: { Ty :: *, x :: Ty -> x :: Ty })
 noun = { Ty, x => testy(Ty, x) }

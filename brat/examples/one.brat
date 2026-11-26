@@ -12,26 +12,35 @@ test_input =
  ,263
  ]
 
+--!exec 3, 3 --> false
+--!exec 4, 3 --> true
 gt(this :: Nat, that :: Nat) -> Bool
 gt(0, n) = false
 gt(succ(n), 0) = true
 gt(succ(n), succ(m)) = gt(n, m)
 
+--!exec true, 2 --> 3
+--!exec false, 2 --> 2
 aux(Bool, Nat) -> Nat
 aux(true, n) = succ(n)
 aux(false, n) = n
 
+--!exec 3, [2, 1] --> [3, 2, 1]
 mkList(Nat, List(Nat)) -> List(Nat)
 mkList(x, xs) = cons(x, xs)
 
+--!exec 10, [2, 3, 4, 4, 1, 6] --> 13, []
 increments(Nat, List(Nat)) -> Nat, List(Nat)
 increments(n, cons(x, cons(y, xs))) = increments(aux(gt(y,x), n), mkList(y, xs))
 increments(n, xs) = n, (nil)
 
+--!exec [2, 3, 5, 7, 11] --> [[2, 3, 5], [3, 5, 7], [5, 7, 11]]
 window(List(Nat)) -> List (Vec(Nat, 3))
 window(cons(x, cons(y, cons(z, xs)))) = cons([x,y,z], window(cons(y, cons(z, xs))))
-window(nil) = nil
+--window(nil) = nil -- this would be undefined for length 1 or 2 (and hence any input)
+window(_) = nil
 
+--!exec {a, b => a + a*b}, 10, [3, 5] --> 240
 fold(f :: {Nat, Nat -> Nat}, acc :: Nat, List(Nat)) -> (acc :: Nat)
 fold(f, x, nil) = x
 fold(f, x, cons(y, ys)) = fold({ w,z => f(w,z)}, f(x,y), ys)
@@ -39,6 +48,7 @@ fold(f, x, cons(y, ys)) = fold({ w,z => f(w,z)}, f(x,y), ys)
 fold_hole(n :: #, f :: {Nat, Nat -> Nat}, Vec(Nat, succ(n))) -> Nat
 fold_hole = ?unn
 
+--!exec {a, b => a + a*b}, 10, [3, 5] --> 240
 fold2(f :: {Nat, Nat -> Nat}, acc :: Nat, List(Nat)) -> (acc :: Nat)
 fold2(f, x, nil) = x
 fold2(f, x, cons(y, ys)) = fold2(f, f(x,y), ys)

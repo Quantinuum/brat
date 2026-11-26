@@ -1,5 +1,6 @@
 testNil :: Vec(Nat, 0)
 testNil = nil
 
+--!exec [1]
 testCons :: Vec(Nat, 1)
 testCons = cons(1, testNil)

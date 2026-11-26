@@ -1,9 +1,6 @@
 import lib.kernel
 
-which(Bool, A :: *, B :: *) -> (out :: *)
-which(true, a, b) = a
-which(false, a, b) = b
-
+--!exec true, { _ => 7 }, { _ => 12} --> 7
 if(Bool, { [] -> Nat }, { [] -> Nat }) -> Nat
 if(true,  then, else) = then([])
 if(false, then, else) = else([])
@@ -14,13 +11,16 @@ vec = [0,1,2,3]
 unpack_vec(Vec(Nat, 4)) -> Nat, Nat, Nat, Nat
 unpack_vec([a,b,c,d]) = a,b,c,d
 
+--!exec 2, 3 --> 5
 add(x :: Nat, y :: Nat) -> (z :: Nat)
 add(0, y) = y
 add(succ(x), y) = succ(add(x,y))
 
+--!exec 6
 main :: (value :: Nat)
 main = add((add,add)(unpack_vec(vec)))
 
+--!exec-hugr
 main2 :: { Qubit, Qubit -o Bit, Bit }
 main2 =
  lib.kernel.H,|;

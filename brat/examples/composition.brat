@@ -1,3 +1,4 @@
+-- TODO this needs work to add tests!
 type A = Nat
 type B = Bool
 type C = []

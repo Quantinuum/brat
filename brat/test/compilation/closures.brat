@@ -11,7 +11,7 @@ h(x) = let y = x in { z => x + y + z }
 ff(Vec(Nat,2)) -> { Nat -> Nat }
 ff([a,b]) = { y => a + b*y }
 
-ext "to_float" i2f :: {Int -> Float}
+ext "arith.i2f" i2f :: {Int -> Float}
 
 fi(Float) -> { Int -> Float }
 fi(x) = { y => x + i2f(y) }

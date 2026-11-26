@@ -1,5 +1,6 @@
 open import lib.kernel
 
+--!exec-hugr 7
 rus(timeout :: Nat) -> { Money, Qubit -o Money, Qubit }
 rus(0) = { .. }
 rus(succ(n)) = {

@@ -1,18 +1,26 @@
 module Test.Failure (getFailureTests) where
 
-import Test.Tasty
-import Test.Tasty.Silver
-import System.Exit (ExitCode(..))
+import Brat.Compiler (compileToGraph, CompilingHoles(..))
+
 import Control.Exception
+import Data.Text (pack)
+import System.Exit (die, ExitCode(..))
 import System.FilePath
 import System.IO
 import System.IO.Silently
-import Data.Text (pack)
-
-import Brat.Compiler
+import Test.Tasty
+import Test.Tasty.Silver
 import Test.Util (expectFailForPaths)
 
-goldenTest file = goldenVsAction (takeBaseName file) (file <.> "golden") (runGetStderr file $ compileAndPrintFile [] file) pack
+
+compileOrDie :: [FilePath] -> String -> IO ()
+compileOrDie libDirs file = do
+  (newRoot, (declEnv, holes, st, outerGraph, _)) <- compileToGraph libDirs file
+  case holes of
+    [] -> putStrLn "OK and no holes."
+    hs -> die (show (CompilingHoles hs))
+
+goldenTest file = goldenVsAction (takeBaseName file) (file <.> "golden") (runGetStderr file $ compileOrDie [] file) pack
 
 getKernelTests :: IO TestTree
 getKernelTests = testGroup "kernel" . fmap goldenTest <$> findByExtension [".brat"] "test/golden/kernel"

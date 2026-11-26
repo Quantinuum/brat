@@ -7,12 +7,14 @@ single = [true]
 double :: [Bool, Int]
 double = [true, 1]
 
+--!exec [true, 1, false]
 triple :: [Bool, Int, Bool]
 triple = [true, 1, false]
 
 triple' :: [Bool, Bool, Bool]
 triple' = [true, false, true]
 
+--!exec [true, -3, [1, 2, 3]]
 triple'' :: [Bool, Int, Vec(Int, 3)]
 triple'' = [true, -3, [1, 2, 3]]
 

@@ -12,16 +12,18 @@ twoThings = 1, 2
 -- > badBinding :: Int, Int
 -- > badBinding = let x = twoThings in x
 
+--!exec 1, 2
 goodBinding :: Int, Int
 goodBinding = let x, y = twoThings in x, y
 
 -- Functions can be applied directly to things that
 -- represent the right number of values
+--!exec 3
 three :: Int
 three = add(twoThings)
 
 -- Is equivalent to:
---!exec [3]
+--!exec 3
 three' :: Int
 three' = let x, y = twoThings in add(x, y)
 
@@ -36,7 +38,7 @@ uncons(cons(x, xs)) = x, xs
 
 -- However, on the right hand side, something that represents the right number
 -- of values can be used as the argument to a cons
---!exec [[1,2,3]]
+--!exec [1, 2, 3]
 dup :: List(Int)
 dup = cons(uncons([1,2,3]))
 
@@ -44,6 +46,7 @@ dup = cons(uncons([1,2,3]))
 pair(Int, Int) -> [Int, Int]
 pair(a, b) = [a, b]
 
+--!exec [1, 2]
 test :: [Int, Int]
 test = pair(twoThings)
 

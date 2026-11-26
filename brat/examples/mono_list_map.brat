@@ -1,4 +1,4 @@
-ext "to_float" to_float(i :: Int) -> Float
+ext "arith.i2f" to_float(i :: Int) -> Float
 
 map1({ Int -> Float }, List(Int)) -> List(Float)
 map1(_, []) = []

@@ -73,15 +73,19 @@ promote(n) = n
 -- f(_, _, zero) = []
 -- f(X, x, succ(n)) = cons(n, f(X, x, n))
 
+--!exec Float, 3.14, 5 --> [3.14, 3.14, 3.14, 3.14, 3.14]
 pure(X :: *, x :: X, n :: #) -> Vec(X, n)
 pure(_, x, zero) = []
 pure(X, x, succ(n)) = cons(x, pure(X, x, n))
 
+--!exec 1
 one :: Int
 one = id(Int, 1)
 
+--!exec [1, 1, 1]
 ones :: Vec(Int, 3)
 ones = pure(Int, 1, 3)
 
+--!exec 2 --> ["a", "a"]
 passingN(n :: #) -> Vec(String, n)
 passingN(n) = pure(String, "a", n)

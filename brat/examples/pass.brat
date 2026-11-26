@@ -1,4 +1,5 @@
 -- All of the lines of this function are the identity
+--!exec-hugr
 three_qubit(Qubit, Qubit, Qubit) -o Qubit, Qubit, Qubit
 three_qubit = {
   ..; -- Consumes all output
@@ -6,8 +7,6 @@ three_qubit = {
   |, |, ..
 }
 
+--!exec-hugr {..}
 apply_gate_twice({ Qubit, Qubit -o Qubit, Qubit }) -> { Qubit, Qubit -o Qubit, Qubit }
 apply_gate_twice(g) = { g; g }
-
-test(Qubit, Qubit) -o Qubit, Qubit
-test = apply_gate_twice({ .. })

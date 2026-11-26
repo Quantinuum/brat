@@ -1,35 +1,42 @@
 import lib.kernel
 
 -- Helper functions we're going to use --
+--!exec-hugr
 measure2 :: { q0::Qubit, q1::Qubit -o b0::Bit, b1::Bit, m0::Money, m1::Money }
 measure2 = { let m, b, m', b' = (lib.kernel.measure,lib.kernel.measure)(_,_)
              in b, b', m, m' }
 
 
+--!exec-hugr
 qondX(Bit, Qubit) -o Qubit
 qondX(true, q) = lib.kernel.X(q)
 qondX(false, q) = q
 
+--!exec-hugr
 qondZ(Bit, Qubit) -o Qubit
 qondZ(true, q) = lib.kernel.Z(q)
 qondZ(false, q) = q
 
+--!exec-hugr
 packCash :: { Money, Money -o Vec(Money, 2) }
 packCash(m, m') = [m, m']
 -----------------------------------------
 
+--!exec-hugr
 bell00 :: { Qubit, Qubit -o Qubit, Qubit }
 bell00 = {
  lib.kernel.H, |;
  lib.kernel.CX
 }
 
+--!exec-hugr
 alice'(Qubit, Qubit) -o Bit, Bit, Money, Money
 alice'(a, q) = let (a, q) = lib.kernel.CX(a, q) in
                let q = lib.kernel.H(q) in
                measure2(a, q)
 
 -- A more "Braty" version of the above function
+--!exec-hugr
 alice :: { Qubit, Qubit -o Bit, Bit, Vec(Money, 2) }
 alice = {
  lib.kernel.CX;
@@ -38,12 +45,14 @@ alice = {
  |,|,packCash
 }
 
+--!exec-hugr
 bob :: { Qubit, x :: Bit, y :: Bit -o Qubit }
 bob(q, x, y) =
  let q = qondX(x,q) in
  let q = qondZ(y,q) in
  q
 
+--!exec-hugr
 tele(Qubit, Qubit, Qubit) -o Qubit, Vec(Money, 2)
 tele =
  |,bell00;

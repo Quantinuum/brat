@@ -1,2 +1,3 @@
+--!exec-hugr
 test :: { Bit, Qubit -o Qubit }
 test = { b, q => q }

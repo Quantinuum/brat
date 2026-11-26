@@ -8,6 +8,8 @@
 
 import lib.kernel
 
+--!exec-hugr true
+--!exec-hugr false
 maybeRotate(Bool) -> { Qubit -o Qubit }
 maybeRotate(true) = lib.kernel.Rx(30.0)
 maybeRotate(false) = { | }

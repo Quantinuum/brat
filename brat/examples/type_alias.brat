@@ -5,10 +5,16 @@ head(List(A(B))) -> A(B)
 head(nil) = ?help
 head(cons(x, xs)) = ?cons
 
+--It seems all tests on options are returning false...??
+--!exec-xfail some(3) --> true
+--!exec none --> false
 isSome(Option(A(B))) -> Bool
 isSome(some(x)) = true
 isSome(x) = false
 
+--It seems all tests on options are returning false...??
+--!exec some(3) --> false
+--!exec-xfail none --> true
 isNone(Option(A(B))) -> Bool
 isNone(none) = true
 isNone(x) = false
