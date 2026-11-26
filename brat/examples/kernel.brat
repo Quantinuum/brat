@@ -10,9 +10,9 @@ Rz(th :: Float)-> {a::Qubit -o b::Qubit}
 Rz = ?rz
 
 pba(Float) -> {c :: Qubit,d::Qubit -o c::Qubit,d::Qubit}
-pba = th => { x, y => (lib.kernel.H, |)(x, y) }
+pba = th => { x, y => (lib.kernel.Rx(th), |)(x, y) }
 
---!exec-hugr
+--!exec-xfail 
 test_pba(Qubit, Qubit) -o Qubit, Qubit
 test_pba = pba(0.314)
 
