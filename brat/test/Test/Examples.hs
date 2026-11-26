@@ -67,7 +67,14 @@ data FunctionTestType = SaveHugr T.Text
                       | Output (Maybe T.Text) T.Text
                       | XfailOutput (Maybe T.Text) T.Text
 
-makeTestFunc :: (Namespace, VMod) -> String -> Maybe T.Text -> Either String ((Namespace, VMod), String)
+-- makes a function that calls the subject with the specified arguments.
+-- (if the arguments are none, just returns/evaluates the subject).
+-- Returns either an error message, or a new module and the name of the function
+-- calling which constitutes the desired test.
+makeTestFunc :: (Namespace, VMod)
+             -> String -- the function (in the input) to be tested
+             -> Maybe T.Text -- optionally arguments to pass
+             -> Either String ((Namespace, VMod), String)
 makeTestFunc nsmod func_name Nothing = Right (nsmod, func_name)
 makeTestFunc nsmod func_name (Just arg_expr) = do
   arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
