@@ -1,6 +1,6 @@
 module Test.Examples (getExamplesTests) where
 
-import Brat.Parser (parseExpr)
+import Brat.Parser (parseArgumentRow)
 import Brat.Checker (runWithGraph, check)
 import Brat.Checker.Helpers (next, rowToRo)
 import Brat.Checker.Monad (Checking)
@@ -82,7 +82,7 @@ makeTestFunc :: (Namespace, VMod)
              -> Either String ((Namespace, VMod), String)
 makeTestFunc nsmod func_name Nothing = Right (nsmod, func_name)
 makeTestFunc nsmod func_name (Just arg_expr) = do
-  arg <- first (\err -> "In parsing: " ++ show err) (parseExpr (T.unpack $ T.strip arg_expr))
+  arg <- first (\err -> "In parsing: " ++ show err) (parseArgumentRow (T.unpack $ T.strip arg_expr))
   (WC fc raw_arg_noun) :: WC (Raw Chk Noun) <- first (("Could not elaborate arguments: " ++) . showError) (elaborateChkNoun arg)
 
   let env :: RawEnv = ([], [], M.empty) -- Will mean test args cannot use aliases etc.

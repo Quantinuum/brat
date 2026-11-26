@@ -1,4 +1,4 @@
-module Brat.Parser (parseFile, parseExpr) where
+module Brat.Parser (parseFile, parseArgumentRow) where
 
 import Brat.Constructors.Patterns
 import Brat.Error
@@ -654,8 +654,8 @@ instance FCStream [BToken] where
     (Bracketed fc _ _):_ -> fc
     (FlatTok (Token fc _)):_ -> fc
 
-parseExpr :: String -> Either SrcErr (WC Flat)
-parseExpr s = addSrcContext "<expr>" s $ do
+parseArgumentRow :: String -> Either SrcErr (WC Flat)
+parseArgumentRow s = addSrcContext "<expr>" s $ do
   toks <- first (wrapParseErr LexErr) (M.parse lex "<expr>" s)
   btoks <- brackets toks
   first (wrapParseErr ParseErr) (parse maybeExpr "<expr>" btoks)
