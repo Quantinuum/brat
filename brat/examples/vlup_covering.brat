@@ -7,7 +7,7 @@
 -- - [X] The type checker crashes because of a missing pattern match (fixed by #31)
 
 import lib.kernel
-
+open import lib.kernel (measure, fresh)
 --!exec-hugr true
 --!exec-hugr false
 maybeRotate(Bool) -> { Qubit -o Qubit }
@@ -16,4 +16,11 @@ maybeRotate(false) = { | }
 
 --!exec-hugr
 rotate :: { Qubit -o Qubit }
-rotate = { q => maybeRotate(true)(q) }
+rotate = { q =>
+ let m, b = measure(q) in
+ let q = fresh(m) in
+ b, q |>
+  (true, q => maybeRotate(true)(q)
+  |false, q => maybeRotate(false)(q)
+  )
+}
