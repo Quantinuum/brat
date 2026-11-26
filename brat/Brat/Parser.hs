@@ -394,6 +394,7 @@ cthunk = try bratFn <|> try kernel <|> thunk
   replaceU' (FArith op a b) = FArith op <$> replaceU a <*> replaceU b
   replaceU' (FCon x a) = FCon x <$> replaceU a
   replaceU' (FPull ps a) = FPull ps <$> replaceU a
+  replaceU' (FSeq xs) = FSeq <$> (traverse (traverse (traverse (traverse replaceU'))) xs)
   replaceU' x = pure x
 
   braceSectionAbstractor :: [Int] -> Abstractor
