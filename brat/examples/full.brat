@@ -8,5 +8,22 @@ g(_, _, _) = ?todo -- Do the rest once we have vector patterns
 
 countfulls(n :: #) -> Nat
 countfulls(0) = 0
+countfulls(1) = 1 -- need to define as full(1) == 1
 countfulls(full(n)) = countfulls(n) + 1
 countfulls(succ(n)) = countfulls(n)
+
+--!exec [1]
+test_countfulls2 :: Nat
+test_countfulls2 = countfulls(2)
+
+--!exec [2]
+test_countfulls3 :: Nat
+test_countfulls3 = countfulls(3)
+
+--!exec [3]
+test_countfulls126 :: Nat
+test_countfulls126 = countfulls(126)
+
+--!exec [4]
+test_countfulls127 :: Nat
+test_countfulls127 = countfulls(127)
