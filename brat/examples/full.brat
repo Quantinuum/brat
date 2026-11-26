@@ -5,3 +5,8 @@ f(succ(n), xs) = xs -- Need vector patterns to test more
 g(n :: #, Vec(Nat, succ(full(n))), Vec(Nat, succ(full(n)))) -> Vec(Nat, succ(full(succ(n))))
 g(0, [x], [y]) = [x, y]
 g(_, _, _) = ?todo -- Do the rest once we have vector patterns
+
+countfulls(n :: #) -> Nat
+countfulls(0) = 0
+countfulls(full(n)) = countfulls(n) + 1
+countfulls(succ(n)) = countfulls(n)

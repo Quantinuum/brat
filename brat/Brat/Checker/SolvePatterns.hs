@@ -112,7 +112,7 @@ solve my ((src, PCon c abs):p) = do
         pure ((src, PrimLitTest (Num 0)):tests, sol)
       _ -> case M.lookup c natConstructors of
         -- This `relationToInner` is very sus - it doesn't do any wiring!
-        Just (Just _, relationToInner) -> do
+        Just (_, relationToInner) -> do
           (node, [], kids@[(dangling, _)], _) <- next "natComponentHypo" Hypo (S0, Some (Zy :* S0))
             R0
             (REx ("inner", Nat) R0)
